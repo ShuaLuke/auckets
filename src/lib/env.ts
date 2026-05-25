@@ -25,9 +25,11 @@ if (
 export const env = createEnv({
   server: {
     DATABASE_URL: z.url(),
+    CLERK_SECRET_KEY: z.string().min(1).startsWith("sk_"),
   },
   client: {
     NEXT_PUBLIC_APP_URL: z.url(),
+    NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().min(1).startsWith("pk_"),
     // Sentry DSN is intended to be public — exposing it doesn't grant write
     // access to anything beyond what the Sentry project already accepts.
     // Optional: when unset, Sentry stays dormant.
@@ -36,6 +38,9 @@ export const env = createEnv({
   runtimeEnv: {
     DATABASE_URL: process.env.DATABASE_URL,
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+    CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY,
+    NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
+      process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
     NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,
   },
   skipValidation: process.env.SKIP_ENV_VALIDATION === "1",
