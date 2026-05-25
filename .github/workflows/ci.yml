@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Cancel previous runs on the same branch when a new commit lands.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: typecheck · lint · test · build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      - run: npm run lint
+
+      - run: npm test
+
+      # Build needs all required env vars to satisfy src/lib/env.ts. Real
+      # secrets stay in Vercel; CI uses format-valid dummies + the global
+      # SKIP_ENV_VALIDATION escape hatch is intentionally NOT used here so
+      # this build path matches what Vercel actually does.
+      - name: Build
+        run: npm run build
+        env:
+          DATABASE_URL: postgres://placeholder@localhost:5432/aucket
+          NEXT_PUBLIC_APP_URL: http://localhost:3001
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_Y2xlcmsuZXhhbXBsZS5jb20k
+          CLERK_SECRET_KEY: sk_test_BzfCk3uvy7Wxam6Ym7Vmpl6Ic37cuhFsZ4kc8Lz9G5
