@@ -26,6 +26,15 @@ export const env = createEnv({
   server: {
     DATABASE_URL: z.url(),
     CLERK_SECRET_KEY: z.string().min(1).startsWith("sk_"),
+    // Inngest signing/event keys are only needed once we deploy. Locally,
+    // `npx inngest-cli dev` runs unauthenticated; in prod, Inngest will
+    // reject unsigned requests if these are missing.
+    INNGEST_EVENT_KEY: z.string().min(1).optional(),
+    INNGEST_SIGNING_KEY: z.string().min(1).optional(),
+    // Resend API key — optional so the email client stays dormant until
+    // we have a verified domain. sendEmail() warns and no-ops without it.
+    RESEND_API_KEY: z.string().min(1).startsWith("re_").optional(),
+    RESEND_FROM_EMAIL: z.email().default("noreply@auckets.com"),
   },
   client: {
     NEXT_PUBLIC_APP_URL: z.url(),
@@ -41,6 +50,10 @@ export const env = createEnv({
     CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY,
     NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
       process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
+    INNGEST_EVENT_KEY: process.env.INNGEST_EVENT_KEY,
+    INNGEST_SIGNING_KEY: process.env.INNGEST_SIGNING_KEY,
+    RESEND_API_KEY: process.env.RESEND_API_KEY,
+    RESEND_FROM_EMAIL: process.env.RESEND_FROM_EMAIL,
     NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,
   },
   skipValidation: process.env.SKIP_ENV_VALIDATION === "1",
