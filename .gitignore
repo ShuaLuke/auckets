@@ -66,5 +66,5 @@ Thumbs.db
 # Claude Code local config (un-ignore specific files later if we want to share)
 .claude/
 
-# clerk configuration (can include secrets)
-/.clerk/
+# Clerk local cache — can contain handshake state or dev-only config.
+.clerk/
