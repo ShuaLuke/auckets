@@ -23,3 +23,7 @@ if (dsn) {
     environment: process.env.NODE_ENV,
   });
 }
+
+// App Router navigation hook. Lets Sentry trace client-side route changes
+// as their own transactions. Harmless when no DSN is configured.
+export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;
