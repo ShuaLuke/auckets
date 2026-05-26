@@ -120,6 +120,7 @@ describe("listOpenShows", () => {
       offerWindowOpensAt: new Date("2026-05-25T00:00:00Z"),
       bindingAllocationAt: new Date("2026-06-24T00:00:00Z"),
       pausedAt: null,
+      activeRowIds: ["row_a", "row_b", "row_c", "row_d", "row_ga"],
       artistName: "Citizen Cope",
       venueName: "Cope's place",
       venueCity: "Brooklyn, NY",

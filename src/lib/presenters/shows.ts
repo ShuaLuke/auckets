@@ -18,6 +18,7 @@
 //     ./format.ts. Don't inline either.
 
 import type {
+  SeatAssignment,
   ShowSummary,
   ShowWithRelations,
 } from "@/lib/db/repositories";
@@ -157,11 +158,19 @@ function closesFor(
 // the route handler does the DB read and passes the result in. When
 // null/undefined, the yourOffer key is omitted from the view entirely
 // (exactOptionalPropertyTypes is on).
+//
+// userAssignment + userAssignmentRow thread through to yourOffer.preview
+// ("Orchestra · Row AA · seats 7–10"). The summary path doesn't carry
+// the architecture (it's a flat list), so the route handler resolves
+// the row externally via getVenueArchitecturesByIds and hands the row
+// in. If either is missing, the preview key is omitted.
 export function presentShowSummary(
   summary: ShowSummary,
   now: Date,
   tz: string = DEFAULT_TZ,
   userOffer: Offer | null = null,
+  userAssignment: SeatAssignment | null = null,
+  userAssignmentRow: Pick<VenueRow, "area" | "rowName"> | null = null,
 ): ShowSummaryView {
   const status = summary.status as ShowStatus;
   const view: ShowSummaryView = {
@@ -181,7 +190,7 @@ export function presentShowSummary(
     ),
   };
   if (userOffer) {
-    view.yourOffer = presentOffer(userOffer);
+    view.yourOffer = presentOffer(userOffer, userAssignment, userAssignmentRow);
   }
   return view;
 }
@@ -191,6 +200,7 @@ export function presentShowDetail(
   now: Date,
   tz: string = DEFAULT_TZ,
   userOffer: Offer | null = null,
+  userAssignment: SeatAssignment | null = null,
 ): ShowDetailView {
   const status = show.status as ShowStatus;
   const view: ShowDetailView = {
@@ -218,7 +228,14 @@ export function presentShowDetail(
     },
   };
   if (userOffer) {
-    view.yourOffer = presentOffer(userOffer);
+    // Detail path already has the architecture loaded — look up the
+    // assignment's row in-place rather than asking the caller to
+    // resolve it externally.
+    const row = userAssignment
+      ? show.venueArchitecture.rows.find((r) => r.id === userAssignment.venueRowId) ??
+        null
+      : null;
+    view.yourOffer = presentOffer(userOffer, userAssignment, row);
   }
   return view;
 }

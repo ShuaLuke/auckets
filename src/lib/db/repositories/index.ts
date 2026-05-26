@@ -30,6 +30,15 @@ export {
 
 export {
   getVenueArchitectureById,
+  getVenueArchitecturesByIds,
   getVenueById,
   type VenueArchitecture,
 } from "./venues";
+
+export {
+  getProvisionalFilledByShow,
+  getProvisionalFilledByShowIds,
+  getSeatAssignmentByOfferId,
+  listSeatAssignmentsByOfferIds,
+  type SeatAssignment,
+} from "./seat-assignments";

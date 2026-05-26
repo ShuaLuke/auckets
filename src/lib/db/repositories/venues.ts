@@ -4,7 +4,7 @@
 // the GAE consumes it directly, so we narrow the unknown jsonb type to
 // VenueRow[] here and pass through. No other transformation.
 
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 
 import type { Db } from "@/lib/db";
 import type { VenueRow } from "@/lib/gae/types";
@@ -44,4 +44,26 @@ export async function getVenueArchitectureById(
     ...row,
     rows: row.rows as VenueRow[],
   };
+}
+
+// Batched fetcher used by GET /api/shows and GET /api/artists/[id]/shows:
+// each show row in the list response references an architecture (for the
+// yourOffer.preview / capacity / provisionalFilled view fields), and we
+// don't want to fire one architecture query per show. Empty input
+// short-circuits to an empty map — otherwise we'd emit
+// `WHERE id IN ()` which Postgres rejects.
+export async function getVenueArchitecturesByIds(
+  db: Db,
+  ids: string[],
+): Promise<Map<string, VenueArchitecture>> {
+  const out = new Map<string, VenueArchitecture>();
+  if (ids.length === 0) return out;
+  const rows = await db
+    .select()
+    .from(venueArchitectures)
+    .where(inArray(venueArchitectures.id, ids));
+  for (const row of rows) {
+    out.set(row.id, { ...row, rows: row.rows as VenueRow[] });
+  }
+  return out;
 }

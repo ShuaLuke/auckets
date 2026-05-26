@@ -3,9 +3,12 @@ import { describe, expect, it } from "vitest";
 import type {
   OfferStats,
   ShowSummary,
+  VenueArchitecture,
 } from "@/lib/db/repositories";
+import type { VenueRow } from "@/lib/gae/types";
 
 import {
+  computeShowCapacity,
   presentArtistShowSummary,
   presentArtistSnapshotStats,
   type ArtistShowSummaryView,
@@ -23,12 +26,56 @@ function makeSummary(overrides: Partial<ShowSummary> = {}): ShowSummary {
     offerWindowOpensAt: new Date("2026-05-25T16:00:00-04:00"),
     bindingAllocationAt: new Date("2026-06-12T21:00:00-04:00"),
     pausedAt: null,
+    activeRowIds: ["row_a", "row_b"],
     artistName: "Citizen Cope",
     venueName: "Cope's place",
     venueCity: "Brooklyn, NY",
     ...overrides,
   };
 }
+
+function makeRow(overrides: Partial<VenueRow> = {}): VenueRow {
+  return {
+    id: "row_a",
+    area: "orchestra",
+    section: "main",
+    rowName: "A",
+    rowRank: 1,
+    capacity: 8,
+    parity: "EVEN",
+    lean: "CENTER",
+    seatNumbers: ["1", "2", "3", "4", "5", "6", "7", "8"],
+    holds: [],
+    tier: "premium",
+    ...overrides,
+  };
+}
+
+function makeArchitecture(
+  rows: VenueRow[],
+): Pick<VenueArchitecture, "rows"> {
+  return { rows };
+}
+
+describe("computeShowCapacity", () => {
+  it("returns 0 for an empty architecture", () => {
+    expect(computeShowCapacity(makeArchitecture([]), [])).toBe(0);
+  });
+
+  it("sums capacity across the intersection of architecture rows and activeRowIds", () => {
+    const arch = makeArchitecture([
+      makeRow({ id: "row_a", capacity: 8 }),
+      makeRow({ id: "row_b", capacity: 8 }),
+      makeRow({ id: "row_ga", capacity: 22 }),
+    ]);
+    expect(computeShowCapacity(arch, ["row_a", "row_ga"])).toBe(30);
+  });
+
+  it("ignores activeRowIds that don't exist in the architecture", () => {
+    const arch = makeArchitecture([makeRow({ id: "row_a", capacity: 8 })]);
+    expect(computeShowCapacity(arch, ["row_a", "row_zz"])).toBe(8);
+  });
+});
 
 describe("presentArtistShowSummary", () => {
   it("renders offers/medianPrice/topPrice for a healthy pool", () => {
@@ -40,7 +87,18 @@ describe("presentArtistShowSummary", () => {
       medianCents: 2800,
       topCents: 12000,
     };
-    const view = presentArtistShowSummary(makeSummary(), stats, now);
+    const arch = makeArchitecture([
+      makeRow({ id: "row_a", capacity: 8 }),
+      makeRow({ id: "row_b", capacity: 8 }),
+    ]);
+    const view = presentArtistShowSummary(
+      makeSummary(),
+      stats,
+      0,
+      arch,
+      ["row_a", "row_b"],
+      now,
+    );
 
     expect(view.offers).toBe(142);
     expect(view.medianPrice).toBe("$28.00");
@@ -52,7 +110,14 @@ describe("presentArtistShowSummary", () => {
     // The em-dash is U+2014; the prototype uses it literally.
     const now = new Date("2026-05-26T12:00:00-04:00");
     const stats: OfferStats = { count: 0, medianCents: null, topCents: null };
-    const view = presentArtistShowSummary(makeSummary(), stats, now);
+    const view = presentArtistShowSummary(
+      makeSummary(),
+      stats,
+      0,
+      makeArchitecture([makeRow({ capacity: 50 })]),
+      ["row_a"],
+      now,
+    );
 
     expect(view.offers).toBe(0);
     expect(view.medianPrice).toBe("—");
@@ -64,6 +129,9 @@ describe("presentArtistShowSummary", () => {
     const view = presentArtistShowSummary(
       makeSummary(),
       { count: 0, medianCents: null, topCents: null },
+      0,
+      makeArchitecture([]),
+      [],
       now,
     );
     expect(view.dateLong).toBe("Sat · Jun 13 · 9pm");
@@ -80,9 +148,64 @@ describe("presentArtistShowSummary", () => {
     const view = presentArtistShowSummary(
       makeSummary(),
       { count: 5, medianCents: 3000, topCents: 4000 },
+      12,
+      makeArchitecture([makeRow({ capacity: 50 })]),
+      ["row_a"],
       now,
     );
     expect(view).not.toHaveProperty("yourOffer");
+  });
+
+  it("exposes provisionalFilled + capacity for the per-row capacity bar (ArtistDashboard.jsx line 12)", () => {
+    const now = new Date("2026-05-28T16:00:00-04:00");
+    const view = presentArtistShowSummary(
+      makeSummary(),
+      { count: 142, medianCents: 2800, topCents: 12000 },
+      487,
+      makeArchitecture([
+        makeRow({ id: "row_a", capacity: 200 }),
+        makeRow({ id: "row_b", capacity: 200 }),
+        makeRow({ id: "row_c", capacity: 224 }),
+      ]),
+      ["row_a", "row_b", "row_c"],
+      now,
+    );
+    expect(view.provisionalFilled).toBe(487);
+    expect(view.capacity).toBe(624);
+  });
+
+  it("falls back to capacity=0 when the architecture is missing", () => {
+    // Shouldn't happen in production (RESTRICT FK), but the presenter
+    // degrades rather than crashing.
+    const now = new Date("2026-05-28T16:00:00-04:00");
+    const view = presentArtistShowSummary(
+      makeSummary(),
+      { count: 0, medianCents: null, topCents: null },
+      0,
+      null,
+      null,
+      now,
+    );
+    expect(view.capacity).toBe(0);
+    expect(view.provisionalFilled).toBe(0);
+  });
+
+  it("falls back to summing the full architecture when activeRowIds is null", () => {
+    // The fallback over-counts a partial-venue show but never under-
+    // counts. Acceptable as a safety net.
+    const now = new Date("2026-05-28T16:00:00-04:00");
+    const view = presentArtistShowSummary(
+      makeSummary(),
+      { count: 0, medianCents: null, topCents: null },
+      0,
+      makeArchitecture([
+        makeRow({ id: "row_a", capacity: 8 }),
+        makeRow({ id: "row_b", capacity: 8 }),
+      ]),
+      null,
+      now,
+    );
+    expect(view.capacity).toBe(16);
   });
 
   it("matches the declared ArtistShowSummaryView type", () => {
@@ -91,11 +214,15 @@ describe("presentArtistShowSummary", () => {
     const view: ArtistShowSummaryView = presentArtistShowSummary(
       makeSummary(),
       { count: 3, medianCents: 2200, topCents: 3500 },
+      0,
+      makeArchitecture([makeRow({ capacity: 50 })]),
+      ["row_a"],
       now,
     );
     expect(view.offers).toBe(3);
     expect(view.medianPrice).toBe("$22.00");
     expect(view.topPrice).toBe("$35.00");
+    expect(view.capacity).toBe(50);
   });
 });
 

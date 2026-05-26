@@ -1,9 +1,11 @@
 // GET /api/shows/[showId] — show detail for the offer composer.
 //
 // Flow: auth → Zod-validate path param → repository → presenter →
-// NextResponse.json. Per-user state (yourOffer) is fetched via the offers
-// repository and handed into the presenter — the presenter itself stays
-// pure (no DB).
+// NextResponse.json. Per-user state (yourOffer + assignment) is fetched
+// alongside the show in one Promise.all and handed into the presenter —
+// the presenter itself stays pure (no DB). The architecture is part of
+// the show row already, so the assignment → row lookup happens inside
+// the presenter without a separate fetch.
 
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
@@ -12,6 +14,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import {
   getOfferByShowAndUser,
+  getSeatAssignmentByOfferId,
   getShowById,
 } from "@/lib/db/repositories";
 import {
@@ -51,8 +54,14 @@ export async function GET(
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 
+  // Assignment fetch is contingent on having an offer. Wait until we
+  // know the offer id rather than firing a guaranteed-empty query.
+  const userAssignment = userOffer
+    ? await getSeatAssignmentByOfferId(db, userOffer.id)
+    : null;
+
   const now = new Date();
   return NextResponse.json(
-    presentShowDetail(show, now, DEFAULT_TZ, userOffer),
+    presentShowDetail(show, now, DEFAULT_TZ, userOffer, userAssignment),
   );
 }
