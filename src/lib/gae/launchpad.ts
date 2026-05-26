@@ -1,32 +1,37 @@
 // LaunchPad: row-by-row allocation loop.
 //
-// Spec: docs/GAE_SPEC.md §2 LaunchPad.
+// Spec: docs/GAE_SPEC.md §2 LaunchPad (orchestration) + §3 FitResolver
+// (the skip-ahead helper that ships with this module as of slice 12).
 //
 // Walks the venue's active rows from best (lowest rowRank) to worst, and
-// for each row walks the offer pool in rank order, placing each offer
-// into the first contiguous run that fits. When an offer doesn't fit
-// anywhere in the row, greedy stops the row right there — the unplaced
-// offer stays in the pool for the next row.
+// for each row walks the offer pool in rank order. For each offer:
 //
-// Scope of THIS slice (Week 2 slice 3):
-//   * Pure greedy. No FitResolver (skip-ahead to find a smaller fit) —
-//     that's a separate slice, src/lib/gae/fitresolver.ts.
-//   * Placement is positional left-to-right within the first fitting
-//     run. No lean awareness (CENTER / LEFT / RIGHT / DUAL_AISLE) — that
-//     lands in src/lib/gae/placement.ts.
-//   * Tier compatibility: 'any' matches everything; 'specific',
-//     'this_or_better', 'this_or_worse' all require an exact tier match
-//     in this first pass. Cross-tier waterfalling for the two soft prefs
-//     happens in src/lib/gae/waterfall.ts.
-//   * `AllocationConfig.allowOrphans` and `orphanPolicy` are read-only
-//     for now: orphans are detected and emitted as decisions, no
-//     bumping. The "bump_to_next_row" policy is explicitly out-of-MVP
-//     per spec §Edge cases §Orphan seats.
+//   1. If it fits a remaining contiguous run, place it there.
+//   2. Otherwise, ask FitResolver to scan forward in the rank-ordered
+//      pool for the next compatible offer that DOES fit. If one is
+//      found, place it and emit a FIT_RESOLVED decision listing the
+//      skipped offers. If nothing forward fits, the row is done.
 //
-// This module is internal to the GAE. Once the full pipeline exists,
-// the public `allocate()` entry point in index.ts will call launchPad,
-// then waterfall, then assemble the AllocationResult.
+// The skipped offers stay in the pool — they're reconsidered on the
+// next row. FitResolver only defers, it never rejects.
+//
+// Scope still deferred to later slices (called out individually):
+//   * Placement is left-to-right within the first fitting run. No lean
+//     awareness (CENTER / LEFT / RIGHT / DUAL_AISLE) yet — that's the
+//     placement slice.
+//   * Tier prefs `this_or_better` and `this_or_worse` are treated as
+//     exact-tier-only in this first pass. Cross-tier waterfalling for
+//     them happens in the waterfall slice, run after LaunchPad.
+//   * `AllocationConfig.allowOrphans` and `orphanPolicy` are not yet
+//     read: orphans are detected and emitted as decisions, no bumping.
+//     The "bump_to_next_row" policy is explicitly out-of-MVP per spec
+//     §Edge cases §Orphan seats.
+//
+// This module is internal to the GAE. The public `allocate()` entry
+// point in index.ts will eventually call launchPad, then waterfall,
+// then assemble an AllocationResult.
 
+import { scanForwardFit } from "./fitresolver";
 import { sortRankedOffers } from "./rankkey";
 import type {
   AllocationDecision,
@@ -86,9 +91,6 @@ function contiguousRuns(row: VenueRow): Run[] {
 
   for (let i = 0; i < row.seatNumbers.length; i++) {
     const seat = row.seatNumbers[i];
-    // seatNumbers[i] is guaranteed defined by the loop bound, but
-    // noUncheckedIndexedAccess makes us prove it. Skip the slot if the
-    // seat label is somehow missing.
     if (seat === undefined) continue;
     if (heldSet.has(seat)) {
       if (current.length > 0) {
@@ -110,10 +112,33 @@ function isOfferCompatibleWithRow(
   const pref = offer.tierPreference;
   if (pref.type === "any") return true;
   if (row.tier === undefined) return false;
-  // First-pass behavior: every tier-bound preference requires an exact
-  // match. Cross-tier waterfalling for 'this_or_better' / 'this_or_worse'
-  // is the waterfall slice's job.
   return pref.tier === row.tier;
+}
+
+type PlacementSeats = { startPosition: number; positions: number[] };
+
+function consumeRun(
+  runs: Run[],
+  runIdx: number,
+  groupSize: number,
+): PlacementSeats {
+  const run = runs[runIdx]!;
+  const positions = run.positions.splice(0, groupSize);
+  if (run.positions.length === 0) runs.splice(runIdx, 1);
+  return { startPosition: positions[0]!, positions };
+}
+
+function makeAssignments(
+  offer: RankedOffer,
+  row: VenueRow,
+  positions: number[],
+): SeatAssignment[] {
+  return positions.map((positionIndex) => ({
+    offerId: offer.id,
+    venueRowId: row.id,
+    seatNumber: row.seatNumbers[positionIndex]!,
+    positionIndex,
+  }));
 }
 
 type FillRowResult = {
@@ -132,43 +157,74 @@ function fillRow(
   const placedOfferIds = new Set<string>();
   const runs: Run[] = initialRuns.map((r) => ({ positions: [...r.positions] }));
 
-  for (const offer of pool) {
-    if (!isOfferCompatibleWithRow(offer, row)) continue;
+  let i = 0;
+  while (i < pool.length) {
+    const current = pool[i]!;
+    if (!isOfferCompatibleWithRow(current, row)) {
+      i++;
+      continue;
+    }
 
-    const runIdx = runs.findIndex((r) => r.positions.length >= offer.groupSize);
-    if (runIdx === -1) {
-      // Greedy stop: first compatible offer that doesn't fit ends the
-      // row. The unplaced offer stays in the caller's pool.
+    const directRunIdx = runs.findIndex(
+      (r) => r.positions.length >= current.groupSize,
+    );
+    if (directRunIdx !== -1) {
+      const seats = consumeRun(runs, directRunIdx, current.groupSize);
+      assignments.push(...makeAssignments(current, row, seats.positions));
+      decisions.push({
+        action: "PLACED",
+        offerId: current.id,
+        venueRowId: row.id,
+        reason: `placed group of ${current.groupSize} starting at position ${seats.startPosition}`,
+        snapshot: {
+          groupSize: current.groupSize,
+          startPosition: seats.startPosition,
+          rankKey: current.rankKey,
+        },
+      });
+      placedOfferIds.add(current.id);
+      i++;
+      continue;
+    }
+
+    // Direct miss — scan forward for a smaller compatible fit.
+    const scan = scanForwardFit(
+      pool,
+      i + 1,
+      runs.map((r) => ({ length: r.positions.length })),
+      (o) => isOfferCompatibleWithRow(o, row),
+    );
+
+    if (scan.foundIdx === -1) {
+      // Nothing forward fits either. Row is done; current and any
+      // forward non-fits stay in the pool for the next row.
       break;
     }
 
-    const run = runs[runIdx]!;
-    const consumed = run.positions.splice(0, offer.groupSize);
-    const startPosition = consumed[0]!;
-
-    for (const positionIndex of consumed) {
-      const seatNumber = row.seatNumbers[positionIndex]!;
-      assignments.push({
-        offerId: offer.id,
-        venueRowId: row.id,
-        seatNumber,
-        positionIndex,
-      });
-    }
+    const resolved = pool[scan.foundIdx]!;
+    const seats = consumeRun(runs, scan.foundRunIdx, resolved.groupSize);
+    assignments.push(...makeAssignments(resolved, row, seats.positions));
     decisions.push({
-      action: "PLACED",
-      offerId: offer.id,
+      action: "FIT_RESOLVED",
+      offerId: resolved.id,
       venueRowId: row.id,
-      reason: `placed group of ${offer.groupSize} starting at position ${startPosition}`,
+      reason: `placed group of ${resolved.groupSize}, deferring ${
+        scan.skipped.length + 1
+      } larger compatible offer(s) to next row`,
       snapshot: {
-        groupSize: offer.groupSize,
-        startPosition,
-        rankKey: offer.rankKey,
+        groupSize: resolved.groupSize,
+        startPosition: seats.startPosition,
+        rankKey: resolved.rankKey,
+        // current is the offer that triggered the scan; scan.skipped
+        // are additional compatible non-fits between current and resolved.
+        skippedOfferIds: [current.id, ...scan.skipped.map((o) => o.id)],
       },
     });
-    placedOfferIds.add(offer.id);
-
-    if (run.positions.length === 0) runs.splice(runIdx, 1);
+    placedOfferIds.add(resolved.id);
+    // Advance past the placed offer. Any offers between i and foundIdx-1
+    // (the skipped ones) stay in the pool but won't be retried this row —
+    // we proved no run can hold them, and runs only shrink from here.
+    i = scan.foundIdx + 1;
   }
 
   const orphanCount = runs.reduce((sum, r) => sum + r.positions.length, 0);
@@ -187,7 +243,7 @@ function fillRow(
     decisions.push({
       action: "ORPHAN_DETECTED",
       venueRowId: row.id,
-      reason: `${orphanCount} unfilled seat(s) remain in row after greedy placement`,
+      reason: `${orphanCount} unfilled seat(s) remain in row after placement`,
       snapshot: {
         orphanCount,
         orphanPositions: runs.flatMap((r) => r.positions),

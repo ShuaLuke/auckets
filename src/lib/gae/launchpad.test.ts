@@ -182,7 +182,7 @@ describe("launchPad — capacity edge cases", () => {
 });
 
 describe("launchPad — holds and runs", () => {
-  it("respects contiguous runs: a group larger than the longest run does not fit", () => {
+  it("respects contiguous runs: a group larger than the longest run skips, FitResolver picks up the next compatible smaller fit", () => {
     // Row of 10 with holds at seats '5' and '6' → runs of length 4 + 4.
     const row = makeRow({
       id: "row-1",
@@ -191,22 +191,26 @@ describe("launchPad — holds and runs", () => {
       holds: ["5", "6"],
     });
     const offers = [
-      // Group of 5 won't fit in either 4-seat run — greedy stops the row.
+      // Group of 5 won't fit in either 4-seat run — direct placement misses.
       makeOffer({ id: "too-big", pricePerTicketCents: 9000, groupSize: 5 }),
-      // Even though this would fit, greedy doesn't skip ahead in slice 11.
+      // FitResolver should reach this one and place it in the first run.
       makeOffer({ id: "would-fit", pricePerTicketCents: 4000, groupSize: 3 }),
     ];
 
     const result = launchPad(makeVenue([row]), offers);
 
-    expect(result.assignments).toEqual([]);
-    expect(
-      result.decisions.find((d) => d.action === "SKIPPED"),
-    ).toBeDefined();
-    expect(result.remainingOffers.map((o) => o.id)).toEqual([
-      "too-big",
+    expect(result.assignments.map((a) => a.offerId)).toEqual([
+      "would-fit",
+      "would-fit",
       "would-fit",
     ]);
+    const fitResolved = result.decisions.find(
+      (d) => d.action === "FIT_RESOLVED",
+    );
+    expect(fitResolved?.offerId).toBe("would-fit");
+    expect(fitResolved?.snapshot["skippedOfferIds"]).toEqual(["too-big"]);
+    // The larger offer stays in the pool for the next row.
+    expect(result.remainingOffers.map((o) => o.id)).toEqual(["too-big"]);
   });
 
   it("places groups inside their fitting run when multiple runs exist", () => {
@@ -233,6 +237,121 @@ describe("launchPad — holds and runs", () => {
       .map((s) => s.seatNumber);
     expect(aSeats).toEqual(["1", "2", "3", "4"]);
     expect(bSeats).toEqual(["7", "8", "9", "10"]);
+  });
+});
+
+describe("launchPad — FitResolver integration", () => {
+  it("defers a too-big leader and fills the row from smaller offers behind it", () => {
+    // 14-seat row. Pool: [16, 6, 4] in rank order.
+    // Greedy alone would have stopped at 16. With FitResolver, the 16
+    // is deferred and the row fills cleanly with 6 + 4 (10 of 14 used).
+    const row = makeRow({ id: "row-1", rowRank: 1, capacity: 14 });
+    const offers = [
+      makeOffer({ id: "leader-too-big", pricePerTicketCents: 9000, groupSize: 16 }),
+      makeOffer({ id: "fits-1", pricePerTicketCents: 4000, groupSize: 6 }),
+      makeOffer({ id: "fits-2", pricePerTicketCents: 3000, groupSize: 4 }),
+    ];
+
+    const result = launchPad(makeVenue([row]), offers);
+
+    expect(result.assignments).toHaveLength(10);
+    expect(result.remainingOffers.map((o) => o.id)).toEqual([
+      "leader-too-big",
+    ]);
+    const fitResolved = result.decisions.find(
+      (d) => d.action === "FIT_RESOLVED",
+    );
+    expect(fitResolved?.offerId).toBe("fits-1");
+    expect(fitResolved?.snapshot["skippedOfferIds"]).toEqual([
+      "leader-too-big",
+    ]);
+  });
+
+  it("fires FitResolver multiple times in one row when each fit triggers another non-fit", () => {
+    // 14-seat row, pool: [16, 6, 4, 8, 2].
+    //  - 16 misses → scan: 6 fits. Place 6. Run = 8. FIT_RESOLVED ([16]).
+    //  - 4 fits directly. Place 4. Run = 4. PLACED.
+    //  - 8 misses → scan: 2 fits. Place 2. Run = 2. FIT_RESOLVED ([8]).
+    //  - End of pool. Orphan = 2.
+    const row = makeRow({ id: "row-1", rowRank: 1, capacity: 14 });
+    const offers = [
+      makeOffer({ id: "big-leader", pricePerTicketCents: 9000, groupSize: 16 }),
+      makeOffer({ id: "med-1", pricePerTicketCents: 8000, groupSize: 6 }),
+      makeOffer({ id: "small-1", pricePerTicketCents: 7000, groupSize: 4 }),
+      makeOffer({ id: "big-mid", pricePerTicketCents: 6000, groupSize: 8 }),
+      makeOffer({ id: "small-2", pricePerTicketCents: 5000, groupSize: 2 }),
+    ];
+
+    const result = launchPad(makeVenue([row]), offers);
+
+    const fitResolved = result.decisions.filter(
+      (d) => d.action === "FIT_RESOLVED",
+    );
+    expect(fitResolved.map((d) => d.offerId)).toEqual(["med-1", "small-2"]);
+    expect(fitResolved[0]?.snapshot["skippedOfferIds"]).toEqual(["big-leader"]);
+    expect(fitResolved[1]?.snapshot["skippedOfferIds"]).toEqual(["big-mid"]);
+    expect(result.assignments).toHaveLength(12);
+    expect(result.remainingOffers.map((o) => o.id).sort()).toEqual([
+      "big-leader",
+      "big-mid",
+    ]);
+  });
+
+  it("does not retry skipped offers in the same row even when later runs would fit", () => {
+    // Row with two equal runs of 4 (capacity 10 minus holds at 5,6).
+    // Pool: [5 (won't fit), 3 (fits), 4 (would fit second run)].
+    // After placing 3 via FitResolver, run 1 has 1 seat left and run 2
+    // has 4 seats. The 5 is NOT retried (proved-impossible this row),
+    // but the loop advances past the placed 3 and tries the 4 — which
+    // fits run 2. So we expect 3 + 4 placed, 5 deferred.
+    const row = makeRow({
+      id: "row-1",
+      rowRank: 1,
+      capacity: 10,
+      holds: ["5", "6"],
+    });
+    const offers = [
+      makeOffer({ id: "too-big", pricePerTicketCents: 9000, groupSize: 5 }),
+      makeOffer({ id: "fits-first", pricePerTicketCents: 8000, groupSize: 3 }),
+      makeOffer({ id: "fits-second", pricePerTicketCents: 7000, groupSize: 4 }),
+    ];
+
+    const result = launchPad(makeVenue([row]), offers);
+
+    expect(result.assignments).toHaveLength(7);
+    const placedIds = new Set(result.assignments.map((a) => a.offerId));
+    expect(placedIds).toEqual(new Set(["fits-first", "fits-second"]));
+    expect(result.remainingOffers.map((o) => o.id)).toEqual(["too-big"]);
+  });
+
+  it("a deferred offer survives to be placed in a later row that does fit it", () => {
+    // Pool: [10, 4]. Row 1 capacity 8 (10 won't fit, 4 does via FitResolver).
+    // Row 2 capacity 12 (10 fits directly).
+    const rows = [
+      makeRow({ id: "row-1", rowRank: 1, capacity: 8 }),
+      makeRow({
+        id: "row-2",
+        rowRank: 2,
+        capacity: 12,
+        seatNumbers: Array.from({ length: 12 }, (_, i) => `R2-${i + 1}`),
+      }),
+    ];
+    const offers = [
+      makeOffer({ id: "big", pricePerTicketCents: 9000, groupSize: 10 }),
+      makeOffer({ id: "small", pricePerTicketCents: 4000, groupSize: 4 }),
+    ];
+
+    const result = launchPad(makeVenue(rows), offers);
+
+    const row1Placed = result.assignments
+      .filter((a) => a.venueRowId === "row-1")
+      .map((a) => a.offerId);
+    const row2Placed = result.assignments
+      .filter((a) => a.venueRowId === "row-2")
+      .map((a) => a.offerId);
+    expect(new Set(row1Placed)).toEqual(new Set(["small"]));
+    expect(new Set(row2Placed)).toEqual(new Set(["big"]));
+    expect(result.remainingOffers).toEqual([]);
   });
 });
 
