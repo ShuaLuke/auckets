@@ -1,0 +1,122 @@
+// Read-path queries for the shows table.
+//
+// Repositories return raw DB shapes — no formatting, no presenter-derived
+// fields (dateLong, statusLabel, etc). Timestamps are Date, money is integer
+// cents, JSONB columns stay as the raw stored value. Display formatting lives
+// in src/lib/presenters/ (lands in slice 3); the prototype shapes in
+// design/ui_kits/auckets/screens/*.jsx are the presenter contract, not the
+// repository contract.
+
+import { eq } from "drizzle-orm";
+
+import type { Db } from "@/lib/db";
+import type { VenueRow } from "@/lib/gae/types";
+import {
+  artists,
+  shows,
+  venueArchitectures,
+  venues,
+} from "../../../../drizzle/schema";
+
+type Show = typeof shows.$inferSelect;
+type Artist = typeof artists.$inferSelect;
+type Venue = typeof venues.$inferSelect;
+type VenueArchitectureRow = typeof venueArchitectures.$inferSelect;
+
+// venue_architectures.rows is jsonb; Drizzle types it as unknown. The
+// architecture JSONB is camelCase VenueRow[] (matches src/lib/gae/types.ts,
+// matches the seed). Narrow only this column — the GAE consumes it directly,
+// and a downstream cast at every call site would be noise. tier_floors_cents,
+// active_row_ids, show_holds stay unknown per "raw JSONB" contract.
+export type VenueArchitecture = Omit<VenueArchitectureRow, "rows"> & {
+  rows: VenueRow[];
+};
+
+export type ShowWithRelations = Show & {
+  artist: Artist;
+  venue: Venue;
+  venueArchitecture: VenueArchitecture;
+};
+
+export type ShowSummary = {
+  id: Show["id"];
+  artistId: Show["artistId"];
+  venueId: Show["venueId"];
+  venueArchitectureId: Show["venueArchitectureId"];
+  status: Show["status"];
+  doorsAt: Show["doorsAt"];
+  offerWindowOpensAt: Show["offerWindowOpensAt"];
+  bindingAllocationAt: Show["bindingAllocationAt"];
+  pausedAt: Show["pausedAt"];
+  artistName: Artist["name"];
+  venueName: Venue["name"];
+  venueCity: Venue["city"];
+};
+
+export async function getShowById(
+  db: Db,
+  showId: string,
+): Promise<ShowWithRelations | null> {
+  const rows = await db
+    .select()
+    .from(shows)
+    .innerJoin(artists, eq(shows.artistId, artists.id))
+    .innerJoin(venues, eq(shows.venueId, venues.id))
+    .innerJoin(
+      venueArchitectures,
+      eq(shows.venueArchitectureId, venueArchitectures.id),
+    )
+    .where(eq(shows.id, showId))
+    .limit(1);
+
+  const row = rows[0];
+  if (!row) return null;
+
+  return {
+    ...row.shows,
+    artist: row.artists,
+    venue: row.venues,
+    venueArchitecture: {
+      ...row.venue_architectures,
+      rows: row.venue_architectures.rows as VenueRow[],
+    },
+  };
+}
+
+const SHOW_SUMMARY_SELECTION = {
+  id: shows.id,
+  artistId: shows.artistId,
+  venueId: shows.venueId,
+  venueArchitectureId: shows.venueArchitectureId,
+  status: shows.status,
+  doorsAt: shows.doorsAt,
+  offerWindowOpensAt: shows.offerWindowOpensAt,
+  bindingAllocationAt: shows.bindingAllocationAt,
+  pausedAt: shows.pausedAt,
+  artistName: artists.name,
+  venueName: venues.name,
+  venueCity: venues.city,
+} as const;
+
+export async function listOpenShows(db: Db): Promise<ShowSummary[]> {
+  return db
+    .select(SHOW_SUMMARY_SELECTION)
+    .from(shows)
+    .innerJoin(artists, eq(shows.artistId, artists.id))
+    .innerJoin(venues, eq(shows.venueId, venues.id))
+    .where(eq(shows.status, "open"))
+    .orderBy(shows.doorsAt);
+}
+
+export async function listShowsForArtist(
+  db: Db,
+  artistId: string,
+): Promise<ShowSummary[]> {
+  return db
+    .select(SHOW_SUMMARY_SELECTION)
+    .from(shows)
+    .innerJoin(artists, eq(shows.artistId, artists.id))
+    .innerJoin(venues, eq(shows.venueId, venues.id))
+    .where(eq(shows.artistId, artistId))
+    .orderBy(shows.doorsAt);
+}
