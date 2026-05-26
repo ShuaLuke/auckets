@@ -91,7 +91,7 @@ Per-allocation behavior toggles.
 type AllocationConfig = {
   mode: 'preview' | 'binding';
   allowOrphans: boolean;            // Default false
-  maxGroupSize: number;             // Default 8
+  maxGroupSize: number;             // Default 10 (per ADR-0011; artist can override per show)
   orphanPolicy: 'leave' | 'bump_to_next_row';
   // Tiebreakers, RNG seed for testing, etc.
 };
@@ -146,7 +146,7 @@ Already computed when offers are stored. Documented here for reference:
 rankKey = (pricePerTicketCents * 1000) + groupSize
 ```
 
-This sorts primarily by price per ticket, with larger groups breaking ties at equal price. The factor of 1000 means group size up to 999 won't bleed into the price ordering — a $50 offer is always ranked above a $49.99 offer regardless of group size. We don't expect groups over 8, so 1000 is comfortable.
+This sorts primarily by price per ticket, with larger groups breaking ties at equal price. The factor of 1000 means group size up to 999 won't bleed into the price ordering — a $50 offer is always ranked above a $49.99 offer regardless of group size. We don't expect groups over 10 (the default cap, per ADR-0011), so 1000 is comfortable.
 
 Final tiebreaker: earliest `submittedAt` wins. Earlier submission as a tiebreaker rewards early commitment without making time the primary signal.
 
