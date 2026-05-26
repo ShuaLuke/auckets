@@ -23,6 +23,8 @@ import type {
 } from "@/lib/db/repositories";
 import type { VenueRow } from "@/lib/gae/types";
 
+import type { offers } from "../../../drizzle/schema";
+
 import {
   DEFAULT_TZ,
   formatBindingCountdown,
@@ -30,6 +32,9 @@ import {
   formatDateLong,
   formatDateShort,
 } from "./format";
+import { presentOffer, type OfferView } from "./offers";
+
+type Offer = typeof offers.$inferSelect;
 
 // Raw show status from the DB (drizzle column is `text`, not an enum). The
 // canonical seven listed in drizzle/schema.ts line 158. Kept as a string
@@ -54,6 +59,11 @@ export type ShowSummaryView = {
   status: ShowStatus;
   statusLabel: string;
   closes: string;
+  // Optional per the prototype Dashboard.jsx contract: yourOffer is null
+  // for shows the fan hasn't engaged with yet. With exactOptionalProperty-
+  // Types on, the key is omitted entirely in that case (rather than
+  // serialized as `yourOffer: undefined`).
+  yourOffer?: OfferView;
 };
 
 export type ShowDetailView = {
@@ -79,6 +89,10 @@ export type ShowDetailView = {
     version: number;
     rows: VenueRow[];
   };
+  // Show.jsx renders the offer composer pre-populated when the fan
+  // already has an offer on this show; same exactOptionalPropertyTypes
+  // convention as ShowSummaryView.
+  yourOffer?: OfferView;
 };
 
 // Map raw enum → human label. Time-aware refinement (e.g. "Offers open Jun 18"
@@ -138,13 +152,19 @@ function closesFor(
   return "";
 }
 
+// userOffer is the *caller's* offer for this show (or null). It's a
+// presenter parameter — not a repo lookup — because presenters stay pure:
+// the route handler does the DB read and passes the result in. When
+// null/undefined, the yourOffer key is omitted from the view entirely
+// (exactOptionalPropertyTypes is on).
 export function presentShowSummary(
   summary: ShowSummary,
   now: Date,
   tz: string = DEFAULT_TZ,
+  userOffer: Offer | null = null,
 ): ShowSummaryView {
   const status = summary.status as ShowStatus;
-  return {
+  const view: ShowSummaryView = {
     id: summary.id,
     artist: summary.artistName,
     venue: summary.venueName,
@@ -160,15 +180,20 @@ export function presentShowSummary(
       now,
     ),
   };
+  if (userOffer) {
+    view.yourOffer = presentOffer(userOffer);
+  }
+  return view;
 }
 
 export function presentShowDetail(
   show: ShowWithRelations,
   now: Date,
   tz: string = DEFAULT_TZ,
+  userOffer: Offer | null = null,
 ): ShowDetailView {
   const status = show.status as ShowStatus;
-  return {
+  const view: ShowDetailView = {
     id: show.id,
     artist: show.artist.name,
     venue: show.venue.name,
@@ -192,4 +217,8 @@ export function presentShowDetail(
       rows: show.venueArchitecture.rows,
     },
   };
+  if (userOffer) {
+    view.yourOffer = presentOffer(userOffer);
+  }
+  return view;
 }

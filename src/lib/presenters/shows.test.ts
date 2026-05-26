@@ -5,12 +5,40 @@ import type {
   ShowWithRelations,
 } from "@/lib/db/repositories";
 
+import type { offers } from "../../../drizzle/schema";
+
 import {
   presentShowDetail,
   presentShowSummary,
   type ShowDetailView,
   type ShowSummaryView,
 } from "./shows";
+
+type Offer = typeof offers.$inferSelect;
+
+function makeOffer(overrides: Partial<Offer> = {}): Offer {
+  return {
+    id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    showId: "44444444-4444-4444-4444-444444444444",
+    userId: "user_2abc",
+    channel: "market",
+    groupSize: 4,
+    pricePerTicketCents: 4200,
+    tierPreference: "this_or_worse",
+    preferredTier: null,
+    rankKey: BigInt(4200 * 1000 + 4),
+    autoBidEnabled: false,
+    autoBidCapCents: null,
+    autoBidIncrementCents: 500,
+    privateThresholdCents: null,
+    stripePaymentMethodId: "pm_test",
+    stripeSetupIntentId: "seti_test",
+    status: "pool",
+    submittedAt: new Date("2026-05-26T12:00:00Z"),
+    revisedAt: null,
+    ...overrides,
+  };
+}
 
 // All fixtures pin America/New_York. Real production callers will pin it
 // at the route boundary; tests do the same to keep formatting assertions
@@ -185,6 +213,41 @@ describe("presentShowSummary", () => {
     );
     expect(view.city).toBeNull();
   });
+
+  it("omits yourOffer when no userOffer is passed (matches Dashboard.jsx null case)", () => {
+    const now = new Date("2026-05-28T16:00:00-04:00");
+    const view = presentShowSummary(makeSummary(), now);
+    expect(view).not.toHaveProperty("yourOffer");
+  });
+
+  it("omits yourOffer when userOffer is explicitly null", () => {
+    const now = new Date("2026-05-28T16:00:00-04:00");
+    const view = presentShowSummary(
+      makeSummary(),
+      now,
+      undefined,
+      null,
+    );
+    expect(view).not.toHaveProperty("yourOffer");
+  });
+
+  it("attaches yourOffer when the caller has an offer on this show", () => {
+    // Matches Dashboard.jsx row 1: status open + a yourOffer payload.
+    const now = new Date("2026-05-28T16:00:00-04:00");
+    const offer = makeOffer({
+      pricePerTicketCents: 4200,
+      groupSize: 4,
+      status: "placed",
+    });
+    const view = presentShowSummary(makeSummary(), now, undefined, offer);
+    expect(view.yourOffer).toEqual({
+      priceCents: 4200,
+      price: "$42.00",
+      size: 4,
+      status: "placed",
+      placed: true,
+    });
+  });
 });
 
 describe("presentShowDetail", () => {
@@ -250,5 +313,30 @@ describe("presentShowDetail", () => {
         Date,
       );
     }
+  });
+
+  it("omits yourOffer when no userOffer is passed", () => {
+    const show = makeShowWithRelations();
+    const now = new Date("2026-05-28T16:00:00-04:00");
+    const view = presentShowDetail(show, now);
+    expect(view).not.toHaveProperty("yourOffer");
+  });
+
+  it("attaches yourOffer for the offer composer to pre-populate", () => {
+    const show = makeShowWithRelations();
+    const now = new Date("2026-05-28T16:00:00-04:00");
+    const offer = makeOffer({
+      pricePerTicketCents: 6000,
+      groupSize: 2,
+      status: "pool",
+    });
+    const view = presentShowDetail(show, now, undefined, offer);
+    expect(view.yourOffer).toEqual({
+      priceCents: 6000,
+      price: "$60.00",
+      size: 2,
+      status: "pool",
+      placed: false,
+    });
   });
 });

@@ -11,6 +11,15 @@ export {
 } from "./artists";
 
 export {
+  getOfferByShowAndUser,
+  getOfferStatsByShowIds,
+  getOfferStatsForArtist,
+  getOfferStatsForShow,
+  listOffersForUser,
+  type OfferStats,
+} from "./offers";
+
+export {
   getShowById,
   listOpenShows,
   listShowsForArtist,
