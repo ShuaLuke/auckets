@@ -22,10 +22,15 @@
 // pool for the next row. Within the current row, a skipped offer is not
 // retried — runs only shrink, so "doesn't fit any run" is monotonic.
 //
+// LaunchPad accepts an optional `matcher` in its options that decides
+// whether an offer is compatible with a row's tier. The default is the
+// `strictTierMatcher` exported here — it requires exact-tier match for
+// every non-`any` preference. The waterfall slice supplies its own
+// relaxed matcher to cascade `this_or_better` / `this_or_worse` offers
+// across tiers; that pass also uses LaunchPad's machinery via this
+// parameter, with the calling code re-labeling decisions as WATERFALLED.
+//
 // Still deferred to later slices:
-//   * Tier prefs `this_or_better` and `this_or_worse` are treated as
-//     exact-tier-only in this first pass; the waterfall slice handles
-//     cross-tier placement against any unplaced offers.
 //   * AllocationConfig.allowOrphans / orphanPolicy aren't read yet —
 //     orphans are detected and emitted as decisions, never bumped.
 //
@@ -54,7 +59,9 @@ export type LaunchPadResult = {
 export function launchPad(
   venue: VenueArchitecture,
   offers: RankedOffer[],
+  options: { matcher?: TierMatcher } = {},
 ): LaunchPadResult {
+  const matcher = options.matcher ?? strictTierMatcher;
   const assignments: SeatAssignment[] = [];
   const decisions: AllocationDecision[] = [];
   let pool = sortRankedOffers(offers);
@@ -63,7 +70,7 @@ export function launchPad(
     const runs = contiguousRuns(row);
     if (runs.length === 0) continue; // entire row held; spec: no decision
 
-    const filled = fillRow(row, runs, pool);
+    const filled = fillRow(row, runs, pool, matcher);
     assignments.push(...filled.assignments);
     decisions.push(...filled.decisions);
     if (filled.placedOfferIds.size > 0) {
@@ -109,15 +116,19 @@ function contiguousRuns(row: VenueRow): Run[] {
   return runs;
 }
 
-function isOfferCompatibleWithRow(
-  offer: RankedOffer,
-  row: VenueRow,
-): boolean {
+// A predicate that decides whether a given offer is compatible with a
+// given row's tier. LaunchPad's default matcher is strict — it requires
+// `specific`, `this_or_better`, and `this_or_worse` preferences all to
+// match the row's tier exactly. The waterfall slice supplies a relaxed
+// matcher that expands `this_or_*` per the venue's tier ordering.
+export type TierMatcher = (offer: RankedOffer, row: VenueRow) => boolean;
+
+export const strictTierMatcher: TierMatcher = (offer, row) => {
   const pref = offer.tierPreference;
   if (pref.type === "any") return true;
   if (row.tier === undefined) return false;
   return pref.tier === row.tier;
-}
+};
 
 type Selection = {
   offer: RankedOffer;
@@ -139,6 +150,7 @@ function fillRow(
   row: VenueRow,
   initialRuns: Run[],
   pool: RankedOffer[],
+  matcher: TierMatcher,
 ): FillRowResult {
   // Selection phase: decide which offers go in which runs. We only
   // track each run's remaining length here; the position math waits
@@ -152,7 +164,7 @@ function fillRow(
   let i = 0;
   while (i < pool.length) {
     const current = pool[i]!;
-    if (!isOfferCompatibleWithRow(current, row)) {
+    if (!matcher(current, row)) {
       i++;
       continue;
     }
@@ -177,7 +189,7 @@ function fillRow(
       pool,
       i + 1,
       runLengths.map((len) => ({ length: len })),
-      (o) => isOfferCompatibleWithRow(o, row),
+      (o) => matcher(o, row),
     );
 
     if (scan.foundIdx === -1) {
