@@ -7,6 +7,7 @@ import {
   getOfferStatsForArtist,
   getOfferStatsForShow,
   listOffersForUser,
+  upsertOfferForUser,
   type OfferStats,
 } from "./offers";
 import { makeMockDb } from "./_mock-db";
@@ -103,6 +104,69 @@ describe("listOffersForUser", () => {
 
   it("has the expected return type", () => {
     expectTypeOf(listOffersForUser).returns.resolves.toEqualTypeOf<Offer[]>();
+  });
+});
+
+describe("upsertOfferForUser", () => {
+  // Note: mock-Db can't simulate ON CONFLICT, so these tests only
+  // exercise the return-shape contract. The real conflict path is
+  // verified by integration tests once the local DB connection is
+  // unblocked.
+
+  const baseInsert = {
+    showId: "44444444-4444-4444-4444-444444444444",
+    userId: "user_2abc",
+    groupSize: 4,
+    pricePerTicketCents: 4200,
+    tierPreference: "this_or_worse",
+    preferredTier: "premium",
+    channel: "market",
+    autoBidEnabled: false,
+    autoBidCapCents: null,
+    autoBidIncrementCents: 500,
+    privateThresholdCents: null,
+    stripePaymentMethodId: "pm_dev_stub",
+    stripeSetupIntentId: "seti_dev_stub",
+  } as const;
+
+  it("returns isRevision=false on a fresh insert (revised_at null)", async () => {
+    const inserted = makeOffer({ revisedAt: null });
+    const db = makeMockDb<Offer>([inserted]);
+    const result = await upsertOfferForUser(db, baseInsert);
+    expect(result.isRevision).toBe(false);
+    expect(result.offer).toEqual(inserted);
+  });
+
+  it("returns isRevision=true when the returned row has revised_at set (conflict path)", async () => {
+    // Mock-Db can't actually exercise ON CONFLICT DO UPDATE — we
+    // simulate the post-conflict state by returning a row that
+    // already has revised_at populated. The function should fold
+    // that into isRevision=true.
+    const revisedRow = makeOffer({
+      pricePerTicketCents: 6000,
+      revisedAt: new Date("2026-05-27T12:00:00Z"),
+    });
+    const db = makeMockDb<Offer>([revisedRow]);
+    const result = await upsertOfferForUser(db, {
+      ...baseInsert,
+      pricePerTicketCents: 6000,
+    });
+    expect(result.isRevision).toBe(true);
+    expect(result.offer.pricePerTicketCents).toBe(6000);
+  });
+
+  it("throws when the upsert returns no row (loud-fail rather than ambiguous)", async () => {
+    const db = makeMockDb<Offer>([]);
+    await expect(upsertOfferForUser(db, baseInsert)).rejects.toThrow(
+      /no row returned/,
+    );
+  });
+
+  it("has the expected return type", () => {
+    expectTypeOf(upsertOfferForUser).returns.resolves.toEqualTypeOf<{
+      offer: Offer;
+      isRevision: boolean;
+    }>();
   });
 });
 

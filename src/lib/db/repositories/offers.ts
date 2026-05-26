@@ -31,6 +31,7 @@ import type { Db } from "@/lib/db";
 import { offers, shows } from "../../../../drizzle/schema";
 
 type Offer = typeof offers.$inferSelect;
+type OfferInsert = typeof offers.$inferInsert;
 
 export type OfferStats = {
   count: number;
@@ -176,6 +177,57 @@ export async function getOfferStatsByShowIds(
   }
 
   return out;
+}
+
+// Insert or update by the (show_id, user_id) UNIQUE constraint. On
+// conflict, updates the editable offer fields and stamps revised_at to
+// NOW. Submission-time fields (submitted_at, stripe_setup_intent_id,
+// stripe_payment_method_id) are insert-only — the original token
+// stays bound to the original submission per ADR-0010.
+//
+// Returns the resulting row plus an `isRevision` flag derived from the
+// returned `revised_at` being non-null. The RETURNING clause keeps it
+// to one round-trip.
+//
+// NOTE: this is the only write helper that touches offers in the
+// repository layer. The "revise upward only" business rule (price +
+// group must increase, never decrease) is NOT enforced here — that
+// belongs in the route handler / service layer where the existing
+// offer is loaded and compared. The dev stub skips that check by
+// design.
+export async function upsertOfferForUser(
+  db: Db,
+  params: Omit<OfferInsert, "rankKey" | "submittedAt" | "revisedAt" | "id" | "status"> & {
+    status?: Offer["status"];
+  },
+): Promise<{ offer: Offer; isRevision: boolean }> {
+  const rows = await db
+    .insert(offers)
+    .values(params)
+    .onConflictDoUpdate({
+      target: [offers.showId, offers.userId],
+      set: {
+        groupSize: params.groupSize,
+        pricePerTicketCents: params.pricePerTicketCents,
+        tierPreference: params.tierPreference,
+        preferredTier: params.preferredTier ?? null,
+        channel: params.channel ?? "market",
+        autoBidEnabled: params.autoBidEnabled ?? false,
+        autoBidCapCents: params.autoBidCapCents ?? null,
+        autoBidIncrementCents: params.autoBidIncrementCents ?? 500,
+        privateThresholdCents: params.privateThresholdCents ?? null,
+        revisedAt: sql`NOW()`,
+      },
+    })
+    .returning();
+
+  const row = rows[0];
+  if (!row) {
+    throw new Error(
+      `upsertOfferForUser: no row returned (showId=${params.showId}, userId=${params.userId})`,
+    );
+  }
+  return { offer: row, isRevision: row.revisedAt !== null };
 }
 
 export async function getOfferStatsForArtist(
