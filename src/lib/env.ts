@@ -22,6 +22,20 @@ if (
   );
 }
 
+// ALLOW_DEV_OFFER_STUB enables the dev-mode POST /api/offers stub that
+// uses placeholder Stripe IDs instead of going through SetupIntent.
+// Same safety posture as SKIP_ENV_VALIDATION — refuse loudly in
+// production so a stray env var on Vercel can't accidentally turn it
+// on and start writing fake-payment-method offer rows.
+if (
+  process.env.NODE_ENV === "production" &&
+  process.env.ALLOW_DEV_OFFER_STUB === "true"
+) {
+  throw new Error(
+    "ALLOW_DEV_OFFER_STUB is not allowed in production. The real POST /api/offers (with SetupIntent) lands once ADR-0003 is settled.",
+  );
+}
+
 export const env = createEnv({
   server: {
     DATABASE_URL: z.url(),
@@ -35,6 +49,14 @@ export const env = createEnv({
     // we have a verified domain. sendEmail() warns and no-ops without it.
     RESEND_API_KEY: z.string().min(1).startsWith("re_").optional(),
     RESEND_FROM_EMAIL: z.email().default("noreply@auckets.com"),
+    // Dev-only escape hatch for the offer-submission flow while ADR-0003
+    // (Stripe SetupIntent vs. pre-auth) is still being decided. When
+    // "true", POST /api/offers accepts submissions using placeholder
+    // Stripe IDs so the bid flow is exercisable end-to-end without
+    // real Stripe. Refused in production at module load (see top of
+    // file). Default "false" — the real path lands in its own slice
+    // once Cope settles the hold-window question.
+    ALLOW_DEV_OFFER_STUB: z.enum(["true", "false"]).default("false"),
   },
   client: {
     NEXT_PUBLIC_APP_URL: z.url(),
@@ -55,6 +77,7 @@ export const env = createEnv({
     RESEND_API_KEY: process.env.RESEND_API_KEY,
     RESEND_FROM_EMAIL: process.env.RESEND_FROM_EMAIL,
     NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,
+    ALLOW_DEV_OFFER_STUB: process.env.ALLOW_DEV_OFFER_STUB,
   },
   skipValidation: process.env.SKIP_ENV_VALIDATION === "1",
   emptyStringAsUndefined: true,
