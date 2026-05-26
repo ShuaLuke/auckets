@@ -1,0 +1,39 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="_card.css">
+<style>
+  .btn { display:inline-flex;align-items:center;gap:8px;font-family:var(--font-sans);font-weight:500;font-size:14px;letter-spacing:-0.01em;border-radius:999px;padding:8px 18px;border:1px solid transparent;cursor:pointer;line-height:1;transition:all 120ms cubic-bezier(.2,.7,.2,1);}
+  .btn-primary { background:#0E0F0C;color:#F4F1E8;}
+  .btn-primary:hover { background:#2C2B25; }
+  .btn-brand { background:#1F4A2E;color:#F4F1E8;}
+  .btn-brand:hover { background:#163823; }
+  .btn-secondary { background:#FFFFFF;color:#0E0F0C;border-color:rgba(14,15,12,.22);}
+  .btn-secondary:hover { background:#F7F6F2; }
+  .btn-ghost { background:transparent;color:#0E0F0C; }
+  .btn-ghost:hover { background:rgba(14,15,12,.06); }
+  .btn-marquee { background:#FFFFFF;color:#0E0F0C;border:1px solid #0E0F0C;box-shadow:3px 3px 0 0 #0E0F0C;border-radius:8px;padding:9px 18px;}
+  .btn-sm { padding:5px 12px;font-size:12px; }
+  .btn-lg { padding:11px 22px;font-size:15px; }
+  .btn-icon { width:32px;height:32px;padding:0;justify-content:center;border-radius:999px;background:rgba(14,15,12,0.06);color:#0E0F0C;}
+  .btn-icon:hover { background:rgba(14,15,12,0.12); }
+</style></head>
+<body>
+<div class="card">
+  <div class="col gap-3">
+    <span class="eyebrow">Buttons</span>
+    <div class="row gap-3" style="align-items:center;flex-wrap:wrap;">
+      <button class="btn btn-primary">Create an account</button>
+      <button class="btn btn-brand">Submit offer</button>
+      <button class="btn btn-secondary">Sign in</button>
+      <button class="btn btn-ghost">Cancel</button>
+      <button class="btn btn-marquee">Reserve seats →</button>
+    </div>
+    <div class="row gap-3" style="align-items:center;">
+      <button class="btn btn-primary btn-sm">Small</button>
+      <button class="btn btn-primary">Default</button>
+      <button class="btn btn-primary btn-lg">Large</button>
+      <button class="btn btn-icon" aria-label="Close">✕</button>
+    </div>
+    <div class="label-meta">Pill radius across the board; Marquee variant is the one exception — rounded-md with a hard offset shadow, used for hero CTAs.</div>
+  </div>
+</div>
+</body></html>

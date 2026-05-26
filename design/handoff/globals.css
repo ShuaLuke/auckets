@@ -1,0 +1,116 @@
+/* =============================================================
+   Auckets Design System — Global CSS
+   Replaces `src/app/globals.css` at the repo root.
+   ============================================================= */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* --- Webfonts ------------------------------------------------ */
+/* Bricolage Grotesque (variable), Geist, JetBrains Mono. If
+   Auckets later licenses replacements, swap the @import for
+   @font-face blocks pointing at fonts in /src/fonts/. */
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root {
+  /* Font families exposed as CSS vars so tailwind.config.ts picks them up. */
+  --font-display: 'Bricolage Grotesque', 'Inter Tight', system-ui, sans-serif;
+  --font-sans:    'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono:    'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+  /* Semantic tokens for use OUTSIDE Tailwind utilities (inline styles,
+     legacy CSS). For Tailwind, prefer the named tokens (`bg-paper`,
+     `text-ink-900`, etc.). */
+  --bg: #F4F1E8;
+  --fg: #0E0F0C;
+  --fg-muted: #46443B;
+  --border: rgba(14, 15, 12, 0.12);
+  --brand: #1F4A2E;
+  --header-h: 57px;
+}
+
+/* --- Base ---------------------------------------------------- */
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    color: var(--fg);
+    background: var(--bg);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "ss01", "cv11";
+  }
+
+  body {
+    letter-spacing: -0.015em;
+  }
+
+  h1, h2 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: -0.025em;
+    font-variation-settings: "opsz" 48;
+  }
+
+  h3, h4 {
+    font-family: var(--font-sans);
+    font-weight: 600;
+    letter-spacing: -0.015em;
+  }
+
+  code, kbd, pre {
+    font-family: var(--font-mono);
+  }
+}
+
+/* --- Utility classes ---------------------------------------- */
+
+@layer utilities {
+  /* Wordmark — used wherever "AUCKETS" appears as a brand mark.
+     Always uppercase, tight tracking. Wrap in <span class="wordmark">. */
+  .wordmark {
+    font-family: var(--font-display);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: -0.03em;
+    font-variation-settings: "opsz" 48;
+    display: inline-block;
+  }
+
+  /* Eyebrow — tiny uppercase label above headlines. */
+  .eyebrow {
+    font-family: var(--font-sans);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: #6B6759;
+  }
+
+  /* Numeric — tabular-nums + mono, for prices, IDs, seat numbers. */
+  .numeric {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+  }
+
+  /* Display sizes (auto-scaling for hero copy). */
+  .display-1 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(2.25rem, 6vw, 4.5rem);
+    line-height: 1.05;
+    letter-spacing: -0.04em;
+    font-variation-settings: "opsz" 96;
+  }
+  .display-2 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 3.75rem;
+    line-height: 1.0;
+    letter-spacing: -0.035em;
+    font-variation-settings: "opsz" 72;
+  }
+}

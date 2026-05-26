@@ -1,0 +1,21 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Email templates</title>
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  body { margin: 0; padding: 32px; background: #F4F1E8; }
+  h1 { font-family: 'Bricolage Grotesque', 'Inter Tight', system-ui, sans-serif; font-weight: 700; letter-spacing: -0.03em; font-size: 32px; margin: 0 0 8px; }
+  .meta { font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; color: #46443B; margin-bottom: 32px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 24px; max-width: 1400px; margin: 0 auto; }
+  .item { background: #FFFFFF; border-radius: 12px; overflow: hidden; border: 1px solid rgba(14,15,12,.12); }
+  .item-h { padding: 14px 18px; border-bottom: 1px solid rgba(14,15,12,.06); display: flex; justify-content: space-between; align-items: baseline; }
+  .item-h .name { font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; font-weight: 600; color: #0E0F0C; }
+  .item-h .sub { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 11px; color: #9C9789; }
+  iframe { width: 100%; height: 720px; border: 0; background: #F4F1E8; display: block; }
+</style></head>
+<body>
+  <h1>Email templates</h1>
+  <p class="meta">Five transactional sends. Inline-style HTML, ready to port to <code>@react-email/components</code> per the codebase's setup.</p>
+  <div class="grid">
+    <div class="item"><div class="item-h"><span class="name">Welcome</span><span class="sub">on sign-up</span></div><iframe src="welcome.html"></iframe></div><div class="item"><div class="item-h"><span class="name">Offer received</span><span class="sub">on offer submit</span></div><iframe src="offer-received.html"></iframe></div><div class="item"><div class="item-h"><span class="name">Allocation imminent</span><span class="sub">T-1h before binding</span></div><iframe src="allocation-imminent.html"></iframe></div><div class="item"><div class="item-h"><span class="name">Placed</span><span class="sub">post-binding · success</span></div><iframe src="placed.html"></iframe></div><div class="item"><div class="item-h"><span class="name">Not placed</span><span class="sub">post-binding · refund</span></div><iframe src="not-placed.html"></iframe></div>
+  </div>
+</body></html>
