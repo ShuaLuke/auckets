@@ -1,8 +1,8 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 
 import { users } from "../../../../drizzle/schema";
-import { ensureUserMirror } from "./users";
-import { makeQueuedMockDb } from "./_mock-db";
+import { ensureUserMirror, userIsAdmin } from "./users";
+import { makeMockDb, makeQueuedMockDb } from "./_mock-db";
 
 type User = typeof users.$inferSelect;
 
@@ -50,5 +50,25 @@ describe("ensureUserMirror", () => {
 
   it("has the expected return type", () => {
     expectTypeOf(ensureUserMirror).returns.resolves.toEqualTypeOf<User>();
+  });
+});
+
+describe("userIsAdmin", () => {
+  it("returns true when the user row has role AUCKETS_ADMIN", async () => {
+    const db = makeMockDb<{ role: string }>([{ role: "AUCKETS_ADMIN" }]);
+    expect(await userIsAdmin(db, "user_admin")).toBe(true);
+  });
+
+  it("returns false when no row matches (user not admin OR doesn't exist)", async () => {
+    // The query filters on both id AND role, so an empty result
+    // covers both "user is FAN" and "user_id has no row" cases.
+    // Callers must auth() first; this helper is the role check, not
+    // an existence check.
+    const db = makeMockDb<{ role: string }>([]);
+    expect(await userIsAdmin(db, "user_fan")).toBe(false);
+  });
+
+  it("has the expected return type", () => {
+    expectTypeOf(userIsAdmin).returns.resolves.toEqualTypeOf<boolean>();
   });
 });

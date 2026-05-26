@@ -16,11 +16,12 @@ export {
   getOfferStatsForArtist,
   getOfferStatsForShow,
   listOffersForUser,
+  listPoolOffersForShow,
   upsertOfferForUser,
   type OfferStats,
 } from "./offers";
 
-export { ensureUserMirror } from "./users";
+export { ensureUserMirror, userIsAdmin } from "./users";
 
 export {
   getShowById,
