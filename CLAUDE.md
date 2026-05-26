@@ -31,6 +31,7 @@ From [`docs/CONTEXT.md`](docs/CONTEXT.md#prime-directives--never-violate-these) 
 - **All env vars go through Zod validation** in [`src/lib/env.ts`](src/lib/env.ts). Never `process.env.X` elsewhere in app code.
 - **All API inputs validated with Zod.** No exceptions.
 - **Auth on every route, then authorization, then business logic.** In that order.
+- **Supabase publishable/anon key is a private credential.** No `NEXT_PUBLIC_SUPABASE_*` vars, no `@supabase/supabase-js` in the client. RLS is intentionally OFF ([docs/ARCHITECTURE.md §Database](docs/ARCHITECTURE.md)), so a leaked anon key = full DB read via PostgREST. App talks to Postgres only through Drizzle server-side. See [SECURITY.md rule 26](docs/SECURITY.md#database-and-data-handling).
 - **Stripe webhooks verify signatures.** Every handler idempotent.
 - **Bond events are append-only.**
 - **Allocation decisions log full snapshot state**, not just IDs.
