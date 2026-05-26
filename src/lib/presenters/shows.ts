@@ -21,6 +21,7 @@ import type {
   SeatAssignment,
   ShowSummary,
   ShowWithRelations,
+  TicketSummary,
 } from "@/lib/db/repositories";
 import type { VenueRow } from "@/lib/gae/types";
 
@@ -164,6 +165,9 @@ function closesFor(
 // the architecture (it's a flat list), so the route handler resolves
 // the row externally via getVenueArchitecturesByIds and hands the row
 // in. If either is missing, the preview key is omitted.
+//
+// userTicket threads to yourOffer.ticketReady. The ticket-summary type
+// is server-only-safe by construction (no totp_secret); see tickets.ts.
 export function presentShowSummary(
   summary: ShowSummary,
   now: Date,
@@ -171,6 +175,7 @@ export function presentShowSummary(
   userOffer: Offer | null = null,
   userAssignment: SeatAssignment | null = null,
   userAssignmentRow: Pick<VenueRow, "area" | "rowName"> | null = null,
+  userTicket: Pick<TicketSummary, "status"> | null = null,
 ): ShowSummaryView {
   const status = summary.status as ShowStatus;
   const view: ShowSummaryView = {
@@ -190,7 +195,12 @@ export function presentShowSummary(
     ),
   };
   if (userOffer) {
-    view.yourOffer = presentOffer(userOffer, userAssignment, userAssignmentRow);
+    view.yourOffer = presentOffer(
+      userOffer,
+      userAssignment,
+      userAssignmentRow,
+      userTicket,
+    );
   }
   return view;
 }
@@ -201,6 +211,7 @@ export function presentShowDetail(
   tz: string = DEFAULT_TZ,
   userOffer: Offer | null = null,
   userAssignment: SeatAssignment | null = null,
+  userTicket: Pick<TicketSummary, "status"> | null = null,
 ): ShowDetailView {
   const status = show.status as ShowStatus;
   const view: ShowDetailView = {
@@ -235,7 +246,7 @@ export function presentShowDetail(
       ? show.venueArchitecture.rows.find((r) => r.id === userAssignment.venueRowId) ??
         null
       : null;
-    view.yourOffer = presentOffer(userOffer, userAssignment, row);
+    view.yourOffer = presentOffer(userOffer, userAssignment, row, userTicket);
   }
   return view;
 }

@@ -4,6 +4,7 @@ import type {
   SeatAssignment,
   ShowSummary,
   ShowWithRelations,
+  TicketSummary,
 } from "@/lib/db/repositories";
 
 import type { offers } from "../../../drizzle/schema";
@@ -32,6 +33,20 @@ function makeAssignment(
     chargedAmountCents: null,
     cardFailureAt: null,
     createdAt: new Date("2026-05-26T12:00:00Z"),
+    ...overrides,
+  };
+}
+
+function makeTicket(overrides: Partial<TicketSummary> = {}): TicketSummary {
+  return {
+    id: "dddddddd-dddd-dddd-dddd-dddddddddddd",
+    seatAssignmentId: "cccccccc-cccc-cccc-cccc-cccccccccccc",
+    userId: "user_2abc",
+    status: "issued",
+    scannedAt: null,
+    scannedByStaffId: null,
+    issuedAt: new Date("2026-05-23T20:00:00Z"),
+    createdAt: new Date("2026-05-23T20:00:00Z"),
     ...overrides,
   };
 }
@@ -267,6 +282,7 @@ describe("presentShowSummary", () => {
       size: 4,
       status: "placed",
       placed: true,
+      ticketReady: false,
     });
   });
 
@@ -298,6 +314,28 @@ describe("presentShowSummary", () => {
     );
     expect(view.yourOffer).toBeDefined();
     expect(view.yourOffer).not.toHaveProperty("preview");
+  });
+
+  it("threads ticketReady through to yourOffer when a ticket is passed", () => {
+    const now = new Date("2026-05-28T16:00:00-04:00");
+    const offer = makeOffer({ status: "placed" });
+    const view = presentShowSummary(
+      makeSummary(),
+      now,
+      undefined,
+      offer,
+      makeAssignment(),
+      { area: "orchestra", rowName: "AA" },
+      makeTicket({ status: "issued" }),
+    );
+    expect(view.yourOffer?.ticketReady).toBe(true);
+  });
+
+  it("defaults ticketReady=false when only the offer is passed (no ticket loaded yet)", () => {
+    const now = new Date("2026-05-28T16:00:00-04:00");
+    const offer = makeOffer({ status: "placed" });
+    const view = presentShowSummary(makeSummary(), now, undefined, offer);
+    expect(view.yourOffer?.ticketReady).toBe(false);
   });
 });
 
@@ -388,6 +426,7 @@ describe("presentShowDetail", () => {
       size: 2,
       status: "pool",
       placed: false,
+      ticketReady: false,
     });
   });
 
@@ -420,5 +459,20 @@ describe("presentShowDetail", () => {
     );
     expect(view.yourOffer).toBeDefined();
     expect(view.yourOffer).not.toHaveProperty("preview");
+  });
+
+  it("threads ticketReady through to yourOffer when a ticket is passed", () => {
+    const show = makeShowWithRelations();
+    const now = new Date("2026-05-28T16:00:00-04:00");
+    const offer = makeOffer({ status: "charged" });
+    const view = presentShowDetail(
+      show,
+      now,
+      undefined,
+      offer,
+      makeAssignment({ venueRowId: "row_a" }),
+      makeTicket({ status: "issued" }),
+    );
+    expect(view.yourOffer?.ticketReady).toBe(true);
   });
 });

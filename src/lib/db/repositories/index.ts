@@ -42,3 +42,10 @@ export {
   listSeatAssignmentsByOfferIds,
   type SeatAssignment,
 } from "./seat-assignments";
+
+export {
+  getTicketByAssignmentId,
+  listTicketsByAssignmentIds,
+  type TicketStatus,
+  type TicketSummary,
+} from "./tickets";
