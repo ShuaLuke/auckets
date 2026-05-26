@@ -7,6 +7,7 @@
 export {
   getArtistById,
   getArtistBySlug,
+  userCanManageArtist,
 } from "./artists";
 
 export {

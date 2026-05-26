@@ -1,8 +1,12 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 
 import { artists } from "../../../../drizzle/schema";
-import { getArtistById, getArtistBySlug } from "./artists";
-import { makeMockDb } from "./_mock-db";
+import {
+  getArtistById,
+  getArtistBySlug,
+  userCanManageArtist,
+} from "./artists";
+import { makeMockDb, makeQueuedMockDb } from "./_mock-db";
 
 type Artist = typeof artists.$inferSelect;
 
@@ -39,5 +43,40 @@ describe("getArtistBySlug", () => {
   it("returns the artist row when found", async () => {
     const db = makeMockDb([COPE]);
     expect(await getArtistBySlug(db, "citizen-cope")).toEqual(COPE);
+  });
+});
+
+describe("userCanManageArtist", () => {
+  const userId = "user_2abcdefghijklmnop";
+
+  it("returns true when the user has role AUCKETS_ADMIN (short-circuits the membership check)", async () => {
+    // Queue: first select (admin lookup) returns a hit. Second slot is
+    // empty but should never be consumed.
+    const db = makeQueuedMockDb<{ role: string } | { userId: string }>([
+      [{ role: "AUCKETS_ADMIN" }],
+      [],
+    ]);
+    expect(await userCanManageArtist(db, userId, COPE.id)).toBe(true);
+  });
+
+  it("returns true when the user is in artist_members for this artist", async () => {
+    // Admin lookup empty; membership lookup hits.
+    const db = makeQueuedMockDb<{ role: string } | { userId: string }>([
+      [],
+      [{ userId }],
+    ]);
+    expect(await userCanManageArtist(db, userId, COPE.id)).toBe(true);
+  });
+
+  it("returns false when neither admin nor a member", async () => {
+    const db = makeQueuedMockDb<{ role: string } | { userId: string }>([
+      [],
+      [],
+    ]);
+    expect(await userCanManageArtist(db, userId, COPE.id)).toBe(false);
+  });
+
+  it("has the expected return type", () => {
+    expectTypeOf(userCanManageArtist).returns.resolves.toEqualTypeOf<boolean>();
   });
 });
