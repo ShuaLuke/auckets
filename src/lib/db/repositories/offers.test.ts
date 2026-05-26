@@ -7,6 +7,7 @@ import {
   getOfferStatsForArtist,
   getOfferStatsForShow,
   listOffersForUser,
+  listPoolOffersForShow,
   upsertOfferForUser,
   type OfferStats,
 } from "./offers";
@@ -167,6 +168,38 @@ describe("upsertOfferForUser", () => {
       offer: Offer;
       isRevision: boolean;
     }>();
+  });
+});
+
+describe("listPoolOffersForShow", () => {
+  it("returns an empty array when no offers are in the pool", async () => {
+    const db = makeMockDb<Offer>([]);
+    expect(
+      await listPoolOffersForShow(
+        db,
+        "44444444-4444-4444-4444-444444444444",
+      ),
+    ).toEqual([]);
+  });
+
+  it("returns every pool offer for the show (driver doesn't filter; mock just hands back the rows)", async () => {
+    // The mock-Db doesn't actually evaluate the WHERE clause, so this
+    // test verifies the shape of the call, not the filter. The
+    // status='pool' invariant is asserted in the repo function and
+    // verified end-to-end by integration tests once the local DB
+    // connection is unblocked.
+    const a = makeOffer({ id: "11111111-1111-1111-1111-111111111111" });
+    const b = makeOffer({
+      id: "22222222-2222-2222-2222-222222222222",
+      pricePerTicketCents: 6000,
+    });
+    const db = makeMockDb<Offer>([a, b]);
+    const result = await listPoolOffersForShow(db, a.showId);
+    expect(result).toHaveLength(2);
+  });
+
+  it("has the expected return type", () => {
+    expectTypeOf(listPoolOffersForShow).returns.resolves.toEqualTypeOf<Offer[]>();
   });
 });
 

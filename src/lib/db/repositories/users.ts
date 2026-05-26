@@ -11,7 +11,7 @@
 // alternative is the right long-term design — it keeps the email
 // fresh on change — and replaces this lazy path when it lands.
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import type { Db } from "@/lib/db";
 import { users } from "../../../../drizzle/schema";
@@ -50,4 +50,22 @@ export async function ensureUserMirror(
     throw new Error(`ensureUserMirror: row missing after upsert for id=${params.id}`);
   }
   return row;
+}
+
+// Authorization helper for AUCKETS-only endpoints (allocation,
+// admin-triggered pause/end-early per ADR-0013, etc.). Returns true
+// IFF the user exists AND has role AUCKETS_ADMIN — a missing user row
+// is implicitly "not admin" rather than an error, because callers are
+// already responsible for checking auth() first.
+//
+// This is distinct from userCanManageArtist (artists repo), which adds
+// the artist-member path. Admins pass that helper too, but if you only
+// need the platform-wide admin check, this is the lighter query.
+export async function userIsAdmin(db: Db, userId: string): Promise<boolean> {
+  const rows = await db
+    .select({ role: users.role })
+    .from(users)
+    .where(and(eq(users.id, userId), eq(users.role, "AUCKETS_ADMIN")))
+    .limit(1);
+  return rows.length > 0;
 }

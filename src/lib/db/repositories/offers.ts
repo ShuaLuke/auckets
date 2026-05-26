@@ -100,6 +100,29 @@ export async function listOffersForUser(
   return db.select().from(offers).where(eq(offers.userId, userId));
 }
 
+// All offers in the current allocation pool for a show. Drives the
+// allocation engine's input — preview and binding runs both read the
+// 'pool' state (preview doesn't mutate offer.status, so the canonical
+// pool is the same regardless of how many preview runs have happened).
+//
+// Ordering: by submittedAt ascending so ties in rank_key break by
+// arrival time. GAE's RankKey already orders by price × 1000 + group
+// size, but two offers with the same RankKey tie-break by who got
+// here first. Postgres index `offers_pool_idx (show_id, status,
+// rank_key DESC)` doesn't help us much here since we sort by a
+// different key — Postgres will sort in memory. For 10,000-row pools
+// that's ~5ms; acceptable.
+export async function listPoolOffersForShow(
+  db: Db,
+  showId: string,
+): Promise<Offer[]> {
+  return db
+    .select()
+    .from(offers)
+    .where(and(eq(offers.showId, showId), eq(offers.status, "pool")))
+    .orderBy(offers.submittedAt);
+}
+
 export async function getOfferStatsForShow(
   db: Db,
   showId: string,
