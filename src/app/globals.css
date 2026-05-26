@@ -1,3 +1,10 @@
+/* Design system — colors, fonts, typography classes, base reset.
+   Lifted from design/colors_and_type.css when the first UI port
+   landed (Dashboard.jsx, Week 3 slice 9). Edits to the canonical
+   tokens should happen in design-system.css; this file just pipes
+   them in alongside Tailwind. */
+@import "./design-system.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
