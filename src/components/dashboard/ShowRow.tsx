@@ -8,6 +8,7 @@
 // prototype (Dashboard.jsx line 62) lands once the ticket viewer
 // page lands.
 
+import { ChevronRight } from "lucide-react";
 import Link from "next/link";
 
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
@@ -118,23 +119,12 @@ export function ShowRow({ show }: Props) {
         )}
       </div>
 
-      {/* Chevron — inline SVG to avoid pulling in an icon library for
-          a single use. When slice 10 (Show.jsx port) lands, lucide-react
-          becomes the right call (5+ icons there). */}
-      <svg
-        width="18"
-        height="18"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+      <ChevronRight
+        size={18}
+        strokeWidth={1.75}
         style={{ color: "var(--fg-faint)" }}
         aria-hidden
-      >
-        <path d="m9 18 6-6-6-6" />
-      </svg>
+      />
     </Link>
   );
 }
