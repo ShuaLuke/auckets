@@ -20,13 +20,12 @@
 // Per docs/CONVENTIONS.md "All env vars are typed", we'd normally route
 // DATABASE_URL through src/lib/env.ts. This script reads process.env
 // directly — same pattern as drizzle.config.ts, for the same reason: it
-// runs in a plain Node context outside the Next.js request lifecycle, and
-// the seed has to bootstrap env loading itself before any module that
-// would trigger Zod validation gets imported.
-
-import { loadEnvConfig } from "@next/env";
-
-loadEnvConfig(process.cwd());
+// runs in a plain Node context outside the Next.js request lifecycle.
+//
+// `.env.local` is loaded by the `dotenv -e .env.local --` wrapper in the
+// `db:seed` npm script, the same way drizzle-kit's commands now load it.
+// Running this file directly via `tsx drizzle/seed.ts` (without the npm
+// wrapper) will skip that loading — use `npm run db:seed` instead.
 
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
