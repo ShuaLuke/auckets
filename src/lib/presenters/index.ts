@@ -22,12 +22,14 @@ export {
 } from "./shows";
 
 export {
+  formatSeatAssignmentPreview,
   presentOffer,
   type OfferStatus,
   type OfferView,
 } from "./offers";
 
 export {
+  computeShowCapacity,
   presentArtistShowSummary,
   presentArtistSnapshotStats,
   type ArtistShowSummaryView,

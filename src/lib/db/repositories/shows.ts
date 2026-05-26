@@ -48,6 +48,11 @@ export type ShowSummary = {
   offerWindowOpensAt: Show["offerWindowOpensAt"];
   bindingAllocationAt: Show["bindingAllocationAt"];
   pausedAt: Show["pausedAt"];
+  // Per-show subset of architecture rows (NEW-4 partial-venue
+  // activation). Needed by the artist-dashboard capacity computation —
+  // a 624-seat venue can host a 280-seat show. Drizzle stores this as
+  // jsonb (unknown); we narrow to string[] at the projection boundary.
+  activeRowIds: string[];
   artistName: Artist["name"];
   venueName: Venue["name"];
   venueCity: Venue["city"];
@@ -93,30 +98,43 @@ const SHOW_SUMMARY_SELECTION = {
   offerWindowOpensAt: shows.offerWindowOpensAt,
   bindingAllocationAt: shows.bindingAllocationAt,
   pausedAt: shows.pausedAt,
+  activeRowIds: shows.activeRowIds,
   artistName: artists.name,
   venueName: venues.name,
   venueCity: venues.city,
 } as const;
 
+// shows.activeRowIds is jsonb (unknown). The schema stores it as a
+// string[] (NEW-4). Cast at the projection boundary so callers see the
+// narrow type.
+function narrowSummary(row: {
+  activeRowIds: unknown;
+  [k: string]: unknown;
+}): ShowSummary {
+  return { ...row, activeRowIds: row.activeRowIds as string[] } as ShowSummary;
+}
+
 export async function listOpenShows(db: Db): Promise<ShowSummary[]> {
-  return db
+  const rows = await db
     .select(SHOW_SUMMARY_SELECTION)
     .from(shows)
     .innerJoin(artists, eq(shows.artistId, artists.id))
     .innerJoin(venues, eq(shows.venueId, venues.id))
     .where(eq(shows.status, "open"))
     .orderBy(shows.doorsAt);
+  return rows.map(narrowSummary);
 }
 
 export async function listShowsForArtist(
   db: Db,
   artistId: string,
 ): Promise<ShowSummary[]> {
-  return db
+  const rows = await db
     .select(SHOW_SUMMARY_SELECTION)
     .from(shows)
     .innerJoin(artists, eq(shows.artistId, artists.id))
     .innerJoin(venues, eq(shows.venueId, venues.id))
     .where(eq(shows.artistId, artistId))
     .orderBy(shows.doorsAt);
+  return rows.map(narrowSummary);
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type {
+  SeatAssignment,
   ShowSummary,
   ShowWithRelations,
 } from "@/lib/db/repositories";
@@ -15,6 +16,25 @@ import {
 } from "./shows";
 
 type Offer = typeof offers.$inferSelect;
+
+function makeAssignment(
+  overrides: Partial<SeatAssignment> = {},
+): SeatAssignment {
+  return {
+    id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
+    offerId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    showId: "44444444-4444-4444-4444-444444444444",
+    venueRowId: "row_a",
+    seatNumbers: ["7", "8", "9", "10"],
+    tier: "premium",
+    isBinding: false,
+    stripePaymentIntentId: null,
+    chargedAmountCents: null,
+    cardFailureAt: null,
+    createdAt: new Date("2026-05-26T12:00:00Z"),
+    ...overrides,
+  };
+}
 
 function makeOffer(overrides: Partial<Offer> = {}): Offer {
   return {
@@ -56,6 +76,7 @@ function makeSummary(overrides: Partial<ShowSummary> = {}): ShowSummary {
     offerWindowOpensAt: new Date("2026-05-25T16:00:00-04:00"),
     bindingAllocationAt: new Date("2026-06-12T21:00:00-04:00"),
     pausedAt: null,
+    activeRowIds: ["row_a", "row_b"],
     artistName: "Citizen Cope",
     venueName: "Cope's place",
     venueCity: "Brooklyn, NY",
@@ -248,6 +269,36 @@ describe("presentShowSummary", () => {
       placed: true,
     });
   });
+
+  it("attaches yourOffer.preview when assignment + row are passed (matches Dashboard.jsx row 1)", () => {
+    const now = new Date("2026-05-28T16:00:00-04:00");
+    const offer = makeOffer({ status: "placed" });
+    const assignment = makeAssignment();
+    const view = presentShowSummary(
+      makeSummary(),
+      now,
+      undefined,
+      offer,
+      assignment,
+      { area: "orchestra", rowName: "AA" },
+    );
+    expect(view.yourOffer?.preview).toBe("Orchestra · Row AA · seats 7–10");
+  });
+
+  it("omits yourOffer.preview when only the assignment (no row) is passed", () => {
+    const now = new Date("2026-05-28T16:00:00-04:00");
+    const offer = makeOffer({ status: "placed" });
+    const view = presentShowSummary(
+      makeSummary(),
+      now,
+      undefined,
+      offer,
+      makeAssignment(),
+      null,
+    );
+    expect(view.yourOffer).toBeDefined();
+    expect(view.yourOffer).not.toHaveProperty("preview");
+  });
 });
 
 describe("presentShowDetail", () => {
@@ -338,5 +389,36 @@ describe("presentShowDetail", () => {
       status: "pool",
       placed: false,
     });
+  });
+
+  it("resolves yourOffer.preview from show.venueArchitecture.rows without an external row lookup", () => {
+    // Detail path: architecture is in scope, so the presenter finds the
+    // row itself. Caller passes only the assignment.
+    const show = makeShowWithRelations();
+    const now = new Date("2026-05-28T16:00:00-04:00");
+    const offer = makeOffer({ status: "placed" });
+    // Row "row_a" is the one defined in makeShowWithRelations.
+    const assignment = makeAssignment({
+      venueRowId: "row_a",
+      seatNumbers: ["1", "3", "5", "7"],
+    });
+    const view = presentShowDetail(show, now, undefined, offer, assignment);
+    expect(view.yourOffer?.preview).toBe("Orchestra · Row A · seats 1–7");
+  });
+
+  it("omits yourOffer.preview when the assignment references a row not in the architecture", () => {
+    // Edge case: schema mismatch. Don't crash — just skip the preview.
+    const show = makeShowWithRelations();
+    const now = new Date("2026-05-28T16:00:00-04:00");
+    const offer = makeOffer({ status: "placed" });
+    const view = presentShowDetail(
+      show,
+      now,
+      undefined,
+      offer,
+      makeAssignment({ venueRowId: "row_does_not_exist" }),
+    );
+    expect(view.yourOffer).toBeDefined();
+    expect(view.yourOffer).not.toHaveProperty("preview");
   });
 });

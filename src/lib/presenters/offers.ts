@@ -9,12 +9,15 @@
 // caller passes a row read by mistake from another user, the threshold
 // can't escape. Don't add the field here without re-reading ADR-0017.
 //
-// Scope: slice 4 only delivers the price/size/status/placed shape. The
-// preview text (row + seat numbers) and the ticketReady flag stay
-// deferred — they need seat_assignments + tickets, which arrive in a
-// later slice. See PR description for the full deferred-fields table.
+// Scope: yourOffer.preview ("Orchestra · Row AA · seats 7–10") lands
+// here in slice 5b — it's derived from the offer's seat_assignment + the
+// venue architecture row's `area` + `rowName`. yourOffer.ticketReady
+// stays deferred (needs the tickets repo).
 
 import { formatCents } from "@/lib/money";
+
+import type { SeatAssignment } from "@/lib/db/repositories";
+import type { VenueRow } from "@/lib/gae/types";
 
 import type { offers } from "../../../drizzle/schema";
 
@@ -47,17 +50,79 @@ export type OfferView = {
   // 'pool' / 'unplaced' / failure / resale / gift statuses are not
   // placed.
   placed: boolean;
+  // "Orchestra · Row AA · seats 7–10" — matches Dashboard.jsx line 17.
+  // Omitted when there's no seat_assignment for the offer (or when the
+  // presenter wasn't given the architecture row to look up the area /
+  // rowName). exactOptionalPropertyTypes is on, so an absent key
+  // doesn't serialize as `preview: undefined`.
+  preview?: string;
 };
 
 const PLACED_STATUSES: ReadonlySet<OfferStatus> = new Set(["placed", "charged"]);
 
-export function presentOffer(offer: Offer): OfferView {
+// Lowercase enum → display name. "ga" is the one that needs a fully
+// custom mapping ("Ga" / "G a" both look wrong); everything else is
+// just snake_case → title case.
+const AREA_LABELS: Record<string, string> = {
+  orchestra: "Orchestra",
+  front_balcony: "Front Balcony",
+  upper_balcony: "Upper Balcony",
+  ga: "General Admission",
+};
+
+function formatAreaLabel(area: string): string {
+  const known = AREA_LABELS[area];
+  if (known) return known;
+  // Defensive fall-through for any new area added later. snake_case →
+  // Title Case so a forgotten entry above still renders sensibly.
+  return area
+    .split("_")
+    .map((part) => (part.length === 0 ? part : part[0]!.toUpperCase() + part.slice(1)))
+    .join(" ");
+}
+
+function formatSeatRange(seatNumbers: readonly string[]): string {
+  if (seatNumbers.length === 0) return "";
+  if (seatNumbers.length === 1) return `seat ${seatNumbers[0]}`;
+  const first = seatNumbers[0]!;
+  const last = seatNumbers[seatNumbers.length - 1]!;
+  // U+2013 EN DASH — matches the prototype copy ("seats 7–10"), not a
+  // hyphen-minus. We use the en-dash convention for numeric ranges.
+  return `seats ${first}–${last}`;
+}
+
+// Exported for tests + for ArtistDashboard's per-row provisionalFilled
+// (which doesn't need the formatted string but does need the same
+// area-label mapping for future use).
+export function formatSeatAssignmentPreview(
+  assignment: Pick<SeatAssignment, "seatNumbers">,
+  row: Pick<VenueRow, "area" | "rowName">,
+): string {
+  const seatPart = formatSeatRange(assignment.seatNumbers);
+  const base = `${formatAreaLabel(row.area)} · Row ${row.rowName}`;
+  return seatPart ? `${base} · ${seatPart}` : base;
+}
+
+// userOffer is the *caller's* offer. assignment + row, when both
+// present, produce yourOffer.preview. Either being absent omits the
+// preview key (the caller hasn't been placed yet, OR the route handler
+// hasn't joined the architecture, which is a programming error worth
+// surfacing as "no preview" rather than a crash).
+export function presentOffer(
+  offer: Offer,
+  assignment: SeatAssignment | null = null,
+  row: Pick<VenueRow, "area" | "rowName"> | null = null,
+): OfferView {
   const status = offer.status as OfferStatus;
-  return {
+  const view: OfferView = {
     priceCents: offer.pricePerTicketCents,
     price: formatCents(offer.pricePerTicketCents),
     size: offer.groupSize,
     status,
     placed: PLACED_STATUSES.has(status),
   };
+  if (assignment && row) {
+    view.preview = formatSeatAssignmentPreview(assignment, row);
+  }
+  return view;
 }
