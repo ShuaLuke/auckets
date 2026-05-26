@@ -109,9 +109,10 @@ auckets/
 
 ## Current state
 
-**Week 1 (Foundation) — complete in code, partial on external services.**
+**Week 1 (Foundation) — complete.**
+**Week 2 (GAE spike) — in progress: types, rankkey, launchpad, fitresolver merged. Placement + waterfall + integration tests still ahead.**
 
-Code (PRs #1–#8, all merged):
+Code (PRs #1–#8 for Foundation, #9–#12 for GAE so far, all merged):
 - [x] Tech stack and architecture decided
 - [x] Open questions documented (see `OPEN_QUESTIONS.md`)
 - [x] Repo and CI set up (GitHub Actions: typecheck + lint + test + build on every PR)
@@ -124,6 +125,7 @@ Code (PRs #1–#8, all merged):
 - [x] Vitest + first real unit tests (`src/lib/money.ts`, 10 passing)
 - [x] Playwright + one trivial smoke (real app smoke deferred to when CI env can host Clerk)
 - [x] `src/lib/env.ts` Zod-validated, with prod guard refusing `SKIP_ENV_VALIDATION`
+- [x] **GAE: types, RankKey, LaunchPad, FitResolver** (Week 2 slices 1–4). Placement, waterfall, and `allocate()` entry still pending.
 
 External services — set up as keys become available:
 - [x] Clerk dev application created, keys live in `.env.local`
@@ -137,36 +139,53 @@ External services — set up as keys become available:
 - [ ] Production Vercel deployment — Week 7
 
 Still ahead:
-- [ ] Initial schema written (Week 3)
-- [ ] GAE spike (pure logic, no DB) — **next priority, Week 2**
+- [ ] GAE: `placement.ts`, `waterfall.ts`, `allocate()` entry point, Lincoln Theatre integration test (Week 2 wrap)
+- [ ] **Twilio / SMS foundation** — ADR-0016 puts SMS at MVP; needs install + env + dormant client (slot before or alongside Week 4)
+- [ ] **10DLC SMS registration** (Julia drives, 1–2 week carrier turnaround)
+- [ ] Initial schema written (Week 3) — including the new tables for resale, tickets, artist_requests, bond_events
 - [ ] Venue architecture builder (Week 3)
-- [ ] Offer submission flow (Week 4)
+- [ ] Offer submission flow with auto-bid + private offers (Week 4)
 - [ ] Allocation API endpoint (Week 5)
 - [ ] Stripe SetupIntent + charge-on-acceptance (Week 5)
-- [ ] Notification system (Weeks 4–5)
-- [ ] Artist dashboard (Week 6)
+- [ ] Notification system — email + SMS (Weeks 4–5)
+- [ ] Artist dashboard with request-workflow (Week 6)
+- [ ] Rotating geo-gated QR ticket viewer (Weeks 11–14 / Austin prep)
 - [ ] Fan-facing UI polish (Weeks 8+)
 - [ ] First beta show (Week 8)
 
 ## Next session
 
-**Working on:** Week 2 — the GAE spike. Pure logic, lives in `src/lib/gae/`, no DB / HTTP / Stripe / filesystem. See `GAE_SPEC.md` for the full spec and `ROADMAP.md` Week 2 for the sequenced checklist.
+**Working on:** Finish Week 2 — the remaining GAE pieces.
 
-Suggested first slice: define all GAE types in `src/lib/gae/types.ts`, then implement `rankkey.ts` with co-located unit tests. Each subsequent module (`launchpad.ts`, `fitresolver.ts`, `placement.ts`, `waterfall.ts`) is its own slice.
+Where we are: `types.ts` / `rankkey.ts` / `launchpad.ts` / `fitresolver.ts` are merged (PRs #9–#12). Still pending in Week 2:
+- `placement.ts` — within-row placement by lean (CENTER / LEFT / RIGHT / DUAL_AISLE / GA)
+- `waterfall.ts` — cross-tier waterfalling per [ADR-0004](DECISIONS.md) + Q10
+- `index.ts` `allocate()` public entry point that orchestrates all five modules
+- Lincoln Theatre integration test fixture (waits on Cope sending real data — don't block; use synthetic for now)
 
-**Lincoln Theatre data:** the spec's headline integration test waits on Cope sending real venue + offer data. Don't block the GAE on it — build against synthetic data first, swap in Lincoln Theatre as a fixture when it arrives.
+**v2 product decisions** (just landed in `OPEN_QUESTIONS.md` and new ADRs in `DECISIONS.md`):
+- Group cap = 10 (ADR-0011)
+- Roles = `FAN` + `ARTIST` + `AUCKETS_ADMIN` (ADR-0012), `VENUE_STAFF` later
+- Auckets-controlled pause/end-early (ADR-0013)
+- Resale capped at original price (ADR-0014)
+- Rotating geo-gated QR tickets (ADR-0015)
+- SMS at MVP via Twilio (ADR-0016)
+- Auto-bid + private offers (ADR-0017)
 
 **Do not start on:**
-- The offer submission flow (waits on Q12 — fan offer revisability)
-- Stripe payment integration (waits on NEW-1; default SetupIntent is fine)
-- The artist dashboard (waits on Q28/29/30)
-- The fan-facing UI (last)
+- Offer submission (Week 4) — still waiting on NEW-1 (Cope's Stripe-hold research) before committing to SetupIntent path
+- Stripe payment integration (Week 5)
+- Artist dashboard with request workflow (Week 6)
+- Fan-facing UI polish (last)
+- Rotating QR / door scanner (Austin prep, Weeks 11–14)
 
 **Operational follow-ups any time:**
 - Verify `auckets.com` in Resend so real emails can send
+- **Start 10DLC SMS registration with Twilio** (1–2 week carrier turnaround; needs to be done before Week 4)
 - Create a Sentry project + paste DSN into Vercel envs (when we have a Vercel deploy)
 - Set up Vercel project (no rush — pre-production)
 - Enable GitHub branch protection on `main` requiring the CI check
+- Confirm Stripe Connect Express setup on the AUCKETS Stripe account (per Q3)
 
 ## Companion docs
 

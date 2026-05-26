@@ -11,8 +11,8 @@
 // ties at equal price. The multiplier (1000) is large enough that group
 // sizes up to 999 never bleed into the price ordering — a $50 offer is
 // always ranked above a $49.99 offer regardless of group size. We don't
-// expect groups over 8 (AllocationConfig.maxGroupSize defaults to 8),
-// so 1000 is comfortable.
+// expect groups over 10 (AllocationConfig.maxGroupSize defaults to 10
+// per ADR-0011; artist can override per show), so 1000 is comfortable.
 //
 // When rankKey ties, the comparator falls back to earliest submittedAt
 // (rewards early commitment without making time the primary signal),

@@ -1,141 +1,109 @@
 # Open Questions
 
-What is not yet decided. Things to flag rather than assume. When a question is answered, move it to `DECISIONS.md` as an ADR or update the relevant doc and mark the entry here as resolved.
+What is not yet decided, what was just decided, and what's new since the last
+revision.
 
-The detailed reasoning and tradeoffs for each question live in the larger consolidated document (`AUCKETS_Open_Questions_v2.docx`); this file is the working list for the repo.
+This file is the **working list** for the repo. The deeper analysis behind each
+entry lives in the consolidated v2 working doc Julia maintains
+(`AUCKETS_Open_Questions_v2.docx`); when a decision is large enough to drive
+code, it also gets its own ADR in [`DECISIONS.md`](DECISIONS.md) — those are
+referenced inline below.
 
 ---
 
-## Blockers — must answer before building the affected feature
+## At a glance
 
-### Q12 — Can a fan revise their offer upward after submitting?
-**Affects:** Offer schema, submission API, audit trail.
-**Working assumption:** Yes, up to 24 hours before binding allocation. Lowering never allowed. Each revision releases the old Stripe payment method and creates a new one.
-**Don't assume until confirmed.**
+| Status              | Count |
+|---|---|
+| Open blocker        | 4     |
+| Open high-priority  | 4     |
+| Phase 2 (deferred)  | 7     |
+| Resolved in v2      | 24    |
 
-### Q13 — Outbid window
-**Affects:** Allocation flow, Stripe charge timing.
-**Working assumption:** Immediate release on outbid. No response window. Fan can resubmit.
-**Don't assume until confirmed.**
+Last full revision: **2026-05-25**, based on Julia + Cope answers in
+`AUCKETS_Open_Questions_v2.docx`.
 
-### Q14 — Sold-out behavior
-**Affects:** Allocation flow, post-allocation UX.
-**Working assumption:** Immediate rejection with notification for MVP. Add waitlist in Phase 1.5 if demand surfaces.
-**Don't assume until confirmed.**
+---
+
+## Open blockers — answers needed before the affected feature ships
 
 ### Q19 — Per-section floor pricing
-**Affects:** Pricing schema, artist dashboard.
-**Working assumption:** Yes — different floors per section. Schema already supports this.
-**Strongly implied by Cope's answer to Q10; need explicit confirmation.**
+**Affects:** Pricing schema, artist dashboard, [GAE_SPEC](GAE_SPEC.md).
+**Working assumption:** Yes — different floors per section. Schema supports it.
+**Status:** Cope: "to be decided." Schema is forward-compatible; UI work blocked until confirmed.
 
 ### Q20 — Platform fee model
 **Affects:** Stripe Connect configuration, artist payout calculation.
-**Working assumption:** Configurable application fee percentage, defaulting to 0% for the first show.
-**Don't ship to production without confirmation.**
+**Working assumption:** Configurable application-fee percentage, default 0% for the first show.
+**Status:** Cope: "need to do further analysis." Don't ship a non-zero fee without confirmation.
 
 ### Q23 — Who builds venue architecture
 **Affects:** Operational process, tooling priorities.
 **Working assumption:** AUCKETS team builds the first 3 venues manually. Importer tool is Phase 1.5.
-**No engineering blocker, but operational question for the call.**
+**Status:** No code blocker, but the operational answer affects who's on the hook for Cope's place + the Austin theater.
 
 ### Q24 — Venue manifest format
 **Affects:** Importer design (Phase 1.5).
 **Working assumption:** Internal canonical format is JSON matching the `VenueRow` schema. Translate from whatever venues provide manually for MVP.
-**No MVP blocker, but figures into Q23.**
+**Status:** Folded into Q23 operationally.
 
-### NEW-1 — Stripe hold strategy
-**Affects:** Payment flow architecture.
-**Working assumption (locked in as ADR-0003):** SetupIntent for tokenization + PaymentIntent on acceptance. Effectively decided, but flag if Cope wants a real pre-auth experience for any reason.
-
-### NEW-2 — Rolling vs batch allocation
-**Affects:** Allocation flow, UX, fan messaging.
-**Working assumption (locked in as ADR-0004 pending confirmation):** Hybrid — continuous non-binding preview, binding allocation at announced checkpoints (24h before door + at door time).
-**Cope should confirm explicitly. The HFC build's failure to handle this well is the whole reason this question is here.**
-
-### NEW-3 — Waterfalling tiers as first-class GAE feature
-**Affects:** GAE algorithm, offer schema, fan-facing offer form.
-**Working assumption:** Yes — fans express tier preference; offers waterfall to compatible tiers when their preferred tier fills.
-**The single most important confirmation needed from Cope. The HFC build's "tiers are not waterfalling" problem is exactly what this addresses.**
+### NEW-1 — Stripe hold strategy (length of offer window)
+**Affects:** [ADR-0003](DECISIONS.md#adr-0003--stripe-setupintent--charge-on-acceptance) — currently *Accepted, pending hold-window decision*.
+**Working assumption:** SetupIntent + charge on acceptance lets the offer window be any length without re-auth pain (Stripe pre-auths expire at 7 days).
+**Status:** Cope: "still outstanding need to do research on this." If we keep offer windows ≤6 days we can avoid the SetupIntent dance; if we want weeks-long windows, SetupIntent is the answer. Decide before the offer-submission flow ships (Week 4).
 
 ---
 
-## High priority — needed before that feature is built
+## Open high-priority — needed before the affected feature
 
-### Q15 — Maximum group size
-**Working assumption:** Cap of 8. Artist can override per show. Groups larger than 8 are routed to "contact for booking."
+### Q1 — HFC codebase read access
+**Status:** Still open. If not granted within 5 business days of asking, treat AUCKETS as greenfield (we already are, in practice).
 
-### Q16 — Multiple offers per fan per show
-**Working assumption:** One offer per fan per show for MVP. Offer is editable (per Q12) but not duplicable.
+### Q6 — HFC tech-lead handover call
+**Status:** A 60-minute call would surface useful undocumented context (Stripe Connect config, seed data quirks, edge cases). If not possible, get the same info in writing.
 
-### Q17 — Offer window length
-**Working assumption:** Artist sets per show, platform default 14 days.
+### Q37b — Per-show email customization workflow
+**Affects:** Email templates, artist dashboard, ops.
+**Working assumption (per Cope):** Auckets sends emails, but works with the artist before each show to customize per-show copy.
+**Status:** Need to design the "customization handoff" — is it a doc Auckets fills in for each show, a form in the artist dashboard, a one-off process per show? Decide before Week 6 (artist dashboard).
 
-### Q21 — Stripe pre-auth duration
-**Status:** Researched. Effectively answered by ADR-0003 (we don't use pre-auths).
+### NEW-8 — Bleacher channel (proportion + per-show vs platform default)
+**Source:** Surfaced by the design system's `TECHNICAL_INTEGRATION.md`. **Not yet addressed by Cope.**
+**Affects:** Schema (`offers.channel`), pricing, artist dashboard.
+**Working assumption:** None yet. The design doc proposes ~6% of capacity at a fixed price.
+**Status:** Defer until Cope weighs in. If yes, schema needs `channel`; if no, drop the concept and simplify.
 
-### Q22 — Fan-side service fee
-**Working assumption:** None. Honor the "no hidden fees" promise. Stripe fees come from the artist payout.
+---
 
-### Q25 — Holds management
-**Working assumption:** Artist sets holds in dashboard, tagged by source (artist comp, production, ADA, venue-imposed). Venue-imposed holds imported with the manifest as read-only.
+## New product concepts from v2 — confirmed, design needed
 
-### Q26 — Manifest lead time
-**Working assumption:** Cope's place built with Cope directly. Austin venue manifest requested via Cope or venue contact in week 2.
+These came in via Cope's and Julia's v2 notes. They're real features, not "maybe-someday." Each gets its own ADR as the design firms up. None of them blocks the GAE spike (Week 2).
 
-### Q27 — Orphan seat policy
-**Working assumption:** Leave the orphan for MVP. Track frequency; revisit if it exceeds 2% across shows.
-
-### Q28 — Pause/stop offer window early
-**Working assumption:** Yes — artist can pause and resume. Ending early triggers binding allocation.
-
-### Q29 — Manual override of allocation
-**Working assumption:** Yes, post-allocation only. All overrides logged with required reason.
-
-### Q30 — Artist visibility into individual offers
-**Working assumption:** Aggregate only during the window. Full visibility after allocation runs.
-**Cope should confirm — there's a reasonable argument for full visibility throughout.**
-
-### Q31 — Dashboard access roles
-**Working assumption:** ARTIST, MANAGER, STAFF, VENUE roles from day one. Configurable per show.
-
-### Q33 — Fan identity minimums
-**Working assumption:** Email required (Clerk). Google + Apple social login enabled. Phone optional after first offer.
-
-### Q34 — Attendance verification
-**Working assumption:** Manual mark-attended for the first beta show (~50 attendees). QR scanner for Austin and beyond.
-
-### Q36 — Notification channels
-**Working assumption:** Email at MVP launch. Begin 10DLC registration in week 4 so SMS is ready for show 2 or 3.
-
-### Q37 — Email branding
-**Working assumption:** AUCKETS-branded for MVP, with artist name prominent in body. Per-artist sender domains in Phase 2.
-
-### Q38 — Notification timing
-**Working assumption:** Status-change emails only, plus a single "allocation imminent" email before each binding run.
-
-### NEW-4 — Partial-venue activation
-**Working assumption:** Yes, first-class feature. Show has `activeRowIds` (subset of venue rows) and `activeSectionIds`.
-
-### NEW-5 — Idempotency
-**Status:** Decided as ADR-0010. Idempotency keys on offer submission, propagated to Stripe.
-
-### NEW-6 — Group-splitting escape valve
-**Working assumption:** MVP: no splits. Schema includes `acceptSplit` boolean for Phase 1.5. Algorithm not implemented until 1.5.
-
-### NEW-7 — Observability and incident response
-**Working assumption:** Sentry + structured logs from day one. Full incident response setup (on-call, runbook, rollback) before Austin show.
+| Concept | Source | ADR | Notes |
+|---|---|---|---|
+| **Auto-bid** — fan sets a cap; system raises automatically when outbid | Q12 note | [ADR-0017](DECISIONS.md#adr-0017--auto-bid--private-offers) | Implementation in Week 4 alongside offer submission |
+| **Private offers (hidden price)** — exceeding the hidden threshold auto-wins | Q12 note | [ADR-0017](DECISIONS.md#adr-0017--auto-bid--private-offers) | Adds a `private_threshold_cents` field on offers |
+| **Resale on the site (capped at original)** — sellers get back what they paid, artist captures any uplift | Q10 note | [ADR-0014](DECISIONS.md#adr-0014--resale-capped-at-original-price) | Phase 1.5+, but schema lands in Week 3 |
+| **Real-time projected allocation** — fan sees their projected seat updated live as the pool changes | Q10 note | TBD when wired (Week 4–5) | SSE-first per `TECHNICAL_INTEGRATION.md` § 9 |
+| **Rotating geo-gated QR ticket** — code rotates every minute, only valid when fan is near venue | Q34 note | [ADR-0015](DECISIONS.md#adr-0015--rotating-geo-gated-qr-ticket) | Needs `tickets` table; landed when ticket viewer ships |
+| **Upgrade-buyout** — fan submits upgrade request → Auckets emails current seat-holder with buyout offer | Q29 note | TBD | Operational workflow, not a fan-side feature for MVP |
+| **Miracle tickets** — fans can gift their tickets to people who fell off the allocation | callout after Q31 | TBD | Phase 1.5+ |
+| **SMS at MVP (not Phase 1.5)** | Q36 note | [ADR-0016](DECISIONS.md#adr-0016--sms-at-mvp-via-twilio) | Adds Twilio to the foundation; 10DLC registration is the long pole |
+| **Auckets-controlled pause / end-early** — artist submits a request; Auckets executes | Q28 note | [ADR-0013](DECISIONS.md#adr-0013--aucketscontrolled-pause-and-endearly) | Changes Week 6 dashboard scope |
+| **Roles = `FAN` + `ARTIST` + `AUCKETS_ADMIN`** (4th role `VENUE_STAFF` added by Week 7) | Q31 note | [ADR-0012](DECISIONS.md#adr-0012--rbac-roles-mvp) | Simpler than the 4-role plan in the design doc |
+| **Group size cap = 10** (was 8 in v1) | Q15 note | [ADR-0011](DECISIONS.md#adr-0011--group-size-cap--10) | Artist can override per show |
 
 ---
 
 ## Phase 2 — deferred
 
-### Q35 — Linking past concert history
+### Q35 — Linking past concert history (Spotify, Songkick, etc.)
 Defer.
 
 ### Q39 — Bond auto-accept threshold
 Defer until we have show data to calibrate.
 
-### Q40 — Bond upgrade approval
+### Q40 — Bond upgrade approval (automatic vs artist veto)
 Defer. Likely automatic with artist veto.
 
 ### Q41 — Bond rewards
@@ -144,8 +112,55 @@ Defer. Fulfillment ops is its own problem.
 ### Q42 — Bond decay
 Defer. Likely annual decay.
 
-### Q43 — Bond visibility to fans
+### Q43 — Bond visibility to fans (raw score vs tier names)
 Defer. Likely tier names not raw scores.
+
+### Q44 — Customizable per-fan outbid triggers
+**Source:** Q12 note ("Would be cool if they could customize these triggers").
+Defer. Auto-bid (ADR-0017) is the bigger lever; customization can come later.
+
+---
+
+## Resolved in v2 — answered by Cope or Julia, 2026-05-25
+
+Listed for the audit trail. Where a decision drives code, it links to its ADR.
+
+| Q | Decision | ADR / source |
+|---|---|---|
+| Q2 | Heroku is out; Vercel + Supabase. Clerk + Stripe + Google Workspace roll forward | Julia 5/21 |
+| Q3 | Stripe account exists; will flip from HFC's admin to AUCKETS before production cutover. Confirm Stripe Connect setup | Julia 5/21 + [SECURITY.md #37](SECURITY.md) |
+| Q4 | Auth = Clerk | Julia 5/21 |
+| Q5 | Clean-slate database (no migration) | Julia 5/21 |
+| Q7 | Beta show at Cope's place or untraditional venue, ~50-cap | Cope |
+| Q8 | Alice 5/26 is off. Target internal date: ~8 weeks from build start | Inferred from no-date answer |
+| Q9 | First venue ≤175-cap; second is the 1,200-cap Austin theater using only some sections | Cope |
+| Q10 | Part-seated, part-GA. **Waterfalling between tiers is mandatory.** Resale on site at original price | Cope |
+| Q12 | Yes, fans can revise upward. Email on outbid. Auto-bid + private offers are features | Cope → [ADR-0017](DECISIONS.md#adr-0017--auto-bid--private-offers) |
+| Q13 | Immediate release on outbid (both seat and Stripe hold) | Cope |
+| Q14 | Sold-out → immediate rejection. No waitlist for MVP | Cope |
+| Q15 | Group cap = 10, admin-configurable | Cope → [ADR-0011](DECISIONS.md#adr-0011--group-size-cap--10) |
+| Q16 | One offer per fan per show | Cope |
+| Q17 | Offer window default 14 days, artist sets per show | Cope |
+| Q18 | Artist sets floor price | Julia |
+| Q22 | No fan-side service fee (honor "no hidden fees") | Working assumption, no objection |
+| Q25 | Artist sets holds in dashboard, tagged by source. Venue holds read-only | Cope |
+| Q27 | Leave orphan seats unsold for MVP (Option A) | Cope |
+| Q28 | Auckets controls pause / end-early; artist submits requests | Cope → [ADR-0013](DECISIONS.md#adr-0013--aucketscontrolled-pause-and-endearly) |
+| Q29 | Manual override post-allocation: fan submits upgrade request → Auckets emails seat-holder with buyout | Cope |
+| Q30 | Artist sees totals + averages per section. Auckets sees everything | Cope |
+| Q31 | Roles = `ARTIST` + `AUCKETS_ADMIN`. Plus `FAN` (implicit) and `VENUE_STAFF` (added by Week 7) | Cope → [ADR-0012](DECISIONS.md#adr-0012--rbac-roles-mvp) |
+| Q32 | Fan account required (no guest offers) | Julia |
+| Q33 | Email required; Google + Apple social login; phone optional after first offer | Working assumption, no objection |
+| Q34 | Rotating geo-gated QR ticket, validated through Auckets site only when fan is near venue | Cope → [ADR-0015](DECISIONS.md#adr-0015--rotating-geo-gated-qr-ticket) |
+| Q36 | SMS + email at MVP (not Phase 1.5) | Cope → [ADR-0016](DECISIONS.md#adr-0016--sms-at-mvp-via-twilio) |
+| Q37 | AUCKETS-branded sender for MVP, artist name prominent | Cope |
+| Q38 | Status-change emails + a single "allocation imminent" pre-run notice | Working assumption, no objection |
+| NEW-2 | Hybrid: continuous preview + binding checkpoints | Cope (already [ADR-0004](DECISIONS.md#adr-0004--hybrid-allocation-continuous-preview--binding-checkpoints), now confirmed) |
+| NEW-3 | Waterfalling tiers are a first-class GAE feature | Cope (already in [GAE_SPEC.md §5](GAE_SPEC.md) and `launchpad.ts` Waterfall slice) |
+| NEW-4 | Partial-venue activation is first-class (`activeRowIds` per show) | Cope (already in `VenueArchitecture` type) |
+| NEW-5 | Idempotency keys on offer submission, propagated to Stripe | [ADR-0010](DECISIONS.md#adr-0010--idempotency-keys-on-offer-submission) |
+| NEW-6 | **Group splits never acceptable for MVP.** No `accept_split` even as a schema field | Cope |
+| NEW-7 | High observability. Sentry + structured logs from day one; show-day runbook before Austin | Cope |
 
 ---
 
@@ -159,7 +174,6 @@ When you're about to make a decision that touches one of these questions:
 
 When a question gets answered:
 
-1. Move the resolution into `DECISIONS.md` as an ADR if it's architecturally significant.
-2. Update the relevant doc (`CONVENTIONS.md`, `ARCHITECTURE.md`, `GAE_SPEC.md`, `ROADMAP.md`) if it affects how we build.
-3. Mark the entry here as RESOLVED with a date and pointer to the ADR.
-4. Don't delete — strikethrough or move to a "Resolved" section at the bottom, so the history is preserved.
+1. Move the resolution into [`DECISIONS.md`](DECISIONS.md) as an ADR if it's architecturally significant.
+2. Update the relevant doc ([`CONVENTIONS.md`](CONVENTIONS.md), [`ARCHITECTURE.md`](ARCHITECTURE.md), [`GAE_SPEC.md`](GAE_SPEC.md), [`ROADMAP.md`](ROADMAP.md)) if it affects how we build.
+3. Move the entry into "Resolved" at the bottom of this file with a date and pointer to the ADR — don't delete the history.

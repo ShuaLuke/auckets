@@ -47,7 +47,7 @@ For a system where allocation correctness matters and we may need row-level lock
 
 ## ADR-0003 — Stripe: SetupIntent + charge on acceptance
 
-**Status:** Accepted
+**Status:** Accepted, pending hold-window decision (NEW-1)
 **Date:** 2026-05-25
 
 **Decision:** When a fan submits an offer, we create a Stripe SetupIntent to tokenize their card. We do **not** create a PaymentIntent or place a hold. When allocation runs and the offer is accepted, we create a PaymentIntent against the saved payment method and confirm immediately.
@@ -63,6 +63,8 @@ SetupIntent + charge on acceptance is the standard modern ticketing pattern. The
 **Alternatives:** see above.
 
 **Consequences:** We need a payment-failure handling flow. We need a grace window (proposed: 24 hours) for fans whose cards fail to update payment and reclaim their seats before they go back to the pool.
+
+**2026-05-25 note:** Cope flagged "still outstanding need to do research on this" in v2. The SetupIntent path stands as the recommendation; if Cope's research lands on "keep offer windows ≤ 6 days and use a normal Stripe pre-auth," we revisit. Don't ship the offer-submission flow (Week 4) until this is settled.
 
 ---
 
@@ -194,6 +196,188 @@ Stripe natively supports idempotency keys on PaymentIntent and SetupIntent creat
 - Server-side detection by (user, show, timestamp) — fragile and hard to get right.
 
 **Consequences:** Schema includes an `offer_idempotency_keys` table or column (TBD during implementation).
+
+---
+
+## ADR-0011 — Group-size cap = 10
+
+**Status:** Accepted
+**Date:** 2026-05-25
+
+**Decision:** The platform default for `AllocationConfig.maxGroupSize` is `10`. Artists can override per show. Groups larger than 10 are routed out-of-band ("contact for booking") rather than into the offer flow.
+
+**Reasoning:** The original working assumption (in v1 OPEN_QUESTIONS and the GAE spec) was 8. Cope's v2 answer set the default at 10 with admin override. 10 covers a few more real-world group cases (extended families, small corporate groups) without bleeding into the territory where the allocation engine's row-filling logic starts to struggle for typical small-venue row sizes (10–20 seats).
+
+The `rankKey` formula's `* 1000` multiplier still has plenty of headroom — group sizes ≤ 999 never bleed into the price ordering. No formula change needed.
+
+**Alternatives:**
+- **Keep at 8.** Loses a few real bookings to the out-of-band flow that don't need to be there.
+- **No cap at all.** Allocation pathologies for groups of 15+ become a real problem on smaller venues. Not worth it for the rare case.
+
+**Consequences:**
+- Update [`GAE_SPEC.md`](GAE_SPEC.md) references from 8 to 10.
+- Update the stale comment in [`src/lib/gae/rankkey.ts`](../src/lib/gae/rankkey.ts) ("groups over 8").
+- When offer submission lands (Week 4), the Zod schema validates `groupSize ≤ 10` by default, with an artist-override field on the show.
+
+---
+
+## ADR-0012 — RBAC roles (MVP)
+
+**Status:** Accepted
+**Date:** 2026-05-25
+
+**Decision:** MVP ships three roles: `FAN` (implicit default for any authenticated user), `ARTIST`, and `AUCKETS_ADMIN`. A fourth role, `VENUE_STAFF`, is added when the Austin show's door-scanner work begins (~Week 7). The design system's proposed `MANAGER` and `STAFF` roles are deferred indefinitely; we add them when a real delegation case appears.
+
+**Reasoning:** Cope's v2 answer was "artist dashboard + Auckets admin login." That's two roles plus the implicit fan role. The design system's `TECHNICAL_INTEGRATION.md` proposed four (`ARTIST`, `MANAGER`, `STAFF`, `VENUE`), which is YAGNI for the first show — neither Cope's team nor any other artist has asked for sub-artist delegation, and we have no real use case to design against. `VENUE_STAFF` is the one extra role we know we'll need (door scanners at Austin), so it's on the calendar.
+
+Roles live in our database, not in Clerk. The Clerk JWT carries the role for fast middleware checks; the source of truth is a `role` column on `users` (or a `user_roles` join table if we ever need multi-role users).
+
+**Alternatives:**
+- **Four roles now (`ARTIST` / `MANAGER` / `STAFF` / `VENUE`).** Premature. Two of them have no use case.
+- **No roles, just `is_admin: boolean`.** Doesn't scale past Cope as the only artist.
+- **Use Clerk's organization feature for artists.** Could be the answer when multi-artist lands. Not needed yet.
+
+**Consequences:**
+- [`src/middleware.ts`](../src/middleware.ts) protects the routes by role: `/dashboard` for any authenticated user, `(artist)` routes for `ARTIST`, `(admin)` routes for `AUCKETS_ADMIN`.
+- Clerk webhook handler (Week 4) sets the initial role to `FAN` on `user.created`.
+- Promoting a user to `ARTIST` or `AUCKETS_ADMIN` is a manual operation for now (a `scripts/promote-user.ts` or a Drizzle Studio edit) — automated promotion can wait.
+
+---
+
+## ADR-0013 — Auckets-controlled pause and end-early
+
+**Status:** Accepted
+**Date:** 2026-05-25
+
+**Decision:** Pausing the offer window and ending it early are **operational actions taken by AUCKETS staff**, not direct artist controls. The artist dashboard surfaces a "Request to pause" / "Request to end early" workflow that files an `artist_request` row; an `AUCKETS_ADMIN` reviews and executes.
+
+**Reasoning:** Cope's v2 answer to Q28: "Aucket is the one that has control not the artist here – they can submit request and we will do it." Several reasons this is the right call for MVP:
+
+1. **Safety net.** Allocation runs are real money. A misclicked "end now" by the artist is a worse outcome than a 30-minute Auckets-staff turnaround.
+2. **Audit trail.** Every pause / end-early has a human at AUCKETS making the call, captured in `artist_requests` with reasoning.
+3. **Smaller MVP dashboard.** The artist UI doesn't need a "danger zone" with end-the-show buttons.
+
+This will likely flip to direct artist controls in Phase 2 once we trust the patterns. For now, the friction is the feature.
+
+**Alternatives:**
+- **Direct artist controls with a confirm dialog.** Faster for the artist, but no human safety net.
+- **Direct artist controls with a 5-minute "undo" window.** Better than no-undo but adds significant complexity.
+
+**Consequences:**
+- Schema has an `artist_requests` table (kind: `pause` | `end_early` | `comp` | `override` | ...).
+- Week 6 artist dashboard scope shrinks: no "pause" or "end now" buttons, instead a "request" form.
+- AUCKETS admin UI has an inbox of pending requests with one-click "execute" / "deny."
+- `allocation_logs` records `MANUAL_OVERRIDE` actions linked to the `artist_requests` row when executed.
+
+---
+
+## ADR-0014 — Resale capped at original price
+
+**Status:** Accepted
+**Date:** 2026-05-25
+
+**Decision:** When a fan resells their ticket on AUCKETS, they receive **the original price they paid, no more**. Any uplift between the original price and the new price goes to the artist. The resale appears in the pool as a new offer; the buyer is the next-best unplaced offer (or open submission) at the resale price.
+
+**Reasoning:** Cope's v2 answer to Q10: "you can though resell it on the website (they just get their money back though if the price goes up)." The anti-scalping promise built into AUCKETS is structural here — if the seller can capture markup, the platform is just another StubHub. By routing the uplift to the artist, the seller can exit cleanly (get their money back) and the artist captures any genuine demand shift.
+
+This is the same primitive the design system's `TECHNICAL_INTEGRATION.md` § 2.12 calls "resale with capped appreciation, artist takes uplift." Confirmed by Cope.
+
+**Alternatives:**
+- **Seller keeps the uplift.** Standard StubHub model. Contradicts AUCKETS's positioning. Out.
+- **Platform takes the uplift.** Adversarial to artists. Out.
+- **No resale at all.** Punishes fans whose plans change. The current resale-at-original handles this cleanly.
+
+**Consequences:**
+- Schema has a `resales` table linking the original offer, the new offer, and the artist appreciation amount.
+- When a resale is initiated, the original ticket goes back into the pool (binding allocation runs again for that seat).
+- Refund to seller is `min(original_price, new_price)`. The delta goes to the artist's Stripe Connect account via a separate transfer.
+- "Miracle Tickets" (gifting your seat to someone on the fell-off list) is a separate primitive built on the same resale plumbing — refund the seller their original price, no charge to the recipient.
+
+---
+
+## ADR-0015 — Rotating geo-gated QR ticket
+
+**Status:** Accepted
+**Date:** 2026-05-25
+
+**Decision:** Tickets are displayed in the AUCKETS web app as a **TOTP-derived QR code that rotates every 60 seconds**, gated by the fan's browser geolocation being within a configurable radius of the venue. Screenshots are useless after the rotation window. Static printable tickets are not supported.
+
+**Reasoning:** Cope's v2 answer to Q34: "QR code is changes every minute (cope wants it so that the qr code to be accessed through auckets site and its only valid when they are close to the venue)." This addresses two failure modes the existing ticketing world has: (1) ticket screenshots forwarded by scalpers, and (2) tickets sold "in front of the venue" outside the AUCKETS resale flow.
+
+**Implementation shape** (per `TECHNICAL_INTEGRATION.md` § 7):
+- TOTP secret generated at ticket-issue time, stored on the `tickets` row (base32, 32 chars). Standard `otplib` library.
+- 60-second rotation window (Cope's preference). RFC 6238 default is 30s; we go longer for fan-readability.
+- Geolocation gate: `navigator.geolocation` → server-side haversine vs. venue coordinates. Default radius 500m, per-venue configurable.
+- **We do not store the fan's coordinates** beyond the request. Log only pass/fail and distance bucket. Privacy-by-design.
+- Server-side scan validates: TOTP matches, ticket is `issued`, not already-scanned.
+
+**Backup procedures:** If location is denied or the phone dies, venue staff can look up the fan by name + ID at the door and override. All overrides logged. (Required for the 1,200-cap Austin show; small Cope's-place show can probably skip the geo gate entirely.)
+
+**Alternatives:**
+- **Static QR code with one-time validation at scan.** Same anti-double-scan story, but screenshots forwarded by scalpers still work until the door. Cope explicitly rejected this.
+- **Apple/Google Wallet passes.** Useful UX, but doesn't solve the screenshot problem. Could layer on top of TOTP later.
+- **Geolocation only at scan time, no rotation.** Doesn't prevent the resale-outside-the-app case.
+
+**Consequences:**
+- `tickets` table has `totp_secret TEXT NOT NULL` and timestamps.
+- New deps when ticket viewer ships: `otplib`, `qrcode`.
+- Ticket viewer is `'use client'` (geolocation API, rotating display).
+- `venues` table has `geo_lat`, `geo_lon`, `geo_radius_m` columns.
+- For Cope's place (small private show, fans probably escorted to seats), the geo gate is configurable to "off" so we don't risk locking out fans whose phones fail the geolocation prompt.
+
+---
+
+## ADR-0016 — SMS at MVP via Twilio
+
+**Status:** Accepted
+**Date:** 2026-05-25
+
+**Decision:** SMS is a launch-day notification channel, not Phase 1.5. We integrate Twilio for transactional SMS (outbid, accepted, allocation imminent, payment failed). Fans capture phone optionally after first offer; SMS sends only to fans who provided a number.
+
+**Reasoning:** Cope's v2 answer to Q36: "Needs to be both email and sms." This reverses the original [working assumption](OPEN_QUESTIONS.md) of "email at MVP, SMS in Phase 1.5." Rationale Cope didn't have to articulate but is true: outbid notifications are time-sensitive (the fan might want to raise their offer in the next few hours), and email open-rates can lag by hours. SMS delivery is near-instant.
+
+**Operational long pole:** **10DLC registration** for A2P SMS in the US takes 1–2 weeks for carrier approval. Start this the week of Slice 10 so it's done by the time we wire SMS sends (Week 4 alongside email).
+
+**Alternatives:**
+- **Twilio vs. Resend SMS.** Resend's SMS product is newer and less battle-tested; Twilio is the default for a reason.
+- **Email only at MVP.** Originally proposed; Cope's answer reverses this.
+- **Push notifications instead of SMS.** Requires native app or PWA opt-in. Worse delivery; deferred.
+
+**Consequences:**
+- Add `twilio` to `package.json` and `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_FROM_NUMBER` to env validation.
+- New `src/lib/sms/client.ts` parallels `src/lib/email/client.ts` — dormant without keys, logs the missing-credential case.
+- 10DLC registration is operational, not engineering — Julia drives this in parallel with the build.
+- Notification dispatch in Inngest handlers: send-email AND send-sms in the same step, both behind try/catch so one provider failing doesn't block the other.
+
+---
+
+## ADR-0017 — Auto-bid + private offers
+
+**Status:** Accepted
+**Date:** 2026-05-25
+
+**Decision:** Two related features ride on top of the basic offer:
+
+1. **Auto-bid.** A fan can submit an offer with `auto_bid_enabled: true` and `auto_bid_cap_cents: N`. When their offer is displaced by a higher offer at preview time, the system automatically increments their price (default $5) up to `N` to reclaim a placement. The fan is notified at each auto-raise.
+
+2. **Private offers (hidden price).** A fan can submit an offer with a `private_threshold_cents` field. The displayed offer price is whatever the fan publicly committed (or a floor). If any other offer in the pool exceeds the threshold, the private offer auto-converts to that price and is placed. The threshold is not visible to other fans.
+
+**Reasoning:** Cope's v2 answer to Q12 includes both:
+> "Would be cool if they could customize these triggers, do automatic bid increases. Also 'make a private offer' where if someone bids enough they get it automatically – this price is not visible though."
+
+Auto-bid is the standard "eBay sniping prevention" mechanic, ported to a fairness-first market. Private offers solve the "I'd pay $200 for this but I don't want to broadcast that" case — high-intent fans can quietly commit without distorting the visible pool.
+
+**Alternatives:**
+- **No auto-bid.** Fans manually re-bid every time they're outbid. Pessimal UX, gameable.
+- **No private offers.** Loses high-intent revenue from fans who don't want to publicly price-anchor.
+- **Make the auto-bid increment artist-configurable.** Probably eventually. MVP default $5; revisit if data says otherwise.
+
+**Consequences:**
+- `offers` schema gets `auto_bid_enabled boolean`, `auto_bid_cap_cents integer`, `private_threshold_cents integer NULL`.
+- Preview allocation logic runs auto-bid evaluation: any displaced auto-bid offer with headroom raises to the next price that would re-place it.
+- Private offers participate in the visible aggregate stats at their *visible* price, not their threshold. The threshold is server-only state.
+- Auto-bid trigger emits an event for the notification dispatcher (the fan gets an email/SMS at each raise).
+- Auto-bid cap is hard — once hit, no further auto-raises, fan is treated as a normal outbid offer.
 
 ---
 

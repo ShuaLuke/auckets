@@ -63,6 +63,23 @@ From [`docs/CONTEXT.md`](docs/CONTEXT.md#prime-directives--never-violate-these) 
 - **`SKIP_ENV_VALIDATION=1` is refused when `NODE_ENV=production`.** Intentional safeguard so a stray env-var on Vercel can't defeat the validator.
 - **Inngest v4 collapsed the `createFunction` signature** — triggers now live inside the options object (`{ id, triggers: [...] }`), not as a second argument. Old docs and tutorials show the three-arg form.
 - **Drizzle migrations don't run yet** — no schema, no migrations. Coming in Week 3.
+- **Branch off `main` AFTER the previous PR merges, not before.** Slice 8 was branched before Slice 7 merged, which produced a `.gitignore` conflict that had to be resolved. Wait for the merge.
+
+---
+
+## v2 product gotchas — the things that aren't obvious from CONTEXT.md alone
+
+These are decisions from the May 25 v2 round of Cope/Julia answers. Read `docs/OPEN_QUESTIONS.md` and the new ADRs in `docs/DECISIONS.md` for the full reasoning.
+
+- **Group cap is 10, not 8.** Working assumption changed; comment-only fix landed in `rankkey.ts`. ADR-0011.
+- **Roles for MVP are `FAN` + `ARTIST` + `AUCKETS_ADMIN`** (3, not 4). `VENUE_STAFF` added Week 7 for Austin. The design system's `MANAGER` / `STAFF` are deferred indefinitely. ADR-0012.
+- **Artists do NOT directly control pause / end-early.** They file a request via the dashboard; AUCKETS staff execute. Changes Week 6 dashboard scope. ADR-0013.
+- **Resales refund the seller at original price.** Any uplift goes to the artist, not the seller. This is structural anti-scalping. ADR-0014.
+- **Tickets are rotating QR (60s) + geo-gated.** No static printable tickets. ADR-0015.
+- **SMS is at MVP, not Phase 1.5.** Adds Twilio to the foundation. 10DLC registration is the long pole (1–2 weeks of carrier turnaround). ADR-0016.
+- **Auto-bid and private offers are first-class on the offer.** The offer schema carries `auto_bid_enabled`, `auto_bid_cap_cents`, `private_threshold_cents`. ADR-0017.
+- **ADR-0003 (Stripe SetupIntent) is "Accepted, pending hold-window decision."** Cope is still researching whether we want offer windows >6 days. Don't ship offer submission (Week 4) until this is settled.
+- **Bleacher (the design doc's "second channel") is NOT confirmed** by Cope. Don't bake `offers.channel` into the schema until he weighs in. NEW-8.
 
 ---
 

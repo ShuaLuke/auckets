@@ -81,18 +81,26 @@ A small private beta show (~50 attendees, Cope's place or a similar untraditiona
 - [ ] Stripe SetupIntent integration. On submit, tokenize card without charging.
 - [ ] `POST /api/offers` route: auth, validate, idempotency, create offer, return SetupIntent client secret.
 - [ ] Fan-facing offer submission form (basic UI, polish later). One show only for MVP.
-- [ ] Show page reads aggregate offer stats (no individual visibility per Q30).
+- [ ] **Auto-bid + private offer fields on the form** (ADR-0017): `auto_bid_enabled`, `auto_bid_cap_cents`, `private_threshold_cents` (optional).
+- [ ] Show page reads aggregate offer stats (per Q30: totals + averages per section).
 - [ ] `BOND_EVENT` appended on offer submission.
 - [ ] Email confirmation on offer received.
+- [ ] **SMS confirmation when fan has provided phone** (ADR-0016).
 - [ ] Webhook handler for Clerk user creation/update.
 - [ ] E2E test: sign up → land on show page → submit offer → see confirmation.
 
-**Exit criterion:** A fan can sign up, see a show, submit an offer, get a confirmation email, and the offer lands in the DB with a Stripe payment method attached.
+**Exit criterion:** A fan can sign up, see a show, submit an offer, get a confirmation email + SMS, and the offer lands in the DB with a Stripe payment method attached.
 
-**Blocked on (or proceed with default if not answered):**
-- Q12 (can fans revise offers upward) — default: yes, up to 24h before allocation.
-- Q14 (sold-out behavior) — default: immediate rejection with notification.
-- Q17 (offer window length) — default: artist sets, platform default 14 days.
+**Confirmed by v2 (was blocked, now decided — see ADRs):**
+- Q12 → fans can revise upward; auto-bid + private offers are first-class (ADR-0017).
+- Q14 → immediate rejection, no MVP waitlist.
+- Q15 → group size cap = 10 (ADR-0011).
+- Q17 → artist sets, platform default 14 days.
+- NEW-1 → SetupIntent + charge on acceptance still recommended; Cope finishing research (ADR-0003 status: "pending hold-window decision").
+
+**Add this week — Twilio for SMS (ADR-0016):**
+- New foundation slice: install `twilio`, env vars `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_FROM_NUMBER`, dormant-without-keys `src/lib/sms/client.ts` paralleling the Resend wrapper.
+- 10DLC registration (Julia drives, 1–2 week carrier turnaround).
 
 ---
 
@@ -120,25 +128,28 @@ A small private beta show (~50 attendees, Cope's place or a similar untraditiona
 
 ## Week 6 — Artist dashboard (basic)
 
-**Goal: Cope can create a show, configure pricing, see what's happening, and trigger allocation.**
+**Goal: Cope can create a show, configure pricing, see what's happening, and request operational changes.**
 
-- [ ] Artist login (Clerk with artist role).
+- [ ] Artist login (Clerk with `ARTIST` role per ADR-0012).
 - [ ] Show creation form: venue, date, sections, pricing, offer window.
-- [ ] Per-section floor price configuration.
-- [ ] Aggregate offer stats display (no individual visibility during window).
+- [ ] Per-section floor price configuration (pending Q19 confirmation).
+- [ ] Aggregate offer stats display — totals + averages per section. Auckets sees everything; artist sees aggregates (Q30 resolved).
 - [ ] Active section selector (partial-venue activation per NEW-4).
 - [ ] Holds management UI: add/remove holds per row.
-- [ ] Allocation trigger button (with confirmation).
+- [ ] **Request workflow** for pause / end-early / comp / override (ADR-0013). Files an `artist_request` row; AUCKETS admin executes.
 - [ ] Post-allocation view: who's where, who's outbid, payment success rate.
-- [ ] Manual override endpoint and UI for comping seats.
 
-**Exit criterion:** Cope can configure a real show from scratch, see offers come in, trigger allocation, and review the result without engineering help.
+**Exit criterion:** Cope can configure a real show from scratch, see offers come in, and surface operational requests to AUCKETS without engineering help.
 
-**Blocked on (or proceed with default):**
-- Q28 (pause/stop early) — default: yes, with notification on ending early.
-- Q29 (manual override) — default: yes, post-allocation only, all logged.
-- Q30 (individual offer visibility) — default: aggregate only during, full after.
-- Q31 (dashboard roles) — default: ARTIST, MANAGER, STAFF, VENUE roles.
+**Confirmed by v2:**
+- Q28 → Auckets controls pause/end-early; artist files a request (ADR-0013).
+- Q29 → Upgrade requests flow through AUCKETS staff who email the seat-holder with a buyout offer.
+- Q30 → Aggregate view for artist; full visibility for Auckets.
+- Q31 → Three roles for MVP: `FAN` + `ARTIST` + `AUCKETS_ADMIN` (ADR-0012). `VENUE_STAFF` added Week 7 for Austin.
+
+**New in v2 — slot in after dashboard basics:**
+- AUCKETS admin inbox UI for executing artist requests (probably Week 6.5 / 7).
+- Per-show email customization handoff workflow (Q37b, still open).
 
 ---
 
@@ -184,8 +195,9 @@ Time intentionally left undefined. Whatever the retro surfaces becomes the prior
 - UI polish based on real fan feedback.
 - Fixes to the GAE for cases that came up in real allocation.
 - Waitlist functionality if fans missed out and complained.
-- SMS notifications (10DLC registration started in week 4 in parallel).
 - Better artist dashboard tooling based on Cope's friction points.
+- **Resale flow** (ADR-0014) — seller refund at original price, artist captures uplift. Schema lands in Week 3; UI here.
+- **Miracle Tickets** — gifting tickets to the fell-off list. Builds on resale primitive.
 
 ---
 
@@ -197,8 +209,8 @@ Time intentionally left undefined. Whatever the retro surfaces becomes the prior
 - [ ] Partial-venue activation tested at scale.
 - [ ] Multi-section pricing tested.
 - [ ] Performance: allocation runtime measured for ~500 offers across multiple sections.
-- [ ] QR ticket generation (if not yet built) — needed for door scanning at a real theater.
-- [ ] Door scanner web app (simple staff-facing tablet UI).
+- [ ] **Rotating geo-gated QR ticket viewer** (ADR-0015) — TOTP rotation every 60s + geolocation gate.
+- [ ] Door scanner web app (simple `VENUE_STAFF` tablet UI). Adds the 4th role per ADR-0012.
 
 ---
 
