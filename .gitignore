@@ -68,3 +68,9 @@ Thumbs.db
 
 # Clerk local cache — can contain handshake state or dev-only config.
 .clerk/
+
+# `npx skills add` writes universal-format skill files here so multiple
+# AI tools (Claude Code, Cursor, etc.) can share them. They're per-user
+# tooling, not project code — should not be committed.
+.agents/
+skills-lock.json
