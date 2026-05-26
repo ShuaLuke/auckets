@@ -18,6 +18,7 @@ export function makeMockDb<T>(result: T[]): Db {
     where: () => chain,
     limit: () => chain,
     orderBy: () => chain,
+    groupBy: () => chain,
     then: (onResolve: (value: T[]) => unknown) =>
       Promise.resolve(onResolve(result)),
   };
@@ -42,6 +43,7 @@ export function makeQueuedMockDb<T>(results: T[][]): Db {
       where: () => chain,
       limit: () => chain,
       orderBy: () => chain,
+      groupBy: () => chain,
       then: (onResolve: (value: T[]) => unknown) =>
         Promise.resolve(onResolve(result)),
     };
