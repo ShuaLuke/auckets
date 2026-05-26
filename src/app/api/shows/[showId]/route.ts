@@ -16,6 +16,7 @@ import {
   getOfferByShowAndUser,
   getSeatAssignmentByOfferId,
   getShowById,
+  getTicketByAssignmentId,
 } from "@/lib/db/repositories";
 import {
   DEFAULT_TZ,
@@ -56,12 +57,23 @@ export async function GET(
 
   // Assignment fetch is contingent on having an offer. Wait until we
   // know the offer id rather than firing a guaranteed-empty query.
+  // Same logic for ticket: contingent on assignment.
   const userAssignment = userOffer
     ? await getSeatAssignmentByOfferId(db, userOffer.id)
+    : null;
+  const userTicket = userAssignment
+    ? await getTicketByAssignmentId(db, userAssignment.id)
     : null;
 
   const now = new Date();
   return NextResponse.json(
-    presentShowDetail(show, now, DEFAULT_TZ, userOffer, userAssignment),
+    presentShowDetail(
+      show,
+      now,
+      DEFAULT_TZ,
+      userOffer,
+      userAssignment,
+      userTicket,
+    ),
   );
 }

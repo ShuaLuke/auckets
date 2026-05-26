@@ -17,6 +17,7 @@ import {
   listOffersForUser,
   listOpenShows,
   listSeatAssignmentsByOfferIds,
+  listTicketsByAssignmentIds,
   getVenueArchitecturesByIds,
 } from "@/lib/db/repositories";
 import {
@@ -57,29 +58,35 @@ export async function GET(): Promise<NextResponse<ShowSummaryView[] | { error: s
     userOfferIds,
   );
 
-  // For the yourOffer.preview text we need the architecture row's
-  // (area, rowName). Each assignment has a venue_row_id pointing into
-  // venue_architectures.rows JSONB. Group by architecture so we only
-  // fetch each one once across the response.
+  // Two parallel follow-up fetches over the placed offers:
+  //  - architectures, for the yourOffer.preview area + rowName lookup
+  //  - tickets, for the yourOffer.ticketReady flag
+  // Both keyed off the assignment set, so a fan with all-pool offers
+  // does zero extra work here.
   const archIdsForPreview = new Set<string>();
+  const assignmentIdsForTickets: string[] = [];
   for (const row of rows) {
     const offer = offerByShowId.get(row.id);
-    if (offer && assignmentByOfferId.has(offer.id)) {
-      archIdsForPreview.add(row.venueArchitectureId);
-    }
+    if (!offer) continue;
+    const assignment = assignmentByOfferId.get(offer.id);
+    if (!assignment) continue;
+    archIdsForPreview.add(row.venueArchitectureId);
+    assignmentIdsForTickets.push(assignment.id);
   }
-  const architectureById = await getVenueArchitecturesByIds(
-    db,
-    [...archIdsForPreview],
-  );
+  const [architectureById, ticketByAssignmentId] = await Promise.all([
+    getVenueArchitecturesByIds(db, [...archIdsForPreview]),
+    listTicketsByAssignmentIds(db, assignmentIdsForTickets),
+  ]);
 
   const view = rows.map((row) => {
     const offer = offerByShowId.get(row.id) ?? null;
     const assignment = offer ? assignmentByOfferId.get(offer.id) ?? null : null;
     let assignmentRow: { area: string; rowName: string } | null = null;
+    let ticket = null;
     if (assignment) {
       const arch = architectureById.get(row.venueArchitectureId);
       assignmentRow = arch?.rows.find((r) => r.id === assignment.venueRowId) ?? null;
+      ticket = ticketByAssignmentId.get(assignment.id) ?? null;
     }
     return presentShowSummary(
       row,
@@ -88,6 +95,7 @@ export async function GET(): Promise<NextResponse<ShowSummaryView[] | { error: s
       offer,
       assignment,
       assignmentRow,
+      ticket,
     );
   });
   return NextResponse.json(view);

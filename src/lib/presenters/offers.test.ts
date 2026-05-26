@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import type { SeatAssignment } from "@/lib/db/repositories";
+import type {
+  SeatAssignment,
+  TicketStatus,
+  TicketSummary,
+} from "@/lib/db/repositories";
 import type { VenueRow } from "@/lib/gae/types";
 
 import type { offers } from "../../../drizzle/schema";
@@ -50,6 +54,20 @@ function makeRow(overrides: Partial<VenueRow> = {}): VenueRow {
   };
 }
 
+function makeTicket(overrides: Partial<TicketSummary> = {}): TicketSummary {
+  return {
+    id: "dddddddd-dddd-dddd-dddd-dddddddddddd",
+    seatAssignmentId: "cccccccc-cccc-cccc-cccc-cccccccccccc",
+    userId: "user_2abc",
+    status: "issued",
+    scannedAt: null,
+    scannedByStaffId: null,
+    issuedAt: new Date("2026-05-23T20:00:00Z"),
+    createdAt: new Date("2026-05-23T20:00:00Z"),
+    ...overrides,
+  };
+}
+
 function makeOffer(overrides: Partial<Offer> = {}): Offer {
   return {
     id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
@@ -83,6 +101,7 @@ describe("presentOffer", () => {
       size: 4,
       status: "pool",
       placed: false,
+      ticketReady: false,
     });
   });
 
@@ -202,5 +221,64 @@ describe("presentOffer", () => {
         makeRow({ area: "side_box" }),
       ),
     ).toMatch(/^Side Box/);
+  });
+
+  it("defaults ticketReady to false when no ticket is passed", () => {
+    // The most common state pre-T-48h: assignment exists, ticket
+    // row doesn't yet. False, not undefined — the UI branches on
+    // this and undefined-as-falsy would be ambiguous with "didn't
+    // load the data."
+    const view = presentOffer(makeOffer({ status: "placed" }));
+    expect(view.ticketReady).toBe(false);
+  });
+
+  it("marks ticketReady=true when the ticket exists and is issued (matches Dashboard.jsx row 1)", () => {
+    // Dashboard.jsx Lincoln May 25 row: yourOffer.ticketReady = true.
+    const view = presentOffer(
+      makeOffer({ status: "placed" }),
+      makeAssignment(),
+      makeRow(),
+      makeTicket({ status: "issued" }),
+    );
+    expect(view.ticketReady).toBe(true);
+  });
+
+  it("treats 'scanned' as ready (viewer can still show 'you're in' state)", () => {
+    // A scanned ticket still has UI value — the viewer renders an
+    // "Already scanned at HH:MM" confirmation instead of a fresh QR.
+    // Marking it as ready keeps the same click target (ticket
+    // viewer, not show page).
+    const view = presentOffer(
+      makeOffer({ status: "charged" }),
+      makeAssignment(),
+      makeRow(),
+      makeTicket({ status: "scanned", scannedAt: new Date() }),
+    );
+    expect(view.ticketReady).toBe(true);
+  });
+
+  it("does NOT mark resold/gifted/expired tickets as ready", () => {
+    // Seat no longer belongs to this fan, or the QR is no longer
+    // scannable. Click target should be the show page, not the
+    // ticket viewer.
+    const notReady: TicketStatus[] = ["resold", "gifted", "expired"];
+    for (const status of notReady) {
+      const view = presentOffer(
+        makeOffer({ status: "charged" }),
+        makeAssignment(),
+        makeRow(),
+        makeTicket({ status }),
+      );
+      expect(view.ticketReady, `status=${status}`).toBe(false);
+    }
+  });
+
+  it("includes ticketReady even when no assignment/row is passed (always present)", () => {
+    // Just an offer, no placement, no ticket — ticketReady is still
+    // an explicit `false`, not omitted. The UI's `s.yourOffer?.ticketReady`
+    // branch keys on the boolean and we don't want to depend on
+    // undefined coercion.
+    const view = presentOffer(makeOffer({ status: "pool" }));
+    expect(view).toHaveProperty("ticketReady", false);
   });
 });

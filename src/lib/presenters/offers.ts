@@ -9,14 +9,23 @@
 // caller passes a row read by mistake from another user, the threshold
 // can't escape. Don't add the field here without re-reading ADR-0017.
 //
-// Scope: yourOffer.preview ("Orchestra · Row AA · seats 7–10") lands
-// here in slice 5b — it's derived from the offer's seat_assignment + the
-// venue architecture row's `area` + `rowName`. yourOffer.ticketReady
-// stays deferred (needs the tickets repo).
+// The ticket's totp_secret is structurally protected upstream — the
+// tickets repository never SELECTs it, so the TicketSummary passed in
+// here can't carry it. See src/lib/db/repositories/tickets.ts for the
+// reasoning (ADR-0015).
+//
+// What this presenter delivers for yourOffer:
+//   priceCents/price/size/status/placed  - slice 4
+//   preview ("Orchestra · Row AA …")     - slice 5b (needs assignment + arch row)
+//   ticketReady                          - slice 6 (needs ticket)
 
 import { formatCents } from "@/lib/money";
 
-import type { SeatAssignment } from "@/lib/db/repositories";
+import type {
+  SeatAssignment,
+  TicketStatus,
+  TicketSummary,
+} from "@/lib/db/repositories";
 import type { VenueRow } from "@/lib/gae/types";
 
 import type { offers } from "../../../drizzle/schema";
@@ -56,9 +65,25 @@ export type OfferView = {
   // rowName). exactOptionalPropertyTypes is on, so an absent key
   // doesn't serialize as `preview: undefined`.
   preview?: string;
+  // "Is the rotating-QR ticket ready to view?" Used by Dashboard.jsx
+  // line 62 to switch the row's click target between the ticket viewer
+  // and the show page. Always present in the view (defaults false)
+  // because the UI branches on it — undefined-as-falsy would be
+  // ambiguous between "no ticket yet" and "didn't load ticket data."
+  ticketReady: boolean;
 };
 
 const PLACED_STATUSES: ReadonlySet<OfferStatus> = new Set(["placed", "charged"]);
+
+// Statuses that mean "we have a valid ticket to show this fan." Resold
+// / gifted means the seat belongs to someone else now; expired means
+// it's no longer scannable; issued / scanned are both displayable
+// (the ticket viewer can render either a fresh QR or an
+// "Already scanned at HH:MM" confirmation, so both count as "ready").
+const READY_TICKET_STATUSES: ReadonlySet<TicketStatus> = new Set([
+  "issued",
+  "scanned",
+]);
 
 // Lowercase enum → display name. "ga" is the one that needs a fully
 // custom mapping ("Ga" / "G a" both look wrong); everything else is
@@ -108,10 +133,15 @@ export function formatSeatAssignmentPreview(
 // preview key (the caller hasn't been placed yet, OR the route handler
 // hasn't joined the architecture, which is a programming error worth
 // surfacing as "no preview" rather than a crash).
+//
+// ticket carries ticketReady. ticket is null when the assignment has
+// no ticket yet (pre-T-48h) or there's no assignment at all. The
+// derived ticketReady is always present in the view (defaults false).
 export function presentOffer(
   offer: Offer,
   assignment: SeatAssignment | null = null,
   row: Pick<VenueRow, "area" | "rowName"> | null = null,
+  ticket: Pick<TicketSummary, "status"> | null = null,
 ): OfferView {
   const status = offer.status as OfferStatus;
   const view: OfferView = {
@@ -120,6 +150,7 @@ export function presentOffer(
     size: offer.groupSize,
     status,
     placed: PLACED_STATUSES.has(status),
+    ticketReady: ticket ? READY_TICKET_STATUSES.has(ticket.status) : false,
   };
   if (assignment && row) {
     view.preview = formatSeatAssignmentPreview(assignment, row);
