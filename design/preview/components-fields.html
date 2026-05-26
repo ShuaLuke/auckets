@@ -1,0 +1,46 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="_card.css">
+<style>
+  .field { display:flex;flex-direction:column;gap:6px; }
+  .field label { font-family:var(--font-sans);font-size:12px;font-weight:500;color:var(--fg-muted);letter-spacing:0;}
+  .field input, .field select {
+    font-family:var(--font-sans);font-size:14px;color:var(--fg);
+    background:var(--page);border:1px solid var(--border-strong);
+    border-radius:8px;padding:10px 12px;outline:none;
+    transition:border-color 120ms cubic-bezier(.2,.7,.2,1), box-shadow 120ms;
+  }
+  .field input:focus { border-color:#1F4A2E; box-shadow:0 0 0 3px rgba(31,74,46,0.15); }
+  .field-row { display:flex; align-items:center; }
+  .field-row .prefix { padding:10px 4px 10px 12px;color:var(--fg-muted);font-family:var(--font-mono);font-size:14px;border:1px solid var(--border-strong);border-right:none;border-radius:8px 0 0 8px;background:var(--page);}
+  .field-row input.no-prefix-bd { border-left:none;border-radius:0 8px 8px 0; }
+  .stepper { display:inline-flex;align-items:center;border:1px solid var(--border-strong);border-radius:999px;background:var(--page);overflow:hidden;}
+  .stepper button { background:transparent;border:0;width:32px;height:32px;cursor:pointer;font-size:16px;color:var(--fg);}
+  .stepper .val { font-family:var(--font-mono);font-variant-numeric:tabular-nums;padding:0 14px;font-size:14px;}
+</style></head>
+<body>
+<div class="card">
+  <div class="col gap-4">
+    <span class="eyebrow">Fields</span>
+    <div class="row gap-4" style="align-items:flex-end;">
+      <div class="field" style="flex:1.4;">
+        <label>Email</label>
+        <input value="cope@auckets.com">
+      </div>
+      <div class="field" style="flex:1;">
+        <label>Price per ticket</label>
+        <div class="field-row">
+          <span class="prefix">$</span>
+          <input class="no-prefix-bd numeric" value="42.00" style="font-family:var(--font-mono);font-variant-numeric:tabular-nums;width:100%;">
+        </div>
+      </div>
+      <div class="field">
+        <label>Group size</label>
+        <div class="stepper">
+          <button>−</button><span class="val">4</span><button>+</button>
+        </div>
+      </div>
+    </div>
+    <div class="label-meta">Rounded-md inputs (not pill — pill is for buttons). Focus ring is Greenwood at 15% opacity. Numerics use mono with tabular-nums.</div>
+  </div>
+</div>
+</body></html>
