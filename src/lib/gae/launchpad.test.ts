@@ -17,6 +17,7 @@ type RowSpec = {
   tier?: string;
   isGa?: boolean;
   seatNumbers?: string[];
+  lean?: VenueRow["lean"];
 };
 
 function makeRow(spec: RowSpec): VenueRow {
@@ -31,7 +32,7 @@ function makeRow(spec: RowSpec): VenueRow {
     rowRank: spec.rowRank,
     capacity: spec.capacity,
     parity: "ODD",
-    lean: "CENTER",
+    lean: spec.lean ?? "CENTER",
     seatNumbers,
     holds: spec.holds ?? [],
     ...(spec.tier !== undefined && { tier: spec.tier }),
@@ -490,5 +491,138 @@ describe("launchPad — empty and degenerate inputs", () => {
     const row = makeRow({ id: "row-1", rowRank: 1, capacity: 4 });
     launchPad(makeVenue([row]), offers);
     expect(offers.map((o) => o.id)).toEqual(snapshot);
+  });
+});
+
+describe("launchPad — lean-aware placement", () => {
+  it("CENTER puts the best-ranked group in the middle of the cluster", () => {
+    // Three equal groups of 4 fill a 12-seat row exactly. CENTER layout
+    // left-to-right: [rank-1, rank-0, rank-2].
+    const row = makeRow({ id: "row-1", rowRank: 1, capacity: 12, lean: "CENTER" });
+    const offers = [
+      makeOffer({ id: "best", pricePerTicketCents: 9000, groupSize: 4 }),
+      makeOffer({ id: "mid", pricePerTicketCents: 8000, groupSize: 4 }),
+      makeOffer({ id: "low", pricePerTicketCents: 7000, groupSize: 4 }),
+    ];
+
+    const result = launchPad(makeVenue([row]), offers);
+
+    const seatsOf = (id: string) =>
+      result.assignments
+        .filter((a) => a.offerId === id)
+        .map((a) => a.seatNumber);
+    expect(seatsOf("mid")).toEqual(["1", "2", "3", "4"]);
+    expect(seatsOf("best")).toEqual(["5", "6", "7", "8"]);
+    expect(seatsOf("low")).toEqual(["9", "10", "11", "12"]);
+  });
+
+  it("RIGHT puts the best-ranked group at the rightmost run-tail", () => {
+    const row = makeRow({ id: "row-1", rowRank: 1, capacity: 8, lean: "RIGHT" });
+    const offers = [
+      makeOffer({ id: "best", pricePerTicketCents: 9000, groupSize: 3 }),
+      makeOffer({ id: "low", pricePerTicketCents: 3000, groupSize: 2 }),
+    ];
+
+    const result = launchPad(makeVenue([row]), offers);
+
+    const seatsOf = (id: string) =>
+      result.assignments
+        .filter((a) => a.offerId === id)
+        .map((a) => a.seatNumber);
+    expect(seatsOf("best")).toEqual(["6", "7", "8"]);
+    expect(seatsOf("low")).toEqual(["4", "5"]);
+  });
+
+  it("DUAL_AISLE places best at left aisle, second at right aisle", () => {
+    const row = makeRow({
+      id: "row-1",
+      rowRank: 1,
+      capacity: 12,
+      lean: "DUAL_AISLE",
+    });
+    const offers = [
+      makeOffer({ id: "best", pricePerTicketCents: 9000, groupSize: 3 }),
+      makeOffer({ id: "second", pricePerTicketCents: 8000, groupSize: 3 }),
+      makeOffer({ id: "third", pricePerTicketCents: 7000, groupSize: 3 }),
+    ];
+
+    const result = launchPad(makeVenue([row]), offers);
+
+    const seatsOf = (id: string) =>
+      result.assignments
+        .filter((a) => a.offerId === id)
+        .map((a) => a.seatNumber);
+    expect(seatsOf("best")).toEqual(["1", "2", "3"]);
+    expect(seatsOf("second")).toEqual(["10", "11", "12"]);
+    expect(seatsOf("third")).toEqual(["4", "5", "6"]);
+  });
+
+  it("GA rows ignore lean and assign next-available regardless of row.lean", () => {
+    // Same row as the DUAL_AISLE test above, but isGa: true → LEFT semantics.
+    const row = makeRow({
+      id: "ga",
+      rowRank: 1,
+      capacity: 9,
+      isGa: true,
+      lean: "DUAL_AISLE",
+      seatNumbers: Array.from({ length: 9 }, (_, i) => `GA-${i + 1}`),
+    });
+    const offers = [
+      makeOffer({ id: "best", pricePerTicketCents: 9000, groupSize: 3 }),
+      makeOffer({ id: "second", pricePerTicketCents: 8000, groupSize: 3 }),
+    ];
+
+    const result = launchPad(makeVenue([row]), offers);
+
+    const seatsOf = (id: string) =>
+      result.assignments
+        .filter((a) => a.offerId === id)
+        .map((a) => a.seatNumber);
+    expect(seatsOf("best")).toEqual(["GA-1", "GA-2", "GA-3"]);
+    expect(seatsOf("second")).toEqual(["GA-4", "GA-5", "GA-6"]);
+  });
+
+  it("CENTER centers the cluster within an under-filled row", () => {
+    // Single group of 6 in a 10-seat row → padding of 2 on each side.
+    const row = makeRow({ id: "row-1", rowRank: 1, capacity: 10, lean: "CENTER" });
+    const offers = [
+      makeOffer({ id: "A", pricePerTicketCents: 9000, groupSize: 6 }),
+    ];
+
+    const result = launchPad(makeVenue([row]), offers);
+
+    expect(result.assignments.map((a) => a.seatNumber)).toEqual([
+      "3",
+      "4",
+      "5",
+      "6",
+      "7",
+      "8",
+    ]);
+  });
+
+  it("lean is applied per run when holds split the row", () => {
+    // Row of 10 with holds at seats 5 and 6 → two CENTER-lean runs of 4.
+    // Each run gets its own single group of 4 → fills the run exactly.
+    const row = makeRow({
+      id: "row-1",
+      rowRank: 1,
+      capacity: 10,
+      holds: ["5", "6"],
+      lean: "CENTER",
+    });
+    const offers = [
+      makeOffer({ id: "A", pricePerTicketCents: 9000, groupSize: 4 }),
+      makeOffer({ id: "B", pricePerTicketCents: 8000, groupSize: 4 }),
+    ];
+
+    const result = launchPad(makeVenue([row]), offers);
+
+    const seatsOf = (id: string) =>
+      result.assignments
+        .filter((a) => a.offerId === id)
+        .map((a) => a.seatNumber);
+    expect(seatsOf("A")).toEqual(["1", "2", "3", "4"]);
+    expect(seatsOf("B")).toEqual(["7", "8", "9", "10"]);
   });
 });
