@@ -134,11 +134,29 @@ These cannot move until ADR-0003 settles. They're listed in dependency order.
 
 ### 🔵 Polish (any time, post-MVP)
 
-16. **Landing page** full build-out — hero, "How it works," FAQ, marketing copy.
+16. **Landing page** full build-out — hero, "How it works," FAQ, marketing copy. *Re-prioritized 2026-05-27 — see audit queue below.*
 17. **Header / nav redesign** — role-switcher, design-system header.
 18. **Icon system** consolidation — promote `Icon` as a shared primitive instead of ad-hoc lucide-react.
 19. **Allocation confirmation page** ("You're in the room" after submit).
 20. **Bond Phase 2** — `bond_events` table + ledger + auto-accept + rewards + fan profiles. Out of MVP scope per ROADMAP.
+
+---
+
+## 🔎 From 2026-05-27 design-vs-shipped audit
+
+Five UI-fidelity gaps surfaced during a deep audit of the 14 prototype screens (`design/ui_kits/auckets/screens/`) against the 9 shipped pages. Ordered by cost-vs-payoff. Each maps back to a bucket above.
+
+1. **Landing page rebuild** (🟢 → reclassifies #16, ~250 LOC, 1 PR) — single biggest visible gap. Today `src/app/page.tsx` is a 32-LOC stub; the design has 6 sections (hero w/ HeroTicketCard, "How it works" 3-up, comparison band, "For artists" black section w/ JSON allocation_log preview, 6-Q FAQ, footer). All static content, no backend dependencies. FAQ copy in `Landing.jsx` is canonical AUCKETS-voice and answers questions you'd otherwise field manually — worth shipping ahead of any traffic push.
+2. **ShowAdmin tabbed shell** (🟢, refactor only) — the artist `/shows/[id]` page currently stacks all 6 cards vertically; design uses 5 tabs (Overview / Distribution / Provisional placement / Holds / Fans). Pure presentation refactor of existing cards into a tab pattern. No new data needed. Reduces the page's vertical scroll significantly.
+3. **Show detail right column — `RankBoard`** (🟢, 1 PR) — 3-up stat card ("Your rank #X / N", "Median offer", "Capacity %"). All three derivable from existing repos (`getOfferStatsForShow`, `getProvisionalFilledByShow`); only new query is per-user rank within a show's offer pool.
+4. **Show detail right column — `PreviewBanner` + `VenuePreview`** (🟢-ish, 1–2 PRs) — "You'd land in Premium · Row A · seats 7–15" banner plus the seat map with "your seats" highlighted in green. Needs to hook the GAE preview-mode into the fan view (the existing `PreviewAllocationButton` already runs preview as admin; this surfaces the same engine inline for the fan). `DisplacementToast` is a 3rd right-column component but needs polling or push to detect rank drops — best held back as a follow-up after the static pieces ship.
+5. **ArtistDashboard cell re-align** (split 🟢/🔴) — current `SnapshotStats` substitutes *Provisional payout* → *Tickets in pool* and *Capacity filled* → *Top offer* because the real numbers aren't computable yet. Capacity-filled needs a cross-show seat-capacity aggregate query (🟢 — can ship now). Provisional payout needs Stripe fee math (🔴 — blocked on ADR-0003 because the fee math depends on the payment-method storage decision).
+
+Already covered elsewhere; not re-listed:
+
+- Fans · data export tab on ShowAdmin — already #4 above, gated on privacy review per ADR-0017.
+- TicketViewer / Scanner / ResaleFlow / CardFailure / AllocationFinal — already in the 🔴 section.
+- ShowCreate / VenueBuilder — already in the 🟡 section.
 
 ---
 
