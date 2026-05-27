@@ -61,6 +61,9 @@ const ParamsSchema = z.object({
   showId: uuidParam,
 });
 
+import type { AddHoldRow } from "@/components/artist/AddHoldButton";
+import type { VenueRow as GaeVenueRow } from "@/lib/gae/types";
+
 type LoadedView = {
   show: ArtistShowSummaryView;
   tiers: TierBreakdownView;
@@ -68,11 +71,16 @@ type LoadedView = {
   placement: ProvisionalPlacementView;
   distribution: PriceDistributionView;
   holds: HoldsView;
+  // Slim row projection the AddHoldButton dialog needs. Only includes
+  // rows in activeRowIds (NEW-4 partial-venue activation) so the
+  // dialog can't accidentally hold seats in inactive rows.
+  activeHoldRows: AddHoldRow[];
 };
 
 async function loadShowAdmin(
   artistId: string,
   showId: string,
+  viewerIsAdmin: boolean,
 ): Promise<LoadedView | null> {
   const showRow = await getShowById(db, showId);
   if (!showRow) return null;
@@ -132,6 +140,22 @@ async function loadShowAdmin(
     DEFAULT_TZ,
   );
 
+  // Project the architecture's active rows into the slim shape
+  // AddHoldButton expects. Filtering to activeRowIds ensures the
+  // dialog can't accidentally hold seats in rows the show isn't
+  // using (NEW-4 partial-venue activation).
+  const activeRowSet = new Set(summary.activeRowIds);
+  const archRows = showRow.venueArchitecture.rows as readonly GaeVenueRow[];
+  const activeHoldRows: AddHoldRow[] = archRows
+    .filter((r) => activeRowSet.has(r.id))
+    .map((r) => ({
+      id: r.id,
+      rowName: r.rowName,
+      area: r.area,
+      section: r.section,
+      seatNumbers: r.seatNumbers,
+    }));
+
   return {
     show: view,
     tiers: presentTierBreakdown(tierBuckets),
@@ -148,7 +172,8 @@ async function loadShowAdmin(
       assignments,
     ),
     distribution: presentPriceDistribution(distributionBuckets),
-    holds: presentHolds(holdRows, showRow.venueArchitecture),
+    holds: presentHolds(holdRows, showRow.venueArchitecture, viewerIsAdmin),
+    activeHoldRows,
   };
 }
 
@@ -172,10 +197,16 @@ export default async function ArtistShowAdminPage({ params }: Props) {
   // file a Request action — they don't run preview directly. The
   // /api/shows/[id]/allocate endpoint enforces this server-side
   // independently; this check just hides the button when it'd 403.
-  const [data, isAdmin] = await Promise.all([
-    loadShowAdmin(parsed.data.artistId, parsed.data.showId),
-    userIsAdmin(db, userId),
-  ]);
+  //
+  // The admin flag also widens hold mutability — admins can delete
+  // venue-kind holds; non-admin artist members can't. The server
+  // route re-enforces both checks independently.
+  const isAdmin = await userIsAdmin(db, userId);
+  const data = await loadShowAdmin(
+    parsed.data.artistId,
+    parsed.data.showId,
+    isAdmin,
+  );
   if (!data) notFound();
 
   return (
@@ -198,7 +229,11 @@ export default async function ArtistShowAdminPage({ params }: Props) {
           <TierBreakdownCard breakdown={data.tiers} />
           <DistributionCard distribution={data.distribution} />
           <ProvisionalPlacementCard placement={data.placement} />
-          <HoldsCard holds={data.holds} />
+          <HoldsCard
+            holds={data.holds}
+            showId={parsed.data.showId}
+            activeRows={data.activeHoldRows}
+          />
         </div>
       </div>
     </main>

@@ -69,6 +69,7 @@ export {
 } from "./placement";
 
 export {
+  formatSeatNumbers,
   presentHolds,
   type HoldRowView,
   type HoldsView,
