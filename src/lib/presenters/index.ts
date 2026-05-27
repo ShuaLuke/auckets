@@ -67,3 +67,9 @@ export {
   type ProvisionalPlacementView,
   type SeatStatus,
 } from "./placement";
+
+export {
+  presentHolds,
+  type HoldRowView,
+  type HoldsView,
+} from "./holds";

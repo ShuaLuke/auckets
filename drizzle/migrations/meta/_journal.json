@@ -15,6 +15,13 @@
       "when": 1779855665647,
       "tag": "0001_moaning_changeling",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1779883687885,
+      "tag": "0002_robust_jamie_braddock",
+      "breakpoints": true
     }
   ]
 }

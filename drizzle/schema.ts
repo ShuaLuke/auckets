@@ -541,6 +541,55 @@ export const offerRevisions = pgTable(
   ],
 );
 
+// ---------------------------------------------------------------------------
+// 17. holds — seats removed from the allocation pool. Three sources today:
+//
+//   - ADA: accessibility holds set by the venue / AUCKETS staff.
+//   - Artist comp: comps the artist files via the Request action dialog
+//     (or, eventually, an Add hold form on ShowAdmin).
+//   - Venue / Production: tech-related holds (sound desk, camera platform,
+//     etc.) set by venue staff.
+//
+// `kind` drives the artist-vs-venue mutability boundary: artist-kind holds
+// can be edited/removed by the artist themselves; venue-kind holds are
+// read-only to the artist (the prototype renders a trash icon vs.
+// READ-ONLY chip accordingly).
+//
+// Seat references mirror seat_assignments — denormalized venue_row_id as
+// TEXT (matches venue_architectures.rows[].id inside JSONB), seat numbers
+// as a TEXT[]. The GAE skips any seats listed in any holds row at
+// allocation time.
+// ---------------------------------------------------------------------------
+export const holds = pgTable(
+  "holds",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    showId: uuid("show_id")
+      .notNull()
+      // RESTRICT: holds are part of the show's audit trail; never lose
+      // them implicitly when a show row goes away.
+      .references(() => shows.id, { onDelete: "restrict" }),
+    // Free-form source label ("ADA", "Artist comp", "Production", "Venue").
+    // Surfaced as the chip text on the Holds card.
+    source: text("source").notNull(),
+    // 'venue' | 'artist' — see file-level comment.
+    kind: text("kind").notNull(),
+    // Matches venue_architectures.rows[].id (a string inside JSONB), so
+    // TEXT not UUID FK. Same posture as seat_assignments.
+    venueRowId: text("venue_row_id").notNull(),
+    seatNumbers: text("seat_numbers").array().notNull(),
+    // Optional free-form note ("sound desk", "camera platform").
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    // Per-show holds lookup ("show me every hold for show X").
+    index("holds_show_idx").on(table.showId),
+  ],
+);
+
 export const offerIdempotencyKeys = pgTable(
   "offer_idempotency_keys",
   {

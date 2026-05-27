@@ -28,6 +28,13 @@ export {
 } from "./allocation-logs";
 
 export {
+  HOLD_KINDS,
+  listHoldsForShow,
+  type Hold,
+  type HoldKind,
+} from "./holds";
+
+export {
   getOfferByShowAndUser,
   getOfferStatsByShowIds,
   getOfferStatsByTierForShow,
