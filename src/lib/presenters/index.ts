@@ -48,6 +48,12 @@ export {
 } from "./revisions";
 
 export {
+  presentPriceDistribution,
+  type DistributionBucketView,
+  type PriceDistributionView,
+} from "./distribution";
+
+export {
   formatTimeAgo,
   presentRecentActivity,
   type ActivityEvent,

@@ -33,6 +33,7 @@ export {
   getOfferStatsByTierForShow,
   getOfferStatsForArtist,
   getOfferStatsForShow,
+  getPriceDistributionForShow,
   listBidsForUser,
   listOfferRevisionsByOfferIds,
   listOfferRevisionsForOffer,
@@ -44,6 +45,7 @@ export {
   type OfferRevision,
   type OfferStats,
   type OfferTierBucket,
+  type PriceDistributionBucket,
   type UserBidRow,
 } from "./offers";
 
