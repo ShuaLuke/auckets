@@ -30,7 +30,7 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { Db } from "@/lib/db";
 import { artists, offers, shows, venues } from "../../../../drizzle/schema";
 
-type Offer = typeof offers.$inferSelect;
+export type Offer = typeof offers.$inferSelect;
 type OfferInsert = typeof offers.$inferInsert;
 
 export type OfferStats = {
@@ -205,6 +205,29 @@ export async function listPoolOffersForShow(
     .from(offers)
     .where(and(eq(offers.showId, showId), eq(offers.status, "pool")))
     .orderBy(offers.submittedAt);
+}
+
+// Most-recent offers (across all statuses) for a show, used by the
+// ShowAdmin Recent activity feed. Drives the "New offer / Revised"
+// derivation in the presenter — each row yields up to two events
+// (submitted, plus revised if revisedAt is not null).
+//
+// LIMIT 50 caps the scan: even if a show ends up with 50 distinct
+// offers, the feed only renders ~10 events. The LIMIT is the safety
+// net for a pathological case (50k-offer show) where SELECT * without
+// it would stream too much; ORDER BY submittedAt DESC means we always
+// keep the most recent edge.
+export async function listRecentOffersForShow(
+  db: Db,
+  showId: string,
+  limit = 50,
+): Promise<Offer[]> {
+  return db
+    .select()
+    .from(offers)
+    .where(eq(offers.showId, showId))
+    .orderBy(desc(offers.submittedAt))
+    .limit(limit);
 }
 
 export async function getOfferStatsForShow(

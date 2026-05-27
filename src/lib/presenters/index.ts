@@ -40,3 +40,9 @@ export {
 } from "./artist-shows";
 
 export { presentBidView, type BidView } from "./bids";
+
+export {
+  formatTimeAgo,
+  presentRecentActivity,
+  type ActivityEvent,
+} from "./activity";
