@@ -4,8 +4,14 @@
 // but doesn't transition status.
 //
 // Flow: auth → admin gate → Zod-validate path + body → conditional
-// UPDATE (status='open') → 200 with the updated row, 409 if the row
-// was already actioned, 404 if it doesn't exist.
+// UPDATE (status='open') → fire best-effort ops notifications (Slack +
+// email) → 200 with the updated row, 409 if the row was already
+// actioned, 404 if it doesn't exist.
+//
+// Notifications use Promise.allSettled internally so a Slack or
+// Resend failure never surfaces as an HTTP error. The notification
+// context (artist name, show venue, filer email) is loaded after the
+// UPDATE via two fast indexed lookups.
 
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
@@ -16,8 +22,14 @@ import {
   denyArtistRequest,
   ensureUserMirror,
   executeArtistRequest,
+  getEmailsByUserIds,
+  getShowById,
   userIsAdmin,
 } from "@/lib/db/repositories";
+import {
+  KIND_LABELS,
+  notifyRequestActioned,
+} from "@/lib/notifications";
 import { uuidParam } from "@/lib/validators/uuid";
 
 export const dynamic = "force-dynamic";
@@ -129,6 +141,27 @@ export async function PATCH(
       `executeArtistRequest/denyArtistRequest returned a row without executedAt: ${row.id}`,
     );
   }
+
+  // Fire ops notifications (Slack + email) before responding. Both
+  // channels are best-effort and errors are caught inside
+  // notifyRequestActioned, so this never throws. We load show context
+  // + filer email in parallel — two fast indexed lookups.
+  const [showRow, emailMap] = await Promise.all([
+    getShowById(db, row.showId),
+    getEmailsByUserIds(db, [row.requestedBy]),
+  ]);
+  await notifyRequestActioned({
+    requestId: row.id,
+    kindLabel: KIND_LABELS[row.kind] ?? row.kind,
+    status: row.status as "executed" | "denied",
+    executorNotes: row.notes,        // schema field: artist_requests.notes
+    executorEmail: email,
+    filerEmail: emailMap.get(row.requestedBy) ?? row.requestedBy,
+    artistName: showRow?.artist.name ?? "unknown",
+    showContext: [showRow?.venue.name, showRow?.venue.city]
+      .filter(Boolean)
+      .join(" · "),
+  });
 
   return NextResponse.json({
     id: row.id,
