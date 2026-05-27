@@ -73,3 +73,8 @@ export {
   type HoldRowView,
   type HoldsView,
 } from "./holds";
+
+export {
+  presentArtistRequestInboxRow,
+  type ArtistRequestInboxView,
+} from "./artist-requests";

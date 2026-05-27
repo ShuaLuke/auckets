@@ -14,10 +14,14 @@ export {
   ARTIST_REQUEST_KINDS,
   ARTIST_REQUEST_STATUSES,
   createArtistRequest,
+  denyArtistRequest,
+  executeArtistRequest,
   isArtistRequestFiledBy,
+  listArtistRequestsForAdminInbox,
   listArtistRequestsForShow,
   listOpenArtistRequests,
   type ArtistRequest,
+  type ArtistRequestInboxRow,
   type ArtistRequestKind,
   type ArtistRequestStatus,
 } from "./artist-requests";
@@ -56,7 +60,11 @@ export {
   type UserBidRow,
 } from "./offers";
 
-export { ensureUserMirror, userIsAdmin } from "./users";
+export {
+  ensureUserMirror,
+  getEmailsByUserIds,
+  userIsAdmin,
+} from "./users";
 
 export {
   getShowById,
