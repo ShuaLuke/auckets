@@ -25,10 +25,10 @@
 // data); `getOfferByShowAndUser` strictly filters by the calling userId
 // so it can only ever return the caller's own offer.
 
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
 import type { Db } from "@/lib/db";
-import { offers, shows } from "../../../../drizzle/schema";
+import { artists, offers, shows, venues } from "../../../../drizzle/schema";
 
 type Offer = typeof offers.$inferSelect;
 type OfferInsert = typeof offers.$inferInsert;
@@ -121,6 +121,67 @@ export async function listOffersForUser(
   userId: string,
 ): Promise<Offer[]> {
   return db.select().from(offers).where(eq(offers.userId, userId));
+}
+
+// Bid history view: one row per offer the user has placed, across all
+// shows (open + paused + closed + allocating + allocated + complete).
+// Joins enough show/artist/venue context so the presenter can render
+// each bid card without a follow-up query.
+//
+// Ordering: by submittedAt DESC so the most recent bid is first. (The
+// caller still sees the current state of each offer — there's no
+// revision history yet; that's parked as a follow-up per
+// project_offer_revision_history memory.)
+export type UserBidRow = {
+  offer: Offer;
+  show: {
+    id: string;
+    status: typeof shows.$inferSelect.status;
+    doorsAt: Date;
+    bindingAllocationAt: Date;
+    pausedAt: Date | null;
+    artistName: string;
+    venueName: string;
+    venueCity: string | null;
+  };
+};
+
+export async function listBidsForUser(
+  db: Db,
+  userId: string,
+): Promise<UserBidRow[]> {
+  const rows = await db
+    .select({
+      offer: offers,
+      showId: shows.id,
+      showStatus: shows.status,
+      doorsAt: shows.doorsAt,
+      bindingAllocationAt: shows.bindingAllocationAt,
+      pausedAt: shows.pausedAt,
+      artistName: artists.name,
+      venueName: venues.name,
+      venueCity: venues.city,
+    })
+    .from(offers)
+    .innerJoin(shows, eq(offers.showId, shows.id))
+    .innerJoin(artists, eq(shows.artistId, artists.id))
+    .innerJoin(venues, eq(shows.venueId, venues.id))
+    .where(eq(offers.userId, userId))
+    .orderBy(desc(offers.submittedAt));
+
+  return rows.map((row) => ({
+    offer: row.offer,
+    show: {
+      id: row.showId,
+      status: row.showStatus,
+      doorsAt: row.doorsAt,
+      bindingAllocationAt: row.bindingAllocationAt,
+      pausedAt: row.pausedAt,
+      artistName: row.artistName,
+      venueName: row.venueName,
+      venueCity: row.venueCity,
+    },
+  }));
 }
 
 // All offers in the current allocation pool for a show. Drives the
