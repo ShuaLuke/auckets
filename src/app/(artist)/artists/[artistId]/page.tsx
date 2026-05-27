@@ -89,10 +89,26 @@ async function loadArtistDashboard(
     ),
   );
 
+  // Cross-show fill totals for the snapshot's "Capacity filled" cell.
+  // Counts every show in the artist's row list. Pre-binding states are
+  // the meaningful set for "if allocation ran now", so we exclude shows
+  // whose status is already past the binding gate (allocated /
+  // complete) — those have permanent placements, not provisional ones.
+  let totalFilled = 0;
+  let totalCapacity = 0;
+  for (const show of shows) {
+    if (show.status === "allocated" || show.status === "complete") continue;
+    totalFilled += show.provisionalFilled;
+    totalCapacity += show.capacity;
+  }
+
   return {
     artistName: artist.name,
     shows,
-    snapshot: presentArtistSnapshotStats(snapshotStats),
+    snapshot: presentArtistSnapshotStats(snapshotStats, {
+      totalFilled,
+      totalCapacity,
+    }),
   };
 }
 

@@ -47,8 +47,8 @@ For a system where allocation correctness matters and we may need row-level lock
 
 ## ADR-0003 — Stripe: SetupIntent + charge on acceptance
 
-**Status:** Accepted, pending hold-window decision (NEW-1)
-**Date:** 2026-05-25
+**Status:** Accepted, working assumption: ≤6-day offer window + auth-based hold (pending Cope confirmation)
+**Date:** 2026-05-25 (original) · 2026-05-27 (working-assumption note)
 
 **Decision:** When a fan submits an offer, we create a Stripe SetupIntent to tokenize their card. We do **not** create a PaymentIntent or place a hold. When allocation runs and the offer is accepted, we create a PaymentIntent against the saved payment method and confirm immediately.
 
@@ -65,6 +65,17 @@ SetupIntent + charge on acceptance is the standard modern ticketing pattern. The
 **Consequences:** We need a payment-failure handling flow. We need a grace window (proposed: 24 hours) for fans whose cards fail to update payment and reclaim their seats before they go back to the pool.
 
 **2026-05-25 note:** Cope flagged "still outstanding need to do research on this" in v2. The SetupIntent path stands as the recommendation; if Cope's research lands on "keep offer windows ≤ 6 days and use a normal Stripe pre-auth," we revisit. Don't ship the offer-submission flow (Week 4) until this is settled.
+
+**2026-05-27 note — working assumption:** Per Julia (via session handoff), we're locking in **offer windows ≤ 6 days + auth-based hold** as a working assumption to unblock downstream development. This is the alternative the 2026-05-25 note anticipated. Implementation path under this assumption:
+
+- Offer submit creates a Stripe `PaymentIntent` with `capture_method: "manual"` (an auth-only hold) for the offer's full amount (price × group_size).
+- The auth holds the fan's funds for ≤6 days, within Stripe's 7-day reliable-auth window for most card networks.
+- At binding allocation (T-24h before doors), placed offers get their PaymentIntent captured; unplaced offers get the auth cancelled (funds released, fan pays $0).
+- No SetupIntent on the happy path; SetupIntent stays as the documented fallback if Cope eventually wants windows > 6 days, in which case we'd revert to "SetupIntent + charge at acceptance" per the original ADR body above.
+
+**This assumption is not confirmed by Cope yet.** It's recorded here so subsequent slices (real `POST /api/offers`, binding allocation job, ticket issuance, card-failure recovery, resale) can build against a concrete model rather than block. Once Cope confirms (or rejects) the ≤6-day constraint, this note becomes the canonical decision OR we revert to the SetupIntent body above and revisit the slices built against the assumption.
+
+**What this unblocks today:** queue items 8–15 in [REMAINING_WORK.md](REMAINING_WORK.md) move from 🔴 to 🟡. The dev stub (`ALLOW_DEV_OFFER_STUB`) stays in place until the real path ships and is verified.
 
 ---
 

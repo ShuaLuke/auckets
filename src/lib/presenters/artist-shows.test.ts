@@ -231,7 +231,7 @@ describe("presentArtistShowSummary", () => {
 });
 
 describe("presentArtistSnapshotStats", () => {
-  it("renders the populated cross-show snapshot", () => {
+  it("renders the populated cross-show snapshot (no fill totals passed → capacityFilled defaults to '—')", () => {
     const stats: OfferStats = {
       count: 180,
       ticketsCount: 612,
@@ -244,6 +244,8 @@ describe("presentArtistSnapshotStats", () => {
       ticketsInPool: 612,
       medianOffer: "$26.00",
       topOffer: "$120.00",
+      capacityFilled: "—",
+      capacityFilledSub: "no shows yet",
     });
   });
 
@@ -259,7 +261,43 @@ describe("presentArtistSnapshotStats", () => {
       ticketsInPool: 0,
       medianOffer: "—",
       topOffer: "—",
+      capacityFilled: "—",
+      capacityFilledSub: "no shows yet",
     });
+  });
+
+  it("renders capacityFilled as a rounded percentage when totals are passed", () => {
+    // 487 / 624 = 0.7804... → 78%
+    const stats: OfferStats = {
+      count: 180,
+      ticketsCount: 612,
+      medianCents: 2600,
+      topCents: 12000,
+    };
+    const view = presentArtistSnapshotStats(stats, {
+      totalFilled: 487,
+      totalCapacity: 624,
+    });
+    expect(view.capacityFilled).toBe("78%");
+    expect(view.capacityFilledSub).toBe("487 / 624 provisionally placed");
+  });
+
+  it("renders 0% (not NaN) when totalCapacity is positive but nothing is placed yet", () => {
+    const view = presentArtistSnapshotStats(
+      { count: 0, ticketsCount: 0, medianCents: null, topCents: null },
+      { totalFilled: 0, totalCapacity: 200 },
+    );
+    expect(view.capacityFilled).toBe("0%");
+    expect(view.capacityFilledSub).toBe("0 / 200 provisionally placed");
+  });
+
+  it("falls back to '—' when totalCapacity is 0 (no architecture for any show) — never renders NaN%", () => {
+    const view = presentArtistSnapshotStats(
+      { count: 12, ticketsCount: 40, medianCents: 3000, topCents: 6000 },
+      { totalFilled: 0, totalCapacity: 0 },
+    );
+    expect(view.capacityFilled).toBe("—");
+    expect(view.capacityFilledSub).toBe("no shows yet");
   });
 });
 
