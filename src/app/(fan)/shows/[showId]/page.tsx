@@ -12,10 +12,10 @@ import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
 
 import { OfferComposer } from "@/components/show/OfferComposer";
+import { PreviewBanner } from "@/components/show/PreviewBanner";
 import { RankBoard } from "@/components/show/RankBoard";
 import { ShowHeader } from "@/components/show/ShowHeader";
-import { Card } from "@/components/ui/Card";
-import { Eyebrow } from "@/components/ui/Eyebrow";
+import { VenuePreview } from "@/components/show/VenuePreview";
 import { db } from "@/lib/db";
 import {
   getOfferByShowAndUser,
@@ -25,14 +25,19 @@ import {
   getShowById,
   getTicketByAssignmentId,
   getUserRankInShowPool,
+  listSeatAssignmentsForShow,
 } from "@/lib/db/repositories";
 import {
   DEFAULT_TZ,
   computeShowCapacity,
+  presentFanVenuePreview,
+  presentPreviewBanner,
   presentRankBoard,
   presentShowDetail,
+  type PreviewBannerView,
   type RankBoardView,
   type ShowDetailView,
+  type VenuePreviewView,
 } from "@/lib/presenters";
 import { uuidParam } from "@/lib/validators/uuid";
 
@@ -45,22 +50,33 @@ const ParamsSchema = z.object({
 type LoadedShowDetail = {
   show: ShowDetailView;
   rankBoard: RankBoardView;
+  previewBanner: PreviewBannerView;
+  venuePreview: VenuePreviewView;
+  venueName: string;
 };
 
 async function loadShowDetail(
   showId: string,
   userId: string,
 ): Promise<LoadedShowDetail | null> {
-  // Mirrors GET /api/shows/[showId]'s loading plus the RankBoard reads.
-  // See the route handler for rationale on the parallel reads and
-  // conditional ticket fetch. Stats + provisionalFilled + userRank ride
-  // along in the same Promise.all to keep the round-trip count flat.
-  const [show, userOffer, stats, provisionalFilled, userRank] = await Promise.all([
+  // Mirrors GET /api/shows/[showId]'s loading plus the right-column
+  // reads (RankBoard + PreviewBanner + VenuePreview). All independent
+  // queries ride along in the same Promise.all to keep the round-trip
+  // count flat.
+  const [
+    show,
+    userOffer,
+    stats,
+    provisionalFilled,
+    userRank,
+    allAssignments,
+  ] = await Promise.all([
     getShowById(db, showId),
     getOfferByShowAndUser(db, showId, userId),
     getOfferStatsForShow(db, showId),
     getProvisionalFilledByShow(db, showId),
     getUserRankInShowPool(db, showId, userId),
+    listSeatAssignmentsForShow(db, showId),
   ]);
   if (!show) return null;
 
@@ -69,6 +85,15 @@ async function loadShowDetail(
     : null;
   const userTicket = userAssignment
     ? await getTicketByAssignmentId(db, userAssignment.id)
+    : null;
+
+  // Resolve the architecture row for the user's assignment so the
+  // banner can render "Premium · Row A" without re-walking the rows
+  // in each component.
+  const userAssignmentRow = userAssignment
+    ? show.venueArchitecture.rows.find(
+        (r) => r.id === userAssignment.venueRowId,
+      ) ?? null
     : null;
 
   const now = new Date();
@@ -87,7 +112,26 @@ async function loadShowDetail(
   );
   const rankBoard = presentRankBoard(userRank, stats, provisionalFilled, capacity);
 
-  return { show: view, rankBoard };
+  const previewBanner = presentPreviewBanner(
+    userOffer,
+    userAssignment,
+    userAssignmentRow,
+  );
+
+  const venuePreview = presentFanVenuePreview(
+    show.venueArchitecture,
+    show.activeRowIds as string[],
+    allAssignments,
+    userAssignment,
+  );
+
+  return {
+    show: view,
+    rankBoard,
+    previewBanner,
+    venuePreview,
+    venueName: show.venue.name,
+  };
 }
 
 type Props = {
@@ -130,23 +174,14 @@ export default async function ShowPage({ params }: Props) {
             existingOffer={data.show.yourOffer ?? null}
           />
 
-          {/* Right column — RankBoard ships in this slice. PreviewBanner
-              + VenuePreview are the design's two remaining right-column
-              components (queue item 4). The placeholder below shrinks
-              to cover only those two until they land. */}
+          {/* Right column — full design fidelity except for
+              DisplacementToast, which needs polling/push and is a
+              follow-up. Card order matches the prototype: live preview
+              banner first, venue map second, RankBoard third. */}
           <div className="flex flex-col gap-5">
+            <PreviewBanner view={data.previewBanner} />
+            <VenuePreview view={data.venuePreview} venueName={data.venueName} />
             <RankBoard view={data.rankBoard} />
-            <Card variant="warm" className="p-[18px]">
-              <Eyebrow className="mb-2">Live preview</Eyebrow>
-              <p
-                className="font-sans text-[13px]"
-                style={{ color: "var(--ink-500)", lineHeight: 1.55 }}
-              >
-                Where your offer would land — venue map + provisional
-                row + seat highlights — lights up here once the
-                preview-allocation slice ships.
-              </p>
-            </Card>
           </div>
         </div>
       </div>
