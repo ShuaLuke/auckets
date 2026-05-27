@@ -28,6 +28,7 @@ import {
   getShowById,
   listRecentOffersForShow,
   userCanManageArtist,
+  userIsAdmin,
 } from "@/lib/db/repositories";
 import {
   DEFAULT_TZ,
@@ -126,7 +127,14 @@ export default async function ArtistShowAdminPage({ params }: Props) {
   const allowed = await userCanManageArtist(db, userId, parsed.data.artistId);
   if (!allowed) notFound();
 
-  const data = await loadShowAdmin(parsed.data.artistId, parsed.data.showId);
+  // Admin gate on the Preview allocation button. ADR-0013: even artists
+  // file a Request action — they don't run preview directly. The
+  // /api/shows/[id]/allocate endpoint enforces this server-side
+  // independently; this check just hides the button when it'd 403.
+  const [data, isAdmin] = await Promise.all([
+    loadShowAdmin(parsed.data.artistId, parsed.data.showId),
+    userIsAdmin(db, userId),
+  ]);
   if (!data) notFound();
 
   return (
@@ -135,7 +143,11 @@ export default async function ArtistShowAdminPage({ params }: Props) {
       style={{ background: "var(--paper)" }}
     >
       <div className="mx-auto max-w-[1200px] px-8 pb-16 pt-8">
-        <ShowAdminHeader artistId={parsed.data.artistId} show={data.show} />
+        <ShowAdminHeader
+          artistId={parsed.data.artistId}
+          show={data.show}
+          canRunPreview={isAdmin}
+        />
 
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-4">
