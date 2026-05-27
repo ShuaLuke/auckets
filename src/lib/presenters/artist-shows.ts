@@ -30,6 +30,7 @@ import { formatCents } from "@/lib/money";
 
 import type {
   OfferStats,
+  OfferTierBucket,
   ShowSummary,
   VenueArchitecture,
 } from "@/lib/db/repositories";
@@ -43,7 +44,12 @@ import {
 const EMPTY_POOL_PLACEHOLDER = "—";
 
 export type ArtistShowSummaryView = ShowSummaryView & {
+  // Number of distinct offers in the pool — one offer per fan.
   offers: number;
+  // Total tickets demanded across all offers (sum of group_size). Surfaces
+  // "1 offer for 10 tickets" so the artist sees demand volume, not just
+  // unique-fan count.
+  ticketsCount: number;
   medianPrice: string;
   topPrice: string;
   provisionalFilled: number;
@@ -52,6 +58,7 @@ export type ArtistShowSummaryView = ShowSummaryView & {
 
 export type ArtistSnapshotStatsView = {
   offersInPool: number;
+  ticketsInPool: number;
   medianOffer: string;
   topOffer: string;
 };
@@ -104,6 +111,7 @@ export function presentArtistShowSummary(
   return {
     ...base,
     offers: stats.count,
+    ticketsCount: stats.ticketsCount,
     medianPrice: formatStat(stats.medianCents),
     topPrice: formatStat(stats.topCents),
     provisionalFilled,
@@ -111,11 +119,94 @@ export function presentArtistShowSummary(
   };
 }
 
+// Tier breakdown — one tile per tier option that the OfferComposer
+// actually surfaces today (3 buckets). The 4th schema value
+// 'this_or_better' isn't exposed by the composer, so any rows that
+// somehow have it get folded into the 'anywhere' bucket as a safe
+// default — they're at minimum "willing to take anywhere they fit."
+// preferredTier is hardcoded to 'premium' for the two tier-bound
+// composer options (see OfferComposer notes); the bucket-matching
+// here is intentionally lenient on preferredTier so future shows
+// with non-premium tiers don't require a presenter rewrite.
+export type TierBucketView = {
+  key: "premium-only" | "premium-or-below" | "anywhere";
+  label: string;
+  hint: string;
+  offers: number;
+  tickets: number;
+};
+
+export type TierBreakdownView = {
+  buckets: readonly TierBucketView[];
+  totalOffers: number;
+  totalTickets: number;
+};
+
+const TIER_BUCKET_TEMPLATE: ReadonlyArray<{
+  key: TierBucketView["key"];
+  label: string;
+  hint: string;
+}> = [
+  {
+    key: "premium-only",
+    label: "Premium only",
+    hint: "Place me in premium or not at all.",
+  },
+  {
+    key: "premium-or-below",
+    label: "Premium or below",
+    hint: "Waterfall me down if premium fills.",
+  },
+  {
+    key: "anywhere",
+    label: "Anywhere I fit",
+    hint: "I just want a seat.",
+  },
+];
+
+function bucketKeyFor(
+  row: Pick<OfferTierBucket, "tierPreference" | "preferredTier">,
+): TierBucketView["key"] {
+  if (row.tierPreference === "specific") return "premium-only";
+  if (row.tierPreference === "this_or_worse") return "premium-or-below";
+  // 'any' AND the deferred 'this_or_better' both fold here. The latter
+  // is "I'm willing to go up from this tier" — semantically still
+  // "I'll take a seat" once it can't be upgraded, so 'anywhere' is
+  // the least-wrong placement until the composer surfaces it.
+  return "anywhere";
+}
+
+export function presentTierBreakdown(
+  rows: readonly OfferTierBucket[],
+): TierBreakdownView {
+  const counts = new Map<TierBucketView["key"], { offers: number; tickets: number }>();
+  for (const t of TIER_BUCKET_TEMPLATE) {
+    counts.set(t.key, { offers: 0, tickets: 0 });
+  }
+  let totalOffers = 0;
+  let totalTickets = 0;
+  for (const row of rows) {
+    const key = bucketKeyFor(row);
+    const acc = counts.get(key);
+    if (!acc) continue;
+    acc.offers += row.count;
+    acc.tickets += row.ticketsCount;
+    totalOffers += row.count;
+    totalTickets += row.ticketsCount;
+  }
+  const buckets = TIER_BUCKET_TEMPLATE.map((t) => {
+    const acc = counts.get(t.key) ?? { offers: 0, tickets: 0 };
+    return { ...t, offers: acc.offers, tickets: acc.tickets };
+  });
+  return { buckets, totalOffers, totalTickets };
+}
+
 export function presentArtistSnapshotStats(
   stats: OfferStats,
 ): ArtistSnapshotStatsView {
   return {
     offersInPool: stats.count,
+    ticketsInPool: stats.ticketsCount,
     medianOffer: formatStat(stats.medianCents),
     topOffer: formatStat(stats.topCents),
   };

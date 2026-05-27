@@ -32,6 +32,9 @@ export {
   computeShowCapacity,
   presentArtistShowSummary,
   presentArtistSnapshotStats,
+  presentTierBreakdown,
   type ArtistShowSummaryView,
   type ArtistSnapshotStatsView,
+  type TierBreakdownView,
+  type TierBucketView,
 } from "./artist-shows";

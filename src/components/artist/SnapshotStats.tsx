@@ -2,17 +2,20 @@
 // port of the SnapshotStat grid in design/ui_kits/auckets/screens/
 // ArtistDashboard.jsx (lines 49-55, 68-88).
 //
-// The prototype shows four cells: Offers in pool / Provisional payout /
-// Median offer / Capacity filled. We render three — the two deferred
-// stats (provisionalPayout, capacityFilled) need cross-show seat-and-
-// capacity aggregation that lib/presenters/artist-shows.ts deliberately
-// hasn't shipped yet. Documented in that file's header comment. The
-// third cell here is Top offer, which the API exposes; the prototype
-// doesn't slot it in but it's useful signal for the artist while the
-// "real" two stats are still in flight.
+// Cell mapping vs. prototype (4 cells either way):
+//   prototype                | this UI
+//   ------------------------ | --------------------------
+//   Offers in pool           | Offers in pool
+//   Provisional payout       | Tickets in pool (replaces — payout deferred)
+//   Median offer             | Median offer
+//   Capacity filled          | Top offer (replaces — capacity-filled deferred)
 //
-// Brand-toned cell (the prototype's accent for "Capacity filled") is
-// kept off until we have something worth highlighting in it.
+// "Provisional payout" + "Capacity filled" need cross-show seat-and-
+// capacity aggregation lib/presenters/artist-shows.ts deliberately
+// hasn't shipped yet (documented in that file's header comment).
+// "Tickets in pool" and "Top offer" are presenter-derivable from data
+// the API exposes today, so they're the least-wrong substitutes
+// until the deferred two land.
 
 import { type ArtistSnapshotStatsView } from "@/lib/presenters";
 
@@ -66,12 +69,18 @@ function Cell({ label, value, sub, tone = "default" }: CellProps) {
 
 export function SnapshotStats({ stats, showCount }: Props) {
   const showWord = showCount === 1 ? "show" : "shows";
+  const ticketsWord = stats.ticketsInPool === 1 ? "ticket" : "tickets";
   return (
-    <div className="grid grid-cols-3 gap-3">
+    <div className="grid grid-cols-4 gap-3">
       <Cell
         label="Offers in pool"
         value={String(stats.offersInPool)}
         sub={`across ${showCount} ${showWord}`}
+      />
+      <Cell
+        label="Tickets in pool"
+        value={String(stats.ticketsInPool)}
+        sub={`total ${ticketsWord} requested`}
       />
       <Cell
         label="Median offer"

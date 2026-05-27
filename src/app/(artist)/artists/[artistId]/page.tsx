@@ -75,7 +75,12 @@ async function loadArtistDashboard(
   const shows = rows.map((row) =>
     presentArtistShowSummary(
       row,
-      offerStats.get(row.id) ?? { count: 0, medianCents: null, topCents: null },
+      offerStats.get(row.id) ?? {
+        count: 0,
+        ticketsCount: 0,
+        medianCents: null,
+        topCents: null,
+      },
       provisionalFilled.get(row.id) ?? 0,
       architectureById.get(row.venueArchitectureId) ?? null,
       row.activeRowIds,
@@ -114,6 +119,7 @@ export default async function ArtistDashboardPage({ params }: Props) {
   const showCount = data.shows.length;
   const showWord = showCount === 1 ? "show" : "shows";
   const pluralOffers = data.snapshot.offersInPool === 1 ? "offer" : "offers";
+  const pluralTickets = data.snapshot.ticketsInPool === 1 ? "ticket" : "tickets";
 
   return (
     <main
@@ -130,7 +136,7 @@ export default async function ArtistDashboardPage({ params }: Props) {
               style={{ color: "var(--fg-muted)" }}
             >
               {showCount} {showWord} · {data.snapshot.offersInPool}{" "}
-              {pluralOffers} in pool
+              {pluralOffers} for {data.snapshot.ticketsInPool} {pluralTickets}
             </p>
           </div>
           {/* Prototype has a "New show" button here. Show-creation flow
@@ -156,7 +162,11 @@ export default async function ArtistDashboardPage({ params }: Props) {
         ) : (
           <div className="flex flex-col gap-3">
             {data.shows.map((show) => (
-              <ArtistShowRow key={show.id} show={show} />
+              <ArtistShowRow
+                key={show.id}
+                artistId={parsed.data.artistId}
+                show={show}
+              />
             ))}
           </div>
         )}

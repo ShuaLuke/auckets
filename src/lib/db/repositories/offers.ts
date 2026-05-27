@@ -34,9 +34,31 @@ type Offer = typeof offers.$inferSelect;
 type OfferInsert = typeof offers.$inferInsert;
 
 export type OfferStats = {
+  // Number of offers in the pool. One offer can request multiple
+  // tickets via groupSize — see ticketsCount for total seats demanded.
   count: number;
+  // SUM(group_size) over the same offers in `count`. Surfaces "1 offer
+  // for 10 tickets" — useful for the artist's view since a small
+  // count can still represent a large amount of demand.
+  ticketsCount: number;
   medianCents: number | null;
   topCents: number | null;
+};
+
+// One bucket of the per-show tier breakdown. Mirrors the OfferComposer's
+// three tier options (drives the labels artists/fans both see):
+//   "Premium only"      → tier_preference='specific'      preferred='premium'
+//   "Premium or below"  → tier_preference='this_or_worse' preferred='premium'
+//   "Anywhere I fit"    → tier_preference='any'           preferred IS NULL
+// The remaining 4th schema value ('this_or_better') exists in the table
+// but isn't surfaced in any UI today. It rolls up under preferredTier=null
+// in the breakdown for now; an explicit tile lands when the composer
+// starts offering it.
+export type OfferTierBucket = {
+  tierPreference: "specific" | "this_or_better" | "this_or_worse" | "any";
+  preferredTier: string | null;
+  count: number;
+  ticketsCount: number;
 };
 
 // Statuses that count toward "active pool" aggregates. See the file-level
@@ -57,6 +79,7 @@ const PRE_BINDING_SHOW_STATUSES = [
 
 const EMPTY_STATS: OfferStats = {
   count: 0,
+  ticketsCount: 0,
   medianCents: null,
   topCents: null,
 };
@@ -136,6 +159,7 @@ export async function getOfferStatsForShow(
   const rows = await db
     .select({
       count: sql<number>`COUNT(*)::int`,
+      ticketsCount: sql<number>`COALESCE(SUM(${offers.groupSize}), 0)::int`,
       medianCents: sql<string | null>`PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ${offers.pricePerTicketCents})`,
       topCents: sql<number | null>`MAX(${offers.pricePerTicketCents})`,
     })
@@ -151,6 +175,7 @@ export async function getOfferStatsForShow(
   if (!row) return EMPTY_STATS;
   return {
     count: Number(row.count) || 0,
+    ticketsCount: Number(row.ticketsCount) || 0,
     medianCents: parseMedian(row.medianCents),
     topCents: parseTop(row.topCents),
   };
@@ -170,6 +195,7 @@ export async function getOfferStatsByShowIds(
     .select({
       showId: offers.showId,
       count: sql<number>`COUNT(*)::int`,
+      ticketsCount: sql<number>`COALESCE(SUM(${offers.groupSize}), 0)::int`,
       medianCents: sql<string | null>`PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ${offers.pricePerTicketCents})`,
       topCents: sql<number | null>`MAX(${offers.pricePerTicketCents})`,
     })
@@ -185,6 +211,7 @@ export async function getOfferStatsByShowIds(
   for (const row of rows) {
     out.set(row.showId, {
       count: Number(row.count) || 0,
+      ticketsCount: Number(row.ticketsCount) || 0,
       medianCents: parseMedian(row.medianCents),
       topCents: parseTop(row.topCents),
     });
@@ -264,6 +291,7 @@ export async function getOfferStatsForArtist(
   const rows = await db
     .select({
       count: sql<number>`COUNT(*)::int`,
+      ticketsCount: sql<number>`COALESCE(SUM(${offers.groupSize}), 0)::int`,
       medianCents: sql<string | null>`PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ${offers.pricePerTicketCents})`,
       topCents: sql<number | null>`MAX(${offers.pricePerTicketCents})`,
     })
@@ -281,7 +309,45 @@ export async function getOfferStatsForArtist(
   if (!row) return EMPTY_STATS;
   return {
     count: Number(row.count) || 0,
+    ticketsCount: Number(row.ticketsCount) || 0,
     medianCents: parseMedian(row.medianCents),
     topCents: parseTop(row.topCents),
   };
+}
+
+// Per-tier breakdown for the artist's show-admin page. Groups by
+// (tier_preference, preferred_tier) over the active pool so the UI
+// can render one tile per visible tier option. Single round-trip;
+// callers fold the rows into the three composer-visible buckets in
+// the presenter.
+export async function getOfferStatsByTierForShow(
+  db: Db,
+  showId: string,
+): Promise<OfferTierBucket[]> {
+  const rows = await db
+    .select({
+      tierPreference: offers.tierPreference,
+      preferredTier: offers.preferredTier,
+      count: sql<number>`COUNT(*)::int`,
+      ticketsCount: sql<number>`COALESCE(SUM(${offers.groupSize}), 0)::int`,
+    })
+    .from(offers)
+    .where(
+      and(
+        eq(offers.showId, showId),
+        inArray(offers.status, [...ACTIVE_POOL_STATUSES]),
+      ),
+    )
+    .groupBy(offers.tierPreference, offers.preferredTier);
+  return rows.map((row) => ({
+    // The shows.tier_preference column is typed `text` in the schema so
+    // Drizzle hands it back as a plain `string`. The schema CHECK
+    // constraint restricts it to the four enum values, so the narrowing
+    // cast is safe — any value outside the union would have been
+    // rejected at insert time.
+    tierPreference: row.tierPreference as OfferTierBucket["tierPreference"],
+    preferredTier: row.preferredTier,
+    count: Number(row.count) || 0,
+    ticketsCount: Number(row.ticketsCount) || 0,
+  }));
 }

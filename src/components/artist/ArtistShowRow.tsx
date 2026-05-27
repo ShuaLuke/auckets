@@ -4,18 +4,26 @@
 // (lines 90-150).
 //
 // Differences from the prototype (each tracked in the PR description):
+//   - "Offers" column is replaced by "Tickets" (sum of group_size).
+//     One offer can request many tickets — the artist cares about
+//     total demand, not unique-fan count.
 //   - "Payout" column is replaced by "Top". The prototype's payout is a
 //     projection (≈ provisionalFilled × medianCents) that the API
 //     doesn't compute. Top is a real per-show stat the API gives us;
 //     swapping in here keeps three columns without inventing math.
-//   - No onClick / button wrapper today. Artist show detail page lands
-//     in a later slice; until then the row is informational.
+//   - Row is a Link → /artists/[artistId]/shows/[showId] (the per-show
+//     ShowAdmin Overview). Prototype uses an onClick button; SSR-
+//     friendly Link is the closer fit for our Next.js App Router.
+
+import { ChevronRight } from "lucide-react";
+import Link from "next/link";
 
 import { type ArtistShowSummaryView } from "@/lib/presenters";
 
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
 
 type Props = {
+  artistId: string;
   show: ArtistShowSummaryView;
 };
 
@@ -61,7 +69,7 @@ function Stat({ label, value, accent = false }: StatProps) {
   );
 }
 
-export function ArtistShowRow({ show }: Props) {
+export function ArtistShowRow({ artistId, show }: Props) {
   const stub = splitDateShort(show.dateShort);
   const tone = badgeToneFor(show);
   // Show 0 / 0 venues render 0% (no NaN) — empty pool, unstaged venue.
@@ -71,8 +79,9 @@ export function ArtistShowRow({ show }: Props) {
       : 0;
 
   return (
-    <div
-      className="flex items-center gap-5 rounded-xl border px-5 py-[18px]"
+    <Link
+      href={`/artists/${artistId}/shows/${show.id}`}
+      className="flex items-center gap-5 rounded-xl border px-5 py-[18px] no-underline transition-shadow hover:shadow-[0_4px_12px_rgba(14,15,12,0.06)]"
       style={{ background: "var(--page)", borderColor: "var(--border)" }}
     >
       {/* Date stub */}
@@ -124,7 +133,7 @@ export function ArtistShowRow({ show }: Props) {
 
       {/* Stat columns */}
       <div className="grid grid-cols-3 gap-6">
-        <Stat label="Offers" value={show.offers} />
+        <Stat label="Tickets" value={show.ticketsCount} />
         <Stat label="Median" value={show.medianPrice} />
         <Stat label="Top" value={show.topPrice} accent />
       </div>
@@ -141,6 +150,13 @@ export function ArtistShowRow({ show }: Props) {
           </span>
         )}
       </div>
-    </div>
+
+      <ChevronRight
+        size={18}
+        strokeWidth={1.75}
+        style={{ color: "var(--fg-faint)" }}
+        aria-hidden
+      />
+    </Link>
   );
 }
