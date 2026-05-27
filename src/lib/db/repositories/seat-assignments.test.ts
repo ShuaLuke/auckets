@@ -5,6 +5,7 @@ import {
   getProvisionalFilledByShowIds,
   getSeatAssignmentByOfferId,
   listSeatAssignmentsByOfferIds,
+  listSeatAssignmentsForShow,
   type SeatAssignment,
 } from "./seat-assignments";
 import { makeMockDb } from "./_mock-db";
@@ -172,6 +173,45 @@ describe("getProvisionalFilledByShowIds", () => {
   it("has the expected return type", () => {
     expectTypeOf(getProvisionalFilledByShowIds).returns.resolves.toEqualTypeOf<
       Map<string, number>
+    >();
+  });
+});
+
+describe("listSeatAssignmentsForShow", () => {
+  it("returns an empty array when the show has no placed offers", async () => {
+    const db = makeMockDb<SeatAssignment>([]);
+    expect(
+      await listSeatAssignmentsForShow(
+        db,
+        "44444444-4444-4444-4444-444444444444",
+      ),
+    ).toEqual([]);
+  });
+
+  it("returns every assignment row for a show", async () => {
+    const db = makeMockDb<SeatAssignment>([
+      makeAssignment({
+        id: "11111111-1111-1111-1111-111111111111",
+        venueRowId: "row_a",
+        seatNumbers: ["1", "2", "3"],
+      }),
+      makeAssignment({
+        id: "22222222-2222-2222-2222-222222222222",
+        venueRowId: "row_b",
+        seatNumbers: ["7", "8"],
+      }),
+    ]);
+    const result = await listSeatAssignmentsForShow(
+      db,
+      "44444444-4444-4444-4444-444444444444",
+    );
+    expect(result).toHaveLength(2);
+    expect(result.map((r) => r.venueRowId)).toEqual(["row_a", "row_b"]);
+  });
+
+  it("has the expected return type", () => {
+    expectTypeOf(listSeatAssignmentsForShow).returns.resolves.toEqualTypeOf<
+      SeatAssignment[]
     >();
   });
 });

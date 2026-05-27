@@ -55,6 +55,23 @@ export async function listSeatAssignmentsByOfferIds(
   return out;
 }
 
+// All seat assignments for a show. Drives the ShowAdmin provisional
+// placement seat map — one row per placed offer, with the seat numbers
+// array surfacing which seats in the row are occupied.
+//
+// No status filter on the offer side: assignments only exist for
+// successfully placed offers (the GAE writes nothing for unplaced),
+// so the result set is "every seat the latest run filled."
+export async function listSeatAssignmentsForShow(
+  db: Db,
+  showId: string,
+): Promise<SeatAssignment[]> {
+  return db
+    .select()
+    .from(seatAssignments)
+    .where(eq(seatAssignments.showId, showId));
+}
+
 export async function getProvisionalFilledByShow(
   db: Db,
   showId: string,
