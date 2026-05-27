@@ -54,3 +54,44 @@ jobs:
           NEXT_PUBLIC_APP_URL: http://localhost:3001
           NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_Y2xlcmsuZXhhbXBsZS5jb20k
           CLERK_SECRET_KEY: sk_test_BzfCk3uvy7Wxam6Ym7Vmpl6Ic37cuhFsZ4kc8Lz9G5
+
+  integration:
+    name: integration tests (real postgres)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    # Side-car Postgres container, same major version as Supabase prod
+    # (Postgres 17). Matches the local-Docker setup in
+    # docs/runbooks/local-dev.md so a green run here means a green run
+    # locally for any developer with Docker installed.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: auckets_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - run: npm ci
+
+      - name: Integration tests
+        run: npm run test:integration
+        env:
+          # CI's "postgres" service maps to localhost:5432; the integration
+          # global-setup will refuse anything that isn't a local hostname.
+          TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/auckets_test
