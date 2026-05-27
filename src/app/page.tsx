@@ -1,32 +1,580 @@
+// Landing page. Prototype-fidelity port of
+// design/ui_kits/auckets/screens/Landing.jsx — 6 sections: hero with
+// HeroTicketCard mock, "How it works" 3-up, comparison band, "For
+// artists" black section with allocation_log JSON preview, FAQ, and
+// footer.
+//
+// All static marketing content; no backend reads. The two pieces of
+// interactivity are (a) Clerk's <SignUpButton> wrapping the primary
+// CTAs and (b) the FAQ accordions which are plain <details>/<summary>
+// (no JS). Authenticated users see "Go to dashboard" CTAs in place of
+// "Create an account".
+//
+// FAQ copy is preserved verbatim from Landing.jsx — these are
+// canonical AUCKETS-voice answers and several describe behavior gated
+// on ADR-0003 (Stripe SetupIntent hold-window). Forward-looking but
+// accurate to the intended design; flag for Julia's review on the PR.
+
 import { SignedIn, SignedOut, SignUpButton } from "@clerk/nextjs";
+import { ArrowRight, Check, Plus, X } from "lucide-react";
 import Link from "next/link";
+
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { Eyebrow } from "@/components/ui/Eyebrow";
+import { MarqueeButton } from "@/components/ui/MarqueeButton";
 
 export default function HomePage() {
   return (
-    <main className="flex min-h-[calc(100vh-57px)] items-center justify-center p-8">
-      <div className="text-center">
-        <h1 className="text-4xl font-semibold tracking-tight">AUCKETS</h1>
-        <p className="mt-2 text-sm text-neutral-500">
-          Dynamic ticket allocation for live music. Coming soon.
-        </p>
-        <div className="mt-8 flex justify-center">
-          <SignedOut>
-            <SignUpButton mode="modal">
-              <button className="rounded-full bg-neutral-900 px-5 py-2 text-sm font-medium text-white hover:bg-neutral-700">
-                Create an account
-              </button>
-            </SignUpButton>
-          </SignedOut>
-          <SignedIn>
-            <Link
-              href="/dashboard"
-              className="rounded-full bg-neutral-900 px-5 py-2 text-sm font-medium text-white hover:bg-neutral-700"
-            >
-              Go to dashboard
+    <main style={{ background: "var(--paper)" }}>
+      <Hero />
+      <HowItWorks />
+      <ComparisonBand />
+      <ForArtists />
+      <Faq />
+      <Footer />
+    </main>
+  );
+}
+
+// =========================================================================
+// Hero — design Landing.jsx lines 9-39
+// =========================================================================
+
+function Hero() {
+  return (
+    <section className="mx-auto px-8" style={{ maxWidth: 1080, padding: "88px 32px 56px" }}>
+      <div className="flex items-end gap-16">
+        <div style={{ flex: 1.4 }}>
+          <Eyebrow className="mb-5">A fairer way to seat a room</Eyebrow>
+          <h1
+            className="display-1 mb-6"
+            style={{ maxWidth: 720 }}
+          >
+            Front row, fair price.
+            <br />
+            <span style={{ color: "var(--fg-muted)" }}>
+              No auctions, no countdowns.
+            </span>
+          </h1>
+          <p
+            className="font-sans mb-8"
+            style={{
+              fontSize: 17,
+              lineHeight: 1.55,
+              letterSpacing: "-0.015em",
+              color: "var(--ink-600)",
+              maxWidth: 540,
+            }}
+          >
+            Submit one offer — your group size, your price per ticket. The
+            Greenwood Allocation Engine ranks every offer in the room and
+            places groups intelligently, keeping you together.
+          </p>
+          <div className="flex items-center gap-3">
+            <SignedOut>
+              <SignUpButton mode="modal">
+                <MarqueeButton iconAfter={<ArrowRight size={18} strokeWidth={1.75} aria-hidden />}>
+                  Create an account
+                </MarqueeButton>
+              </SignUpButton>
+            </SignedOut>
+            <SignedIn>
+              <Link href="/dashboard" className="no-underline" style={{ borderBottom: "none" }}>
+                <MarqueeButton iconAfter={<ArrowRight size={18} strokeWidth={1.75} aria-hidden />}>
+                  Go to dashboard
+                </MarqueeButton>
+              </Link>
+            </SignedIn>
+            <Link href="/dashboard" className="no-underline" style={{ borderBottom: "none" }}>
+              <Button variant="ghost">See an upcoming show →</Button>
             </Link>
-          </SignedIn>
+          </div>
+        </div>
+        <div style={{ flex: 1 }}>
+          <HeroTicketCard />
         </div>
       </div>
-    </main>
+    </section>
+  );
+}
+
+// HeroTicketCard — design Landing.jsx lines 210-241. Inline because it's
+// only used here and is decorative; extracting to its own file would add
+// indirection without saving complexity.
+function HeroTicketCard() {
+  return (
+    <div
+      className="relative rounded-xl border"
+      style={{
+        background: "var(--page)",
+        borderColor: "var(--ink-900)",
+        padding: 24,
+        boxShadow: "6px 6px 0 0 var(--ink-900)",
+      }}
+    >
+      {/* Perforation circles — the visual ticket-stub indent on both edges. */}
+      <div
+        className="absolute rounded-full border"
+        style={{
+          left: -8,
+          top: "54%",
+          width: 16,
+          height: 16,
+          background: "var(--paper)",
+          borderColor: "var(--ink-900)",
+        }}
+      />
+      <div
+        className="absolute rounded-full border"
+        style={{
+          right: -8,
+          top: "54%",
+          width: 16,
+          height: 16,
+          background: "var(--paper)",
+          borderColor: "var(--ink-900)",
+        }}
+      />
+      <div className="flex items-start justify-between">
+        <div>
+          <Eyebrow className="mb-1.5">Citizen Cope</Eyebrow>
+          <div
+            className="font-display font-bold"
+            style={{ fontSize: 28, lineHeight: 1.05, letterSpacing: "-0.025em" }}
+          >
+            Lincoln Theatre
+          </div>
+          <div
+            className="font-sans"
+            style={{ fontSize: 13, color: "var(--ink-500)", marginTop: 4 }}
+          >
+            Washington, DC · Sat May 25 · 8pm
+          </div>
+        </div>
+        <Badge tone="open">Offers open</Badge>
+      </div>
+      <div
+        style={{
+          borderTop: "1px dashed var(--ink-900)",
+          margin: "20px 0",
+        }}
+      />
+      <div className="flex items-baseline gap-4">
+        <span
+          className="font-mono tabular-nums"
+          style={{ fontSize: 32, letterSpacing: "-0.01em" }}
+        >
+          $42.00
+        </span>
+        <span className="font-sans" style={{ fontSize: 13, color: "var(--ink-500)" }}>
+          × 4 tickets
+        </span>
+      </div>
+      <div
+        className="mt-3.5 rounded font-mono"
+        style={{
+          padding: "8px 12px",
+          background: "var(--greenwood-50)",
+          fontSize: 11,
+          color: "var(--greenwood-700)",
+        }}
+      >
+        Preview: Orchestra · Row AA · seats 7–10
+      </div>
+    </div>
+  );
+}
+
+// =========================================================================
+// How it works — design Landing.jsx lines 41-68
+// =========================================================================
+
+const HOW_IT_WORKS_STEPS = [
+  {
+    n: "01",
+    t: "Submit an offer",
+    d: "Pick your group size and what you're willing to pay per ticket. One offer per fan per show. Editable up to 24 hours before allocation.",
+  },
+  {
+    n: "02",
+    t: "See where you'd land",
+    d: "A non-binding preview shows your seats based on every other offer currently in the room. It updates as offers come in.",
+  },
+  {
+    n: "03",
+    t: "Allocation runs once",
+    d: "At an announced checkpoint, the GAE walks the venue from best row to worst, places ranked groups together, and we charge your card.",
+  },
+] as const;
+
+function HowItWorks() {
+  return (
+    <section
+      style={{
+        background: "var(--page)",
+        borderTop: "1px solid var(--border)",
+        borderBottom: "1px solid var(--border)",
+      }}
+    >
+      <div className="mx-auto" style={{ maxWidth: 1080, padding: "64px 32px" }}>
+        <Eyebrow className="mb-3">How it works</Eyebrow>
+        <h2 className="mb-10" style={{ maxWidth: 600 }}>
+          One offer. One ranked allocation. One announced checkpoint.
+        </h2>
+        <div className="grid grid-cols-3 gap-6">
+          {HOW_IT_WORKS_STEPS.map((step) => (
+            <div key={step.n} className="flex flex-col gap-2.5">
+              <span
+                className="font-mono"
+                style={{
+                  fontSize: 12,
+                  color: "var(--brand)",
+                  letterSpacing: "0.08em",
+                }}
+              >
+                {step.n}
+              </span>
+              <h3>{step.t}</h3>
+              <p
+                style={{
+                  fontSize: 14,
+                  lineHeight: 1.55,
+                  color: "var(--ink-500)",
+                }}
+              >
+                {step.d}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// =========================================================================
+// Comparison band — design Landing.jsx lines 70-108
+// =========================================================================
+
+const NOT_THIS = [
+  "Countdown timers and per-ticket bidding wars",
+  "Different prices in the same zone",
+  "Strangers between you and your friends",
+  "First-come-first-served beats fairness",
+];
+
+const THIS_INSTEAD = [
+  "One offer per fan per show",
+  "Best-ranked groups get the best seats",
+  "Groups stay together; orphan seats avoided",
+  "Rank is by offer, not by submission time",
+];
+
+function ComparisonBand() {
+  return (
+    <section className="mx-auto" style={{ maxWidth: 1080, padding: "72px 32px" }}>
+      <div className="grid grid-cols-2 gap-6">
+        <Card style={{ padding: 28 }}>
+          <Eyebrow className="mb-2.5">Not this</Eyebrow>
+          <h3 className="mb-3.5">An auction.</h3>
+          <ul className="m-0 flex list-none flex-col gap-2.5 p-0">
+            {NOT_THIS.map((t) => (
+              <li
+                key={t}
+                className="flex gap-2.5"
+                style={{ color: "var(--ink-500)", fontSize: 14, lineHeight: 1.5 }}
+              >
+                <X
+                  size={16}
+                  strokeWidth={2}
+                  style={{ color: "var(--brick-500)", marginTop: 2, flexShrink: 0 }}
+                  aria-hidden
+                />
+                {t}
+              </li>
+            ))}
+          </ul>
+        </Card>
+        <div
+          className="rounded-xl border p-7"
+          style={{
+            background: "var(--page)",
+            borderColor: "var(--ink-900)",
+            boxShadow: "4px 4px 0 0 var(--ink-900)",
+          }}
+        >
+          <Eyebrow className="mb-2.5">This instead</Eyebrow>
+          <h3 className="mb-3.5">A single ranked allocation.</h3>
+          <ul className="m-0 flex list-none flex-col gap-2.5 p-0">
+            {THIS_INSTEAD.map((t) => (
+              <li
+                key={t}
+                className="flex gap-2.5"
+                style={{ color: "var(--ink-700)", fontSize: 14, lineHeight: 1.5 }}
+              >
+                <Check
+                  size={16}
+                  strokeWidth={2}
+                  style={{ color: "var(--brand)", marginTop: 2, flexShrink: 0 }}
+                  aria-hidden
+                />
+                {t}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// =========================================================================
+// For artists — design Landing.jsx lines 110-149
+// =========================================================================
+
+function ForArtists() {
+  return (
+    <section style={{ background: "var(--ink-900)", color: "var(--paper)" }}>
+      <div className="mx-auto" style={{ maxWidth: 1080, padding: "72px 32px" }}>
+        <div className="grid items-center gap-14" style={{ gridTemplateColumns: "1.2fr 1fr" }}>
+          <div>
+            <Eyebrow className="mb-4" style={{ color: "var(--marquee-500)" }}>
+              For artists
+            </Eyebrow>
+            <h2
+              className="mb-5"
+              style={{ fontSize: 44, color: "var(--paper)" }}
+            >
+              Run a fair room. Earn what the room is worth.
+            </h2>
+            <p
+              className="mb-4"
+              style={{
+                fontSize: 16,
+                lineHeight: 1.55,
+                color: "var(--ink-200)",
+                maxWidth: 520,
+              }}
+            >
+              You set the floor per section. Fans submit offers. The Greenwood
+              Allocation Engine fills your venue holistically — no zone
+              bidding wars, no orphan seats, no opaque dynamic pricing.
+            </p>
+            <p
+              className="mb-7"
+              style={{
+                fontSize: 16,
+                lineHeight: 1.55,
+                color: "var(--ink-200)",
+                maxWidth: 520,
+              }}
+            >
+              Every allocation is logged in full. Every override is logged
+              with a reason. Your fans see exactly the same thing you do.
+            </p>
+            <SignedOut>
+              <SignUpButton mode="modal">
+                <MarqueeButton
+                  iconAfter={<ArrowRight size={18} strokeWidth={1.75} aria-hidden />}
+                  style={{
+                    background: "var(--paper)",
+                    color: "var(--ink-900)",
+                    boxShadow: "4px 4px 0 0 var(--marquee-500)",
+                  }}
+                >
+                  Pitch your venue
+                </MarqueeButton>
+              </SignUpButton>
+            </SignedOut>
+            <SignedIn>
+              <Link href="/dashboard" className="no-underline" style={{ borderBottom: "none" }}>
+                <MarqueeButton
+                  iconAfter={<ArrowRight size={18} strokeWidth={1.75} aria-hidden />}
+                  style={{
+                    background: "var(--paper)",
+                    color: "var(--ink-900)",
+                    boxShadow: "4px 4px 0 0 var(--marquee-500)",
+                  }}
+                >
+                  Pitch your venue
+                </MarqueeButton>
+              </Link>
+            </SignedIn>
+          </div>
+          {/* allocation_log JSON preview — reinforces the "every decision
+              logged" point textually. Colors map to the design's hex
+              palette using the marquee + greenwood tokens. */}
+          <div
+            className="rounded-xl border font-mono"
+            style={{
+              background: "var(--ink-700)",
+              borderColor: "var(--ink-600)",
+              padding: 22,
+              fontSize: 12,
+              color: "var(--ink-300)",
+              lineHeight: 1.8,
+            }}
+          >
+            <div style={{ color: "var(--greenwood-300)" }}>{"// allocation_log.json"}</div>
+            <div>
+              <span style={{ color: "var(--marquee-300)" }}>{'"action"'}</span>
+              {": "}
+              <span style={{ color: "var(--paper)" }}>{'"PLACED"'}</span>,
+            </div>
+            <div>
+              <span style={{ color: "var(--marquee-300)" }}>{'"offer_id"'}</span>
+              {": "}
+              <span style={{ color: "var(--paper)" }}>{'"offer_8f3a"'}</span>,
+            </div>
+            <div>
+              <span style={{ color: "var(--marquee-300)" }}>{'"venue_row_id"'}</span>
+              {": "}
+              <span style={{ color: "var(--paper)" }}>{'"row_aa_orch"'}</span>,
+            </div>
+            <div>
+              <span style={{ color: "var(--marquee-300)" }}>{'"seats"'}</span>
+              {": ["}
+              <span style={{ color: "var(--paper)" }}>{'"7","9","11","13"'}</span>
+              {"],"}
+            </div>
+            <div>
+              <span style={{ color: "var(--marquee-300)" }}>{'"rank_key"'}</span>
+              {": "}
+              <span style={{ color: "var(--paper)" }}>42004</span>,
+            </div>
+            <div>
+              <span style={{ color: "var(--marquee-300)" }}>{'"reason"'}</span>
+              {": "}
+              <span style={{ color: "var(--paper)" }}>{'"top of waterfall"'}</span>
+            </div>
+            <div className="mt-3.5" style={{ color: "var(--ink-400)" }}>
+              Every decision. Every show. Append-only.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// =========================================================================
+// FAQ — design Landing.jsx lines 151-192
+// Copy preserved verbatim from the design.
+// =========================================================================
+
+const FAQ_ITEMS: ReadonlyArray<[string, string]> = [
+  [
+    "How is rank calculated?",
+    "rank_key = (price_per_ticket_cents × 1000) + group_size. Price wins; group size only breaks ties at equal price. Earliest submission breaks remaining ties.",
+  ],
+  [
+    "Can I revise my offer?",
+    "Yes — upward only, up to 24 hours before binding allocation. Lowering is never allowed. Each revision releases your card auth and creates a new one.",
+  ],
+  [
+    "What happens if I'm outbid?",
+    "There's no \"outbid\" — there's rank. If a lot of higher-ranked offers come in, your provisional placement moves to a lower row, or to \"unplaced\". You'll see this in real time.",
+  ],
+  [
+    "When am I charged?",
+    "When binding allocation runs (24h before doors). Before that, your card is authorized but not charged. If you're not placed, the auth is released and you pay $0.",
+  ],
+  [
+    "What if the show sells out before my offer is competitive?",
+    "You'll see \"unplaced\" on the preview and get a notification 24h before binding. You can revise upward; you can't go below the tier floor.",
+  ],
+  [
+    "Are there service fees?",
+    "No. The price you offer is the price you pay. Stripe fees come from the artist payout.",
+  ],
+];
+
+function Faq() {
+  return (
+    <section style={{ background: "var(--paper)" }}>
+      <div className="mx-auto" style={{ maxWidth: 760, padding: "72px 32px" }}>
+        <Eyebrow className="mb-4">Common questions</Eyebrow>
+        <h2 className="mb-7" style={{ fontSize: 36 }}>
+          Things people ask before their first offer.
+        </h2>
+        <div className="flex flex-col gap-0">
+          {FAQ_ITEMS.map(([q, a]) => (
+            <details
+              key={q}
+              className="group"
+              style={{
+                borderBottom: "1px solid var(--border)",
+                padding: "18px 0",
+              }}
+            >
+              <summary
+                className="flex cursor-pointer items-center justify-between gap-3 font-sans"
+                style={{
+                  listStyle: "none",
+                  fontSize: 17,
+                  fontWeight: 500,
+                  color: "var(--ink-900)",
+                  letterSpacing: "-0.01em",
+                }}
+              >
+                <span>{q}</span>
+                <Plus
+                  size={18}
+                  strokeWidth={1.75}
+                  style={{ color: "var(--ink-400)", flexShrink: 0 }}
+                  className="transition-transform group-open:rotate-45"
+                  aria-hidden
+                />
+              </summary>
+              <p
+                className="mt-3"
+                style={{
+                  fontSize: 14,
+                  lineHeight: 1.6,
+                  color: "var(--ink-500)",
+                  maxWidth: 620,
+                }}
+              >
+                {a}
+              </p>
+            </details>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// =========================================================================
+// Footer — design Landing.jsx lines 194-205
+// =========================================================================
+
+function Footer() {
+  const year = new Date().getFullYear();
+  return (
+    <footer
+      style={{
+        background: "var(--ink-900)",
+        color: "var(--ink-300)",
+        borderTop: "1px solid var(--ink-700)",
+      }}
+    >
+      <div
+        className="mx-auto flex flex-wrap items-center justify-between gap-4"
+        style={{ maxWidth: 1080, padding: "40px 32px" }}
+      >
+        <span
+          className="wordmark"
+          style={{ fontSize: 16, color: "var(--paper)" }}
+        >
+          AUCKETS
+        </span>
+        <span className="font-sans" style={{ fontSize: 12 }}>
+          Not an auction. © {year} · auckets.com
+        </span>
+      </div>
+    </footer>
   );
 }
