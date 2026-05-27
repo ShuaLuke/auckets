@@ -16,13 +16,8 @@ import { auth } from "@clerk/nextjs/server";
 import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
 
-import { BigStatsCard } from "@/components/artist/BigStatsCard";
-import { DistributionCard } from "@/components/artist/DistributionCard";
-import { HoldsCard } from "@/components/artist/HoldsCard";
-import { ProvisionalPlacementCard } from "@/components/artist/ProvisionalPlacementCard";
-import { RecentActivityCard } from "@/components/artist/RecentActivityCard";
 import { ShowAdminHeader } from "@/components/artist/ShowAdminHeader";
-import { TierBreakdownCard } from "@/components/artist/TierBreakdownCard";
+import { ShowAdminTabs } from "@/components/artist/ShowAdminTabs";
 import { db } from "@/lib/db";
 import {
   getOfferStatsByTierForShow,
@@ -236,20 +231,16 @@ export default async function ArtistShowAdminPage({ params }: Props) {
           canRunPreview={isAdmin}
         />
 
-        <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-2 gap-4">
-            <BigStatsCard show={data.show} />
-            <RecentActivityCard events={data.activity} />
-          </div>
-          <TierBreakdownCard breakdown={data.tiers} />
-          <DistributionCard distribution={data.distribution} />
-          <ProvisionalPlacementCard placement={data.placement} />
-          <HoldsCard
-            holds={data.holds}
-            showId={parsed.data.showId}
-            activeRows={data.activeHoldRows}
-          />
-        </div>
+        <ShowAdminTabs
+          showId={parsed.data.showId}
+          show={data.show}
+          activity={data.activity}
+          tiers={data.tiers}
+          distribution={data.distribution}
+          placement={data.placement}
+          holds={data.holds}
+          activeHoldRows={data.activeHoldRows}
+        />
       </div>
     </main>
   );
