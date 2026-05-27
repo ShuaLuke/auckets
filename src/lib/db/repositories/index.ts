@@ -11,6 +11,18 @@ export {
 } from "./artists";
 
 export {
+  ARTIST_REQUEST_KINDS,
+  ARTIST_REQUEST_STATUSES,
+  createArtistRequest,
+  isArtistRequestFiledBy,
+  listArtistRequestsForShow,
+  listOpenArtistRequests,
+  type ArtistRequest,
+  type ArtistRequestKind,
+  type ArtistRequestStatus,
+} from "./artist-requests";
+
+export {
   listRecentAllocationLogsForShow,
   type AllocationLog,
 } from "./allocation-logs";

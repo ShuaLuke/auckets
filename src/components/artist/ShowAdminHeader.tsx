@@ -14,6 +14,7 @@ import { type ArtistShowSummaryView } from "@/lib/presenters";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { Eyebrow } from "@/components/ui/Eyebrow";
 import { PreviewAllocationButton } from "./PreviewAllocationButton";
+import { RequestActionButton } from "./RequestActionButton";
 
 type Props = {
   artistId: string;
@@ -62,11 +63,10 @@ export function ShowAdminHeader({ artistId, show, canRunPreview }: Props) {
             {offerWord} for {show.ticketsCount} {ticketWord}
           </p>
         </div>
-        {canRunPreview && (
-          <div className="flex items-center gap-2">
-            <PreviewAllocationButton showId={show.id} />
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          <RequestActionButton showId={show.id} />
+          {canRunPreview && <PreviewAllocationButton showId={show.id} />}
+        </div>
       </div>
 
       <div
