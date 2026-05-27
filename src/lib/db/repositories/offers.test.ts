@@ -7,6 +7,7 @@ import {
   getOfferStatsByTierForShow,
   getOfferStatsForArtist,
   getOfferStatsForShow,
+  getUserRankInShowPool,
   listBidsForUser,
   listOfferRevisionsByOfferIds,
   listOfferRevisionsForOffer,
@@ -18,7 +19,7 @@ import {
   type OfferTierBucket,
   type UserBidRow,
 } from "./offers";
-import { makeMockDb } from "./_mock-db";
+import { makeMockDb, makeQueuedMockDb } from "./_mock-db";
 
 type Offer = typeof offers.$inferSelect;
 
@@ -76,6 +77,71 @@ describe("getOfferByShowAndUser", () => {
   it("has the expected return type", () => {
     expectTypeOf(getOfferByShowAndUser).returns.resolves.toEqualTypeOf<
       Offer | null
+    >();
+  });
+});
+
+describe("getUserRankInShowPool", () => {
+  // Two-step function: first fetches the user's offer (call 1), then
+  // counts pool offers ranked above it (call 2). makeQueuedMockDb hands
+  // back a different result per top-level call, which is exactly what
+  // we need to verify the two-step contract without simulating the
+  // tie-break SQL (real semantics live in integration tests).
+
+  it("returns null when the user has no offer on this show (skips the count query)", async () => {
+    const db = makeQueuedMockDb<Offer | { count: number }>([
+      [], // userOffer lookup: nothing
+      // No second call expected — the early return short-circuits it.
+    ]);
+    expect(
+      await getUserRankInShowPool(
+        db,
+        "44444444-4444-4444-4444-444444444444",
+        "user_2abc",
+      ),
+    ).toBeNull();
+  });
+
+  it("returns null when the user's offer is in a post-binding terminal status", async () => {
+    // 'charged' / 'refunded' / etc. — past the point where "rank in pool"
+    // is a meaningful pre-binding concept.
+    const offer = makeOffer({ status: "charged" });
+    const db = makeQueuedMockDb<Offer | { count: number }>([[offer]]);
+    expect(
+      await getUserRankInShowPool(db, offer.showId, offer.userId),
+    ).toBeNull();
+  });
+
+  it("returns 1 when no offers are ranked above the user's", async () => {
+    const offer = makeOffer({ status: "pool" });
+    const db = makeQueuedMockDb<Offer | { count: number }>([
+      [offer],
+      [{ count: 0 }],
+    ]);
+    expect(await getUserRankInShowPool(db, offer.showId, offer.userId)).toBe(1);
+  });
+
+  it("returns count-above + 1 (so 5 better-ranked offers means user is #6)", async () => {
+    const offer = makeOffer({ status: "pool" });
+    const db = makeQueuedMockDb<Offer | { count: number }>([
+      [offer],
+      [{ count: 5 }],
+    ]);
+    expect(await getUserRankInShowPool(db, offer.showId, offer.userId)).toBe(6);
+  });
+
+  it("works the same for status='placed' offers (both are live pool members)", async () => {
+    const offer = makeOffer({ status: "placed" });
+    const db = makeQueuedMockDb<Offer | { count: number }>([
+      [offer],
+      [{ count: 2 }],
+    ]);
+    expect(await getUserRankInShowPool(db, offer.showId, offer.userId)).toBe(3);
+  });
+
+  it("has the expected return type", () => {
+    expectTypeOf(getUserRankInShowPool).returns.resolves.toEqualTypeOf<
+      number | null
     >();
   });
 });

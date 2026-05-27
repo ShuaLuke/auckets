@@ -79,3 +79,5 @@ export {
   presentArtistRequestInboxRow,
   type ArtistRequestInboxView,
 } from "./artist-requests";
+
+export { presentRankBoard, type RankBoardView } from "./rank-board";

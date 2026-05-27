@@ -48,6 +48,7 @@ export {
   getOfferStatsForArtist,
   getOfferStatsForShow,
   getPriceDistributionForShow,
+  getUserRankInShowPool,
   listBidsForUser,
   listOfferRevisionsByOfferIds,
   listOfferRevisionsForOffer,
