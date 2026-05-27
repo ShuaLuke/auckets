@@ -33,6 +33,9 @@ export {
 
 export {
   HOLD_KINDS,
+  createHold,
+  deleteHoldById,
+  getHoldById,
   listHoldsForShow,
   type Hold,
   type HoldKind,

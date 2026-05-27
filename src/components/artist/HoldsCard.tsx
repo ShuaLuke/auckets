@@ -3,23 +3,31 @@
 // per hold with a source tag, seat description, count, and an edit
 // affordance gated by hold.kind.
 //
-// Today: read-only view. The "Add hold" button + per-row trash icon
-// + per-row edit are deferred to a write-path slice that ships with
-// the hold form. Artist-mutable rows still show the visual treatment
-// they'd have (trash icon position, source-tag color) — the icon is
-// rendered but disabled with an aria-label, matching the prototype's
-// "you can do this here" affordance without the actual mutation
-// wired.
-
-import { Trash2 } from "lucide-react";
+// Mutability rules:
+//   - artist-kind holds: deletable by any caller who can manage the
+//     artist (member or admin). Visible trash icon.
+//   - venue-kind holds: deletable only by AUCKETS_ADMIN. The page
+//     passes viewerIsAdmin so admins see the trash icon on these
+//     rows too; non-admins see the "Read-only" chip.
+//
+// Add hold flow (artist-kind only via the dialog) lives in
+// AddHoldButton — admins create venue-kind via SQL until VENUE_STAFF
+// lands.
 
 import { type HoldsView } from "@/lib/presenters";
 
+import { AddHoldButton, type AddHoldRow } from "@/components/artist/AddHoldButton";
+import { DeleteHoldButton } from "@/components/artist/DeleteHoldButton";
 import { Card } from "@/components/ui/Card";
 import { Eyebrow } from "@/components/ui/Eyebrow";
 
 type Props = {
   holds: HoldsView;
+  // Show context the Add-hold dialog needs. The page projects
+  // architecture rows + activeRowIds into the slim AddHoldRow shape
+  // here so the client doesn't see the full jsonb.
+  showId: string;
+  activeRows: readonly AddHoldRow[];
 };
 
 function SourceTag({
@@ -44,18 +52,21 @@ function SourceTag({
   );
 }
 
-export function HoldsCard({ holds }: Props) {
+export function HoldsCard({ holds, showId, activeRows }: Props) {
   const { rows, total } = holds;
   return (
     <Card className="p-6">
-      <div className="mb-3.5 flex items-baseline justify-between">
+      <div className="mb-3.5 flex items-baseline justify-between gap-3">
         <Eyebrow>Holds — by source</Eyebrow>
-        <span
-          className="font-mono text-[11px] tabular-nums"
-          style={{ color: "var(--fg-muted)" }}
-        >
-          {total} {total === 1 ? "seat" : "seats"} held
-        </span>
+        <div className="flex items-center gap-3">
+          <span
+            className="font-mono text-[11px] tabular-nums"
+            style={{ color: "var(--fg-muted)" }}
+          >
+            {total} {total === 1 ? "seat" : "seats"} held
+          </span>
+          <AddHoldButton showId={showId} rows={activeRows} />
+        </div>
       </div>
 
       {rows.length === 0 ? (
@@ -78,7 +89,7 @@ export function HoldsCard({ holds }: Props) {
               className="flex items-center gap-4 rounded-lg px-[14px] py-3"
               style={{ background: "var(--paper)" }}
             >
-              <SourceTag label={row.source} artist={row.mutable} />
+              <SourceTag label={row.source} artist={row.kind === "artist"} />
               <span
                 className="flex-1 font-mono text-[12px]"
                 style={{ color: "var(--ink-700)" }}
@@ -92,18 +103,10 @@ export function HoldsCard({ holds }: Props) {
                 {row.seatCount} {row.seatCount === 1 ? "seat" : "seats"}
               </span>
               {row.mutable ? (
-                // Edit affordance is positioned but inert today —
-                // mutation flow lands in a follow-up slice.
-                <button
-                  type="button"
-                  disabled
-                  aria-label="Remove hold (coming soon)"
-                  title="Remove hold (coming soon)"
-                  className="flex h-7 w-7 items-center justify-center rounded-md border-0 bg-transparent"
-                  style={{ color: "var(--fg-faint)", cursor: "not-allowed" }}
-                >
-                  <Trash2 size={14} strokeWidth={1.75} aria-hidden />
-                </button>
+                <DeleteHoldButton
+                  holdId={row.id}
+                  description={row.seatDescription}
+                />
               ) : (
                 <span
                   className="font-sans text-[10px] uppercase tracking-[0.08em]"
