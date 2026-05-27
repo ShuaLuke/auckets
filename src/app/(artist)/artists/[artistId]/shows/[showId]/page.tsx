@@ -17,6 +17,7 @@ import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
 
 import { BigStatsCard } from "@/components/artist/BigStatsCard";
+import { DistributionCard } from "@/components/artist/DistributionCard";
 import { ProvisionalPlacementCard } from "@/components/artist/ProvisionalPlacementCard";
 import { RecentActivityCard } from "@/components/artist/RecentActivityCard";
 import { ShowAdminHeader } from "@/components/artist/ShowAdminHeader";
@@ -25,6 +26,7 @@ import { db } from "@/lib/db";
 import {
   getOfferStatsByTierForShow,
   getOfferStatsForShow,
+  getPriceDistributionForShow,
   getProvisionalFilledByShow,
   getShowById,
   listRecentAllocationLogsForShow,
@@ -36,11 +38,13 @@ import {
 import {
   DEFAULT_TZ,
   presentArtistShowSummary,
+  presentPriceDistribution,
   presentProvisionalPlacement,
   presentRecentActivity,
   presentTierBreakdown,
   type ActivityEvent,
   type ArtistShowSummaryView,
+  type PriceDistributionView,
   type ProvisionalPlacementView,
   type TierBreakdownView,
 } from "@/lib/presenters";
@@ -58,6 +62,7 @@ type LoadedView = {
   tiers: TierBreakdownView;
   activity: ActivityEvent[];
   placement: ProvisionalPlacementView;
+  distribution: PriceDistributionView;
 };
 
 async function loadShowAdmin(
@@ -79,6 +84,7 @@ async function loadShowAdmin(
     recentOffers,
     assignments,
     recentLogs,
+    distributionBuckets,
   ] = await Promise.all([
     getOfferStatsForShow(db, showId),
     getProvisionalFilledByShow(db, showId),
@@ -86,6 +92,7 @@ async function loadShowAdmin(
     listRecentOffersForShow(db, showId, 50),
     listSeatAssignmentsForShow(db, showId),
     listRecentAllocationLogsForShow(db, showId, 50),
+    getPriceDistributionForShow(db, showId),
   ]);
 
   // Project ShowWithRelations onto the ShowSummary shape that the
@@ -133,6 +140,7 @@ async function loadShowAdmin(
       summary.activeRowIds,
       assignments,
     ),
+    distribution: presentPriceDistribution(distributionBuckets),
   };
 }
 
@@ -180,6 +188,7 @@ export default async function ArtistShowAdminPage({ params }: Props) {
             <RecentActivityCard events={data.activity} />
           </div>
           <TierBreakdownCard breakdown={data.tiers} />
+          <DistributionCard distribution={data.distribution} />
           <ProvisionalPlacementCard placement={data.placement} />
         </div>
       </div>

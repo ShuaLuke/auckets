@@ -412,6 +412,66 @@ export async function listOfferRevisionsForOffer(
     .orderBy(offerRevisions.recordedAt);
 }
 
+// Offer-price distribution for the ShowAdmin distribution histogram.
+// Buckets are fixed-width below $50, then widening tiers above (matches
+// the prototype mock in ShowAdmin.jsx). Returned ordered by bucket
+// index ASC.
+//
+// Filtered to the active pool (status IN 'pool' | 'placed') — same
+// filter the other aggregate helpers use, so the histogram totals
+// match the BigStats "Offers" count.
+export type PriceDistributionBucket = {
+  bucketIndex: number;
+  count: number;
+};
+
+export async function getPriceDistributionForShow(
+  db: Db,
+  showId: string,
+): Promise<PriceDistributionBucket[]> {
+  const rows = await db
+    .select({
+      bucketIndex: sql<number>`CASE
+        WHEN ${offers.pricePerTicketCents} < 1500 THEN 0
+        WHEN ${offers.pricePerTicketCents} < 2000 THEN 1
+        WHEN ${offers.pricePerTicketCents} < 2500 THEN 2
+        WHEN ${offers.pricePerTicketCents} < 3000 THEN 3
+        WHEN ${offers.pricePerTicketCents} < 3500 THEN 4
+        WHEN ${offers.pricePerTicketCents} < 4000 THEN 5
+        WHEN ${offers.pricePerTicketCents} < 5000 THEN 6
+        WHEN ${offers.pricePerTicketCents} < 7500 THEN 7
+        WHEN ${offers.pricePerTicketCents} < 10000 THEN 8
+        ELSE 9
+      END`,
+      count: sql<number>`COUNT(*)::int`,
+    })
+    .from(offers)
+    .where(
+      and(
+        eq(offers.showId, showId),
+        inArray(offers.status, [...ACTIVE_POOL_STATUSES]),
+      ),
+    )
+    .groupBy(
+      sql`CASE
+        WHEN ${offers.pricePerTicketCents} < 1500 THEN 0
+        WHEN ${offers.pricePerTicketCents} < 2000 THEN 1
+        WHEN ${offers.pricePerTicketCents} < 2500 THEN 2
+        WHEN ${offers.pricePerTicketCents} < 3000 THEN 3
+        WHEN ${offers.pricePerTicketCents} < 3500 THEN 4
+        WHEN ${offers.pricePerTicketCents} < 4000 THEN 5
+        WHEN ${offers.pricePerTicketCents} < 5000 THEN 6
+        WHEN ${offers.pricePerTicketCents} < 7500 THEN 7
+        WHEN ${offers.pricePerTicketCents} < 10000 THEN 8
+        ELSE 9
+      END`,
+    );
+  return rows.map((row) => ({
+    bucketIndex: Number(row.bucketIndex),
+    count: Number(row.count) || 0,
+  }));
+}
+
 // Bulk: all revisions for several offers (e.g. the user's full
 // /my-bids history in one query). Returned as a Map<offerId, OfferRevision[]>
 // with each list already oldest-first. Empty input → empty map; empty
