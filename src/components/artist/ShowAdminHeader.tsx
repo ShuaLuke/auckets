@@ -13,10 +13,15 @@ import { type ArtistShowSummaryView } from "@/lib/presenters";
 
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { Eyebrow } from "@/components/ui/Eyebrow";
+import { PreviewAllocationButton } from "./PreviewAllocationButton";
 
 type Props = {
   artistId: string;
   show: ArtistShowSummaryView;
+  // Whether to render the "Preview allocation" button. Admin-only per
+  // ADR-0013 (the API enforces this too, server-side, as the
+  // authoritative check).
+  canRunPreview: boolean;
 };
 
 function badgeToneFor(show: ArtistShowSummaryView): BadgeTone {
@@ -24,7 +29,7 @@ function badgeToneFor(show: ArtistShowSummaryView): BadgeTone {
   return "upcoming";
 }
 
-export function ShowAdminHeader({ artistId, show }: Props) {
+export function ShowAdminHeader({ artistId, show, canRunPreview }: Props) {
   const tone = badgeToneFor(show);
   const offerWord = show.offers === 1 ? "offer" : "offers";
   const ticketWord = show.ticketsCount === 1 ? "ticket" : "tickets";
@@ -57,6 +62,11 @@ export function ShowAdminHeader({ artistId, show }: Props) {
             {offerWord} for {show.ticketsCount} {ticketWord}
           </p>
         </div>
+        {canRunPreview && (
+          <div className="flex items-center gap-2">
+            <PreviewAllocationButton showId={show.id} />
+          </div>
+        )}
       </div>
 
       <div
