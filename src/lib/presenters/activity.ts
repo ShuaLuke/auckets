@@ -1,9 +1,10 @@
 // Presenter for the ShowAdmin Recent activity feed. Two sources:
 //
 //   1. offers — submitted_at + revised_at yield "new offer" / "revision"
-//      events. No per-revision diff yet (last-write-wins); old price
-//      isn't available. Tracked under the project_offer_revision_history
-//      follow-up.
+//      events. Revision events show a "$X → $Y" diff when the offer's
+//      full revision history (offer_revisions table) is provided via the
+//      optional `offerHistoryByOfferId` map. Without that map the feed
+//      falls back to "now $Y × N" (no regression — just less context).
 //
 //   2. allocation_logs — preview-mode log rows for PLACED / SKIPPED /
 //      ORPHAN_DETECTED / WATERFALLED actions. One log row → one
@@ -15,7 +16,12 @@
 
 import { formatCents } from "@/lib/money";
 
-import type { AllocationLog, Offer, VenueArchitecture } from "@/lib/db/repositories";
+import type {
+  AllocationLog,
+  Offer,
+  OfferRevision,
+  VenueArchitecture,
+} from "@/lib/db/repositories";
 import type { VenueRow as GaeVenueRow } from "@/lib/gae/types";
 
 const DEFAULT_LIMIT = 10;
@@ -77,13 +83,54 @@ function newOfferMessage(offer: Offer): string {
   return `New offer · ${price} × ${offer.groupSize} · ${tier}`;
 }
 
-function revisedMessage(offer: Offer): string {
-  // Without a revision history table the old price is gone. Surface
-  // the current price + tag so the artist can correlate against the
-  // offer they care about. The fuller "$30 → $40" form lands when
-  // the project_offer_revision_history follow-up ships.
-  const price = formatCents(offer.pricePerTicketCents);
-  return `Revision · ${offerTagFor(offer.id)} · now ${price} × ${offer.groupSize}`;
+// Safely pull { priceCents, groupSize } out of a jsonb snapshot.
+// The snapshot is typed `unknown` in Drizzle (jsonb has no static
+// shape); this guard is the boundary where we narrow it.
+function snapshotFields(
+  snapshot: unknown,
+): { priceCents: number; groupSize: number } | null {
+  if (
+    snapshot !== null &&
+    typeof snapshot === "object" &&
+    "pricePerTicketCents" in snapshot &&
+    "groupSize" in snapshot &&
+    typeof (snapshot as Record<string, unknown>).pricePerTicketCents === "number" &&
+    typeof (snapshot as Record<string, unknown>).groupSize === "number"
+  ) {
+    return {
+      priceCents: (snapshot as { pricePerTicketCents: number }).pricePerTicketCents,
+      groupSize: (snapshot as { groupSize: number }).groupSize,
+    };
+  }
+  return null;
+}
+
+function revisedMessage(offer: Offer, history: readonly OfferRevision[]): string {
+  const tag = offerTagFor(offer.id);
+  const toPrice = formatCents(offer.pricePerTicketCents);
+  const toGroup = offer.groupSize;
+
+  // history is oldest-first (ORDER BY recorded_at ASC). The last row is
+  // the current state; the second-to-last is the state immediately before
+  // this revision. We need ≥2 rows to compute a diff.
+  if (history.length >= 2) {
+    const prevSnap = snapshotFields(history[history.length - 2]?.snapshot);
+    if (prevSnap !== null) {
+      if (prevSnap.priceCents !== offer.pricePerTicketCents) {
+        // Price changed — most prominent signal; show price diff.
+        const fromPrice = formatCents(prevSnap.priceCents);
+        return `Revision · ${tag} · ${fromPrice} → ${toPrice} × ${toGroup}`;
+      }
+      if (prevSnap.groupSize !== offer.groupSize) {
+        // Only group size changed (tier/other edit). Show group diff.
+        return `Revision · ${tag} · ${toPrice} × ${prevSnap.groupSize} → ${toGroup}`;
+      }
+    }
+  }
+
+  // Fallback: no history loaded yet, or snapshot fields not parseable,
+  // or both price and group are identical (shouldn't happen but defensive).
+  return `Revision · ${tag} · now ${toPrice} × ${toGroup}`;
 }
 
 // Map venue_row_id (the GAE-defined slug stored on logs/assignments)
@@ -162,6 +209,12 @@ export function presentRecentActivity(
   architecture: Pick<VenueArchitecture, "rows"> | null,
   now: Date,
   limit: number = DEFAULT_LIMIT,
+  // Optional: full revision history for the offers in `offerRows`. When
+  // present, revision events show a "$X → $Y" diff; when absent (or when
+  // a given offer isn't in the map), they fall back to "now $Y × N".
+  // Callers that don't need the diff (tests, non-ShowAdmin surfaces) can
+  // omit this argument.
+  offerHistoryByOfferId: ReadonlyMap<string, readonly OfferRevision[]> = new Map(),
 ): ActivityEvent[] {
   const events: ActivityEvent[] = [];
   for (const offer of offerRows) {
@@ -173,12 +226,13 @@ export function presentRecentActivity(
       message: newOfferMessage(offer),
     });
     if (offer.revisedAt) {
+      const history = offerHistoryByOfferId.get(offer.id) ?? [];
       events.push({
         kind: "revised",
         at: offer.revisedAt,
         timeAgo: formatTimeAgo(offer.revisedAt, now),
         offerTag: offerTagFor(offer.id),
-        message: revisedMessage(offer),
+        message: revisedMessage(offer, history),
       });
     }
   }

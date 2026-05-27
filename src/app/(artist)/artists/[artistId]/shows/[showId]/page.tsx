@@ -31,6 +31,7 @@ import {
   getProvisionalFilledByShow,
   getShowById,
   listHoldsForShow,
+  listOfferRevisionsByOfferIds,
   listRecentAllocationLogsForShow,
   listRecentOffersForShow,
   listSeatAssignmentsForShow,
@@ -110,6 +111,19 @@ async function loadShowAdmin(
     listHoldsForShow(db, showId),
   ]);
 
+  // Second-step: fetch revision history only for offers that have been
+  // revised (revisedAt !== null). We need the offer IDs from the first
+  // step, so this can't be parallelised with the main fetch above — but
+  // it's a single indexed query on offer_revisions so it's cheap even
+  // for a 50-offer show.
+  const revisedOfferIds = recentOffers
+    .filter((o) => o.revisedAt !== null)
+    .map((o) => o.id);
+  const offerHistoryByOfferId = await listOfferRevisionsByOfferIds(
+    db,
+    revisedOfferIds,
+  );
+
   // Project ShowWithRelations onto the ShowSummary shape that the
   // ArtistShowSummary presenter expects. activeRowIds is stored as
   // jsonb (unknown); narrow it here, same posture as the repos do.
@@ -165,6 +179,7 @@ async function loadShowAdmin(
       showRow.venueArchitecture,
       now,
       10,
+      offerHistoryByOfferId,
     ),
     placement: presentProvisionalPlacement(
       showRow.venueArchitecture,
