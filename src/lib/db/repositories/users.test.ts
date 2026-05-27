@@ -1,7 +1,7 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 
 import { users } from "../../../../drizzle/schema";
-import { ensureUserMirror, userIsAdmin } from "./users";
+import { ensureUserMirror, getEmailsByUserIds, userIsAdmin } from "./users";
 import { makeMockDb, makeQueuedMockDb } from "./_mock-db";
 
 type User = typeof users.$inferSelect;
@@ -70,5 +70,31 @@ describe("userIsAdmin", () => {
 
   it("has the expected return type", () => {
     expectTypeOf(userIsAdmin).returns.resolves.toEqualTypeOf<boolean>();
+  });
+});
+
+describe("getEmailsByUserIds", () => {
+  it("returns an empty map for empty input without hitting the DB", async () => {
+    // The mock would throw if we awaited it; the early return
+    // short-circuits before the chain is invoked.
+    const db = makeMockDb<{ id: string; email: string }>([]);
+    const out = await getEmailsByUserIds(db, []);
+    expect(out.size).toBe(0);
+  });
+
+  it("returns a map keyed by user_id", async () => {
+    const db = makeMockDb<{ id: string; email: string }>([
+      { id: "user_2a", email: "a@example.com" },
+      { id: "user_2b", email: "b@example.com" },
+    ]);
+    const out = await getEmailsByUserIds(db, ["user_2a", "user_2b"]);
+    expect(out.get("user_2a")).toBe("a@example.com");
+    expect(out.get("user_2b")).toBe("b@example.com");
+  });
+
+  it("has the expected return type", () => {
+    expectTypeOf(getEmailsByUserIds).returns.resolves.toEqualTypeOf<
+      Map<string, string>
+    >();
   });
 });

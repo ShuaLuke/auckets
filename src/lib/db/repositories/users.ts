@@ -11,7 +11,7 @@
 // alternative is the right long-term design — it keeps the email
 // fresh on change — and replaces this lazy path when it lands.
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 import type { Db } from "@/lib/db";
 import { users } from "../../../../drizzle/schema";
@@ -68,4 +68,22 @@ export async function userIsAdmin(db: Db, userId: string): Promise<boolean> {
     .where(and(eq(users.id, userId), eq(users.role, "AUCKETS_ADMIN")))
     .limit(1);
   return rows.length > 0;
+}
+
+// Batch email lookup keyed by Clerk user_id. Used by the admin inbox
+// presenter to resolve the executor's email without growing the inbox
+// query into a second users-self-join. Empty input short-circuits to
+// an empty map — Postgres rejects `WHERE id IN ()`.
+export async function getEmailsByUserIds(
+  db: Db,
+  ids: readonly string[],
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (ids.length === 0) return out;
+  const rows = await db
+    .select({ id: users.id, email: users.email })
+    .from(users)
+    .where(inArray(users.id, [...ids]));
+  for (const row of rows) out.set(row.id, row.email);
+  return out;
 }
