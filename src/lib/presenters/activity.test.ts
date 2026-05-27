@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type {
   AllocationLog,
   Offer,
+  OfferRevision,
   VenueArchitecture,
 } from "@/lib/db/repositories";
 import type { VenueRow } from "@/lib/gae/types";
@@ -73,6 +74,29 @@ function makeOffer(overrides: Partial<Offer> = {}): Offer {
   } as Offer;
 }
 
+// Builds an OfferRevision with sensible defaults. snapshot mirrors the
+// shape upsertOfferForUser writes (see offers.ts §upsertOfferForUser).
+function makeRevision(overrides: Partial<OfferRevision> = {}): OfferRevision {
+  return {
+    id: "rrrrrrrr-rrrr-rrrr-rrrr-rrrrrrrrrrrr",
+    offerId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa1234",
+    snapshot: {
+      pricePerTicketCents: 4200,
+      groupSize: 4,
+      tierPreference: "this_or_worse",
+      preferredTier: "premium",
+      channel: "market",
+      autoBidEnabled: false,
+      autoBidCapCents: null,
+      autoBidIncrementCents: 500,
+      privateThresholdCents: null,
+      status: "pool",
+    },
+    recordedAt: new Date("2026-05-27T11:00:00Z"),
+    ...overrides,
+  };
+}
+
 describe("formatTimeAgo", () => {
   it('returns "just now" for events less than a minute old', () => {
     expect(formatTimeAgo(new Date(NOW.getTime() - 30_000), NOW)).toBe("just now");
@@ -111,8 +135,78 @@ describe("presentRecentActivity", () => {
     // Revised is newer → first.
     expect(events[0]?.kind).toBe("revised");
     expect(events[0]?.message).toMatch(/^Revision · offer_/);
+    // No history passed → fallback "now" form.
     expect(events[0]?.message).toContain("now $42.00 × 4");
     expect(events[1]?.kind).toBe("new");
+  });
+
+  describe("revision diffs (offerHistoryByOfferId)", () => {
+    const OFFER_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa1234";
+
+    it("shows '$X → $Y × N' when price changed", () => {
+      // Offer was $30 → revised to $42.
+      const offer = makeOffer({
+        pricePerTicketCents: 4200,
+        groupSize: 4,
+        revisedAt: new Date("2026-05-27T11:50:00Z"),
+      });
+      // history: [initial @$30, current @$42]
+      const history = [
+        makeRevision({ snapshot: { pricePerTicketCents: 3000, groupSize: 4 } }),
+        makeRevision({ snapshot: { pricePerTicketCents: 4200, groupSize: 4 } }),
+      ];
+      const historyMap = new Map([[OFFER_ID, history]]);
+      const events = presentRecentActivity([offer], [], null, NOW, 10, historyMap);
+      const revised = events.find((e) => e.kind === "revised");
+      expect(revised?.message).toMatch(/\$30\.00 → \$42\.00 × 4/);
+    });
+
+    it("shows '$Y × M → N' when only group size changed", () => {
+      // Price stayed $42, group went 2 → 4.
+      const offer = makeOffer({
+        pricePerTicketCents: 4200,
+        groupSize: 4,
+        revisedAt: new Date("2026-05-27T11:50:00Z"),
+      });
+      const history = [
+        makeRevision({ snapshot: { pricePerTicketCents: 4200, groupSize: 2 } }),
+        makeRevision({ snapshot: { pricePerTicketCents: 4200, groupSize: 4 } }),
+      ];
+      const historyMap = new Map([[OFFER_ID, history]]);
+      const events = presentRecentActivity([offer], [], null, NOW, 10, historyMap);
+      const revised = events.find((e) => e.kind === "revised");
+      expect(revised?.message).toContain("$42.00 × 2 → 4");
+    });
+
+    it("falls back to 'now' form when history has only 1 row", () => {
+      // Only the initial submission row exists (shouldn't happen for a
+      // revised offer, but defensive).
+      const offer = makeOffer({
+        pricePerTicketCents: 4200,
+        groupSize: 4,
+        revisedAt: new Date("2026-05-27T11:50:00Z"),
+      });
+      const history = [
+        makeRevision({ snapshot: { pricePerTicketCents: 4200, groupSize: 4 } }),
+      ];
+      const historyMap = new Map([[OFFER_ID, history]]);
+      const events = presentRecentActivity([offer], [], null, NOW, 10, historyMap);
+      const revised = events.find((e) => e.kind === "revised");
+      expect(revised?.message).toContain("now $42.00 × 4");
+    });
+
+    it("falls back to 'now' form when the offer is not in the history map", () => {
+      // Map is non-empty but doesn't include this offer's ID.
+      const offer = makeOffer({
+        pricePerTicketCents: 4200,
+        groupSize: 4,
+        revisedAt: new Date("2026-05-27T11:50:00Z"),
+      });
+      const historyMap = new Map([["other-offer-id", [makeRevision()]]]);
+      const events = presentRecentActivity([offer], [], null, NOW, 10, historyMap);
+      const revised = events.find((e) => e.kind === "revised");
+      expect(revised?.message).toContain("now $42.00 × 4");
+    });
   });
 
   it("uses composer-matching tier labels", () => {
