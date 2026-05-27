@@ -33,6 +33,7 @@ import {
   upsertOfferForUser,
 } from "@/lib/db/repositories";
 import { env } from "@/lib/env";
+import { uuidParam } from "@/lib/validators/uuid";
 
 export const dynamic = "force-dynamic";
 
@@ -41,7 +42,7 @@ export const dynamic = "force-dynamic";
 // reject anyway, with friendlier error messages.
 const BodySchema = z
   .object({
-    showId: z.uuid(),
+    showId: uuidParam,
     groupSize: z.int().min(1).max(10),
     pricePerTicketCents: z.int().positive(),
     tierPreference: z.enum([

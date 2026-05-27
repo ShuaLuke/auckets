@@ -26,11 +26,12 @@ import {
   presentArtistShowSummary,
   type ArtistShowSummaryView,
 } from "@/lib/presenters";
+import { uuidParam } from "@/lib/validators/uuid";
 
 export const dynamic = "force-dynamic";
 
 const ParamsSchema = z.object({
-  artistId: z.uuid(),
+  artistId: uuidParam,
 });
 
 export async function GET(

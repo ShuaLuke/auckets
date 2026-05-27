@@ -23,11 +23,12 @@ import {
   presentShowDetail,
   type ShowDetailView,
 } from "@/lib/presenters";
+import { uuidParam } from "@/lib/validators/uuid";
 
 export const dynamic = "force-dynamic";
 
 const ParamsSchema = z.object({
-  showId: z.uuid(),
+  showId: uuidParam,
 });
 
 export async function GET(
