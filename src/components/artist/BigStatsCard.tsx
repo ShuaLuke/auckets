@@ -69,7 +69,9 @@ export function BigStatsCard({ show }: Props) {
   return (
     <Card className="p-5">
       <Eyebrow className="mb-[14px]">Offer pool — aggregate</Eyebrow>
-      <div className="grid grid-cols-3 gap-[14px]">
+      {/* 2-col grid matches the prototype's BigStats layout — fits
+          half-width once the Recent activity card sits next to it. */}
+      <div className="grid grid-cols-2 gap-[14px]">
         <BigStat
           label="Offers"
           value={show.offers}

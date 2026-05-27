@@ -17,6 +17,7 @@ import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
 
 import { BigStatsCard } from "@/components/artist/BigStatsCard";
+import { RecentActivityCard } from "@/components/artist/RecentActivityCard";
 import { ShowAdminHeader } from "@/components/artist/ShowAdminHeader";
 import { TierBreakdownCard } from "@/components/artist/TierBreakdownCard";
 import { db } from "@/lib/db";
@@ -25,12 +26,15 @@ import {
   getOfferStatsForShow,
   getProvisionalFilledByShow,
   getShowById,
+  listRecentOffersForShow,
   userCanManageArtist,
 } from "@/lib/db/repositories";
 import {
   DEFAULT_TZ,
   presentArtistShowSummary,
+  presentRecentActivity,
   presentTierBreakdown,
+  type ActivityEvent,
   type ArtistShowSummaryView,
   type TierBreakdownView,
 } from "@/lib/presenters";
@@ -46,6 +50,7 @@ const ParamsSchema = z.object({
 type LoadedView = {
   show: ArtistShowSummaryView;
   tiers: TierBreakdownView;
+  activity: ActivityEvent[];
 };
 
 async function loadShowAdmin(
@@ -60,11 +65,13 @@ async function loadShowAdmin(
   // show.
   if (showRow.artistId !== artistId) return null;
 
-  const [stats, provisionalFilled, tierBuckets] = await Promise.all([
-    getOfferStatsForShow(db, showId),
-    getProvisionalFilledByShow(db, showId),
-    getOfferStatsByTierForShow(db, showId),
-  ]);
+  const [stats, provisionalFilled, tierBuckets, recentOffers] =
+    await Promise.all([
+      getOfferStatsForShow(db, showId),
+      getProvisionalFilledByShow(db, showId),
+      getOfferStatsByTierForShow(db, showId),
+      listRecentOffersForShow(db, showId, 50),
+    ]);
 
   // Project ShowWithRelations onto the ShowSummary shape that the
   // ArtistShowSummary presenter expects. activeRowIds is stored as
@@ -85,19 +92,21 @@ async function loadShowAdmin(
     venueCity: showRow.venue.city,
   };
 
+  const now = new Date();
   const view = presentArtistShowSummary(
     summary,
     stats,
     provisionalFilled,
     showRow.venueArchitecture,
     summary.activeRowIds,
-    new Date(),
+    now,
     DEFAULT_TZ,
   );
 
   return {
     show: view,
     tiers: presentTierBreakdown(tierBuckets),
+    activity: presentRecentActivity(recentOffers, now, 10),
   };
 }
 
@@ -129,7 +138,10 @@ export default async function ArtistShowAdminPage({ params }: Props) {
         <ShowAdminHeader artistId={parsed.data.artistId} show={data.show} />
 
         <div className="flex flex-col gap-4">
-          <BigStatsCard show={data.show} />
+          <div className="grid grid-cols-2 gap-4">
+            <BigStatsCard show={data.show} />
+            <RecentActivityCard events={data.activity} />
+          </div>
           <TierBreakdownCard breakdown={data.tiers} />
         </div>
       </div>

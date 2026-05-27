@@ -1,0 +1,116 @@
+import { describe, expect, it } from "vitest";
+
+import type { Offer } from "@/lib/db/repositories";
+
+import {
+  formatTimeAgo,
+  presentRecentActivity,
+  type ActivityEvent,
+} from "./activity";
+
+const NOW = new Date("2026-05-27T12:00:00Z");
+
+function makeOffer(overrides: Partial<Offer> = {}): Offer {
+  return {
+    id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa1234",
+    showId: "44444444-4444-4444-4444-444444444444",
+    userId: "user_2abc",
+    channel: "market",
+    groupSize: 4,
+    pricePerTicketCents: 4200,
+    tierPreference: "this_or_worse",
+    preferredTier: "premium",
+    rankKey: BigInt(4200 * 1000 + 4),
+    autoBidEnabled: false,
+    autoBidCapCents: null,
+    autoBidIncrementCents: 500,
+    privateThresholdCents: null,
+    stripePaymentMethodId: "pm_test",
+    stripeSetupIntentId: "seti_test",
+    status: "pool",
+    submittedAt: new Date("2026-05-27T11:58:00Z"),
+    revisedAt: null,
+    ...overrides,
+  } as Offer;
+}
+
+describe("formatTimeAgo", () => {
+  it('returns "just now" for events less than a minute old', () => {
+    expect(formatTimeAgo(new Date(NOW.getTime() - 30_000), NOW)).toBe("just now");
+  });
+  it("formats minutes for events under an hour", () => {
+    expect(formatTimeAgo(new Date(NOW.getTime() - 5 * 60_000), NOW)).toBe("5m ago");
+    expect(formatTimeAgo(new Date(NOW.getTime() - 59 * 60_000), NOW)).toBe("59m ago");
+  });
+  it("formats hours for events under a day", () => {
+    expect(formatTimeAgo(new Date(NOW.getTime() - 2 * 60 * 60_000), NOW)).toBe("2h ago");
+    expect(formatTimeAgo(new Date(NOW.getTime() - 23 * 60 * 60_000), NOW)).toBe("23h ago");
+  });
+  it("formats days for older events", () => {
+    expect(
+      formatTimeAgo(new Date(NOW.getTime() - 3 * 24 * 60 * 60_000), NOW),
+    ).toBe("3d ago");
+  });
+});
+
+describe("presentRecentActivity", () => {
+  it("emits a 'new' event for each offer", () => {
+    const events = presentRecentActivity([makeOffer()], NOW);
+    expect(events).toHaveLength(1);
+    expect(events[0]?.kind).toBe("new");
+    expect(events[0]?.message).toBe("New offer · $42.00 × 4 · premium or below");
+    expect(events[0]?.timeAgo).toBe("2m ago");
+  });
+
+  it("emits both 'new' and 'revised' events for a revised offer", () => {
+    const offer = makeOffer({
+      submittedAt: new Date("2026-05-27T10:00:00Z"),
+      revisedAt: new Date("2026-05-27T11:50:00Z"),
+    });
+    const events = presentRecentActivity([offer], NOW);
+    expect(events).toHaveLength(2);
+    // Revised is newer → first.
+    expect(events[0]?.kind).toBe("revised");
+    expect(events[0]?.message).toMatch(/^Revision · offer_/);
+    expect(events[0]?.message).toContain("now $42.00 × 4");
+    expect(events[1]?.kind).toBe("new");
+  });
+
+  it("uses composer-matching tier labels", () => {
+    const specific = makeOffer({ tierPreference: "specific", preferredTier: "premium" });
+    const worse = makeOffer({ tierPreference: "this_or_worse", preferredTier: "premium" });
+    const any = makeOffer({ tierPreference: "any", preferredTier: null });
+    expect(presentRecentActivity([specific], NOW)[0]?.message).toContain(
+      "premium only",
+    );
+    expect(presentRecentActivity([worse], NOW)[0]?.message).toContain(
+      "premium or below",
+    );
+    expect(presentRecentActivity([any], NOW)[0]?.message).toContain("anywhere");
+  });
+
+  it("sorts events by `at` descending across multiple offers", () => {
+    const olderOffer = makeOffer({
+      id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      submittedAt: new Date("2026-05-27T10:00:00Z"),
+    });
+    const newerOffer = makeOffer({
+      id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+      submittedAt: new Date("2026-05-27T11:55:00Z"),
+    });
+    const events = presentRecentActivity([olderOffer, newerOffer], NOW);
+    expect(events[0]?.at.toISOString()).toBe("2026-05-27T11:55:00.000Z");
+    expect(events[1]?.at.toISOString()).toBe("2026-05-27T10:00:00.000Z");
+  });
+
+  it("respects the limit parameter", () => {
+    const offers: Offer[] = Array.from({ length: 15 }, (_, i) =>
+      makeOffer({
+        id: `aaaaaaaa-aaaa-aaaa-aaaa-${String(i).padStart(12, "0")}`,
+        submittedAt: new Date(NOW.getTime() - (i + 1) * 60_000),
+      }),
+    );
+    const events: ActivityEvent[] = presentRecentActivity(offers, NOW, 5);
+    expect(events).toHaveLength(5);
+  });
+});
