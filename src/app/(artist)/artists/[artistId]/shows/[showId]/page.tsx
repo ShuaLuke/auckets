@@ -17,6 +17,7 @@ import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
 
 import { BigStatsCard } from "@/components/artist/BigStatsCard";
+import { ProvisionalPlacementCard } from "@/components/artist/ProvisionalPlacementCard";
 import { RecentActivityCard } from "@/components/artist/RecentActivityCard";
 import { ShowAdminHeader } from "@/components/artist/ShowAdminHeader";
 import { TierBreakdownCard } from "@/components/artist/TierBreakdownCard";
@@ -27,16 +28,19 @@ import {
   getProvisionalFilledByShow,
   getShowById,
   listRecentOffersForShow,
+  listSeatAssignmentsForShow,
   userCanManageArtist,
   userIsAdmin,
 } from "@/lib/db/repositories";
 import {
   DEFAULT_TZ,
   presentArtistShowSummary,
+  presentProvisionalPlacement,
   presentRecentActivity,
   presentTierBreakdown,
   type ActivityEvent,
   type ArtistShowSummaryView,
+  type ProvisionalPlacementView,
   type TierBreakdownView,
 } from "@/lib/presenters";
 import { uuidParam } from "@/lib/validators/uuid";
@@ -52,6 +56,7 @@ type LoadedView = {
   show: ArtistShowSummaryView;
   tiers: TierBreakdownView;
   activity: ActivityEvent[];
+  placement: ProvisionalPlacementView;
 };
 
 async function loadShowAdmin(
@@ -66,12 +71,13 @@ async function loadShowAdmin(
   // show.
   if (showRow.artistId !== artistId) return null;
 
-  const [stats, provisionalFilled, tierBuckets, recentOffers] =
+  const [stats, provisionalFilled, tierBuckets, recentOffers, assignments] =
     await Promise.all([
       getOfferStatsForShow(db, showId),
       getProvisionalFilledByShow(db, showId),
       getOfferStatsByTierForShow(db, showId),
       listRecentOffersForShow(db, showId, 50),
+      listSeatAssignmentsForShow(db, showId),
     ]);
 
   // Project ShowWithRelations onto the ShowSummary shape that the
@@ -108,6 +114,11 @@ async function loadShowAdmin(
     show: view,
     tiers: presentTierBreakdown(tierBuckets),
     activity: presentRecentActivity(recentOffers, now, 10),
+    placement: presentProvisionalPlacement(
+      showRow.venueArchitecture,
+      summary.activeRowIds,
+      assignments,
+    ),
   };
 }
 
@@ -155,6 +166,7 @@ export default async function ArtistShowAdminPage({ params }: Props) {
             <RecentActivityCard events={data.activity} />
           </div>
           <TierBreakdownCard breakdown={data.tiers} />
+          <ProvisionalPlacementCard placement={data.placement} />
         </div>
       </div>
     </main>

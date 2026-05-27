@@ -46,3 +46,12 @@ export {
   presentRecentActivity,
   type ActivityEvent,
 } from "./activity";
+
+export {
+  presentProvisionalPlacement,
+  type PlacementRow,
+  type PlacementSeat,
+  type PlacementSection,
+  type ProvisionalPlacementView,
+  type SeatStatus,
+} from "./placement";

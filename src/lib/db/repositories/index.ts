@@ -50,6 +50,7 @@ export {
   getProvisionalFilledByShowIds,
   getSeatAssignmentByOfferId,
   listSeatAssignmentsByOfferIds,
+  listSeatAssignmentsForShow,
   type SeatAssignment,
 } from "./seat-assignments";
 
