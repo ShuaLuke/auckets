@@ -24,17 +24,30 @@ if (
 
 // ALLOW_DEV_OFFER_STUB enables the dev-mode POST /api/offers stub that
 // uses placeholder Stripe IDs instead of going through SetupIntent.
-// Same safety posture as SKIP_ENV_VALIDATION — refuse loudly in
-// production so a stray env var on Vercel can't accidentally turn it
-// on and start writing fake-payment-method offer rows.
-if (
-  process.env.NODE_ENV === "production" &&
-  process.env.ALLOW_DEV_OFFER_STUB === "true"
-) {
-  throw new Error(
-    "ALLOW_DEV_OFFER_STUB is not allowed in production. The real POST /api/offers (with SetupIntent) lands once ADR-0003 is settled.",
-  );
+// Same safety posture as SKIP_ENV_VALIDATION — refuse loudly in real
+// production so a stray env var can't accidentally turn it on and start
+// writing fake-payment-method offer rows.
+//
+// Vercel sets NODE_ENV=production for BOTH production and preview
+// deployments, so a pure NODE_ENV check would refuse the stub on
+// preview too, where we actually want it enabled until the real
+// SetupIntent flow (ADR-0003) lands. Prefer VERCEL_ENV when present
+// (it distinguishes "production" / "preview" / "development") and fall
+// back to NODE_ENV for local builds and CI. Exported so the guard is
+// unit-testable without module-reload tricks.
+export function assertNoDevStubInProduction(envVars: NodeJS.ProcessEnv): void {
+  const isProductionDeploy =
+    envVars.VERCEL_ENV !== undefined
+      ? envVars.VERCEL_ENV === "production"
+      : envVars.NODE_ENV === "production";
+  if (isProductionDeploy && envVars.ALLOW_DEV_OFFER_STUB === "true") {
+    throw new Error(
+      "ALLOW_DEV_OFFER_STUB is not allowed in production. The real POST /api/offers (with SetupIntent) lands once ADR-0003 is settled.",
+    );
+  }
 }
+
+assertNoDevStubInProduction(process.env);
 
 export const env = createEnv({
   server: {
