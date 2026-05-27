@@ -25,7 +25,7 @@
 // data); `getOfferByShowAndUser` strictly filters by the calling userId
 // so it can only ever return the caller's own offer.
 
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, lt, or, sql } from "drizzle-orm";
 
 import type { Db } from "@/lib/db";
 import {
@@ -234,6 +234,54 @@ export async function listRecentOffersForShow(
     .where(eq(offers.showId, showId))
     .orderBy(desc(offers.submittedAt))
     .limit(limit);
+}
+
+// 1-indexed rank of the caller's offer within this show's active pool, or
+// null if the user has no offer in the pool. Active pool is the same
+// status filter as the aggregate stats: 'pool' + 'placed' (both live,
+// both contributing to provisional revenue; 'unplaced' / 'charged' /
+// 'refunded' / 'resold' / 'gifted' / 'card_failure' are excluded).
+//
+// Rank ordering is rank_key DESC, then submitted_at ASC — the same tiebreak
+// the GAE uses. Higher rank_key = better seat; ties broken by who got here
+// first. The user's rank is (count of offers ranked strictly above the
+// user's offer) + 1.
+//
+// Two queries instead of one CTE because Drizzle's query builder is more
+// readable that way and the second query is a single COUNT(*) — fast even
+// on a 10k-offer show. Total page cost is +1 round trip vs +0.
+export async function getUserRankInShowPool(
+  db: Db,
+  showId: string,
+  userId: string,
+): Promise<number | null> {
+  const userOffer = await getOfferByShowAndUser(db, showId, userId);
+  if (!userOffer) return null;
+  // Offers post-binding ('charged' / 'refunded' / etc) shouldn't show a
+  // pre-binding rank — they're past the point where "rank in the pool" is
+  // a meaningful concept. Return null so the presenter can hide the cell.
+  if (userOffer.status !== "pool" && userOffer.status !== "placed") {
+    return null;
+  }
+
+  const rows = await db
+    .select({ count: sql<number>`COUNT(*)::int` })
+    .from(offers)
+    .where(
+      and(
+        eq(offers.showId, showId),
+        inArray(offers.status, ["pool", "placed"]),
+        or(
+          gt(offers.rankKey, userOffer.rankKey),
+          and(
+            eq(offers.rankKey, userOffer.rankKey),
+            lt(offers.submittedAt, userOffer.submittedAt),
+          ),
+        ),
+      ),
+    );
+  const above = rows[0]?.count ?? 0;
+  return above + 1;
 }
 
 export async function getOfferStatsForShow(
