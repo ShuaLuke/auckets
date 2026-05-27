@@ -7,11 +7,13 @@ import {
   getOfferStatsByTierForShow,
   getOfferStatsForArtist,
   getOfferStatsForShow,
+  listBidsForUser,
   listOffersForUser,
   listPoolOffersForShow,
   upsertOfferForUser,
   type OfferStats,
   type OfferTierBucket,
+  type UserBidRow,
 } from "./offers";
 import { makeMockDb } from "./_mock-db";
 
@@ -429,5 +431,83 @@ describe("getOfferStatsByTierForShow", () => {
     expectTypeOf(getOfferStatsByTierForShow).returns.resolves.toEqualTypeOf<
       OfferTierBucket[]
     >();
+  });
+});
+
+describe("listBidsForUser", () => {
+  it("returns an empty array when the user has no bids", async () => {
+    const db = makeMockDb<{
+      offer: Offer;
+      showId: string;
+      showStatus: "open";
+      doorsAt: Date;
+      bindingAllocationAt: Date;
+      pausedAt: Date | null;
+      artistName: string;
+      venueName: string;
+      venueCity: string | null;
+    }>([]);
+    const result = await listBidsForUser(db, "user_2abc");
+    expect(result).toEqual([]);
+  });
+
+  it("projects each row onto { offer, show: {...} } and preserves order", async () => {
+    // Verifies the projection step — the mock-Db doesn't honor ORDER BY
+    // (it returns rows in input order), so we hand them in the order
+    // we expect the repo to surface them.
+    const offerNewer = makeOffer({
+      id: "00000000-0000-0000-0000-000000000001",
+      submittedAt: new Date("2026-05-26T15:00:00Z"),
+    });
+    const offerOlder = makeOffer({
+      id: "00000000-0000-0000-0000-000000000002",
+      showId: "55555555-5555-5555-5555-555555555555",
+      submittedAt: new Date("2026-05-20T15:00:00Z"),
+    });
+    const db = makeMockDb<{
+      offer: Offer;
+      showId: string;
+      showStatus: "open" | "complete";
+      doorsAt: Date;
+      bindingAllocationAt: Date;
+      pausedAt: Date | null;
+      artistName: string;
+      venueName: string;
+      venueCity: string | null;
+    }>([
+      {
+        offer: offerNewer,
+        showId: "44444444-4444-4444-4444-444444444444",
+        showStatus: "open",
+        doorsAt: new Date("2026-06-25T13:27:42Z"),
+        bindingAllocationAt: new Date("2026-06-24T13:27:42Z"),
+        pausedAt: null,
+        artistName: "Citizen Cope",
+        venueName: "Cope's place",
+        venueCity: "Brooklyn, NY",
+      },
+      {
+        offer: offerOlder,
+        showId: "55555555-5555-5555-5555-555555555555",
+        showStatus: "complete",
+        doorsAt: new Date("2026-05-20T20:00:00Z"),
+        bindingAllocationAt: new Date("2026-05-19T20:00:00Z"),
+        pausedAt: null,
+        artistName: "Citizen Cope",
+        venueName: "Lincoln Theatre",
+        venueCity: "Washington, DC",
+      },
+    ]);
+    const result = await listBidsForUser(db, "user_2abc");
+    expect(result).toHaveLength(2);
+    expect(result[0]?.offer.id).toBe("00000000-0000-0000-0000-000000000001");
+    expect(result[0]?.show.venueName).toBe("Cope's place");
+    expect(result[0]?.show.status).toBe("open");
+    expect(result[1]?.show.status).toBe("complete");
+    expect(result[1]?.show.venueCity).toBe("Washington, DC");
+  });
+
+  it("has the expected return type", () => {
+    expectTypeOf(listBidsForUser).returns.resolves.toEqualTypeOf<UserBidRow[]>();
   });
 });

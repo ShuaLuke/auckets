@@ -11,6 +11,7 @@
 
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 
 import { ShowRow } from "@/components/dashboard/ShowRow";
 import { Eyebrow } from "@/components/ui/Eyebrow";
@@ -139,9 +140,22 @@ export default async function DashboardPage() {
           </div>
         )}
 
+        {/* Bid history link — small affordance below the show list.
+            Page lists every offer the user has placed across every
+            show (open + past). */}
+        <div className="mt-6 text-right">
+          <Link
+            href="/my-bids"
+            className="font-sans text-[13px] no-underline"
+            style={{ color: "var(--fg-muted)" }}
+          >
+            View bid history →
+          </Link>
+        </div>
+
         {/* "Heads up" note — matches Dashboard.jsx lines 66-73. */}
         <div
-          className="mt-10 rounded-xl p-5 font-sans text-[13px]"
+          className="mt-6 rounded-xl p-5 font-sans text-[13px]"
           style={{
             background: "var(--paper-2)",
             color: "var(--fg-muted)",

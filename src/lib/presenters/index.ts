@@ -38,3 +38,5 @@ export {
   type TierBreakdownView,
   type TierBucketView,
 } from "./artist-shows";
+
+export { presentBidView, type BidView } from "./bids";
