@@ -78,7 +78,12 @@ export async function GET(
       row,
       // batched helpers backfill missing keys with zero-stats / 0,
       // so the ?? branches are belt-and-braces.
-      offerStats.get(row.id) ?? { count: 0, medianCents: null, topCents: null },
+      offerStats.get(row.id) ?? {
+        count: 0,
+        ticketsCount: 0,
+        medianCents: null,
+        topCents: null,
+      },
       provisionalFilled.get(row.id) ?? 0,
       architectureById.get(row.venueArchitectureId) ?? null,
       row.activeRowIds,

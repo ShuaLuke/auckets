@@ -13,12 +13,14 @@ export {
 export {
   getOfferByShowAndUser,
   getOfferStatsByShowIds,
+  getOfferStatsByTierForShow,
   getOfferStatsForArtist,
   getOfferStatsForShow,
   listOffersForUser,
   listPoolOffersForShow,
   upsertOfferForUser,
   type OfferStats,
+  type OfferTierBucket,
 } from "./offers";
 
 export { ensureUserMirror, userIsAdmin } from "./users";

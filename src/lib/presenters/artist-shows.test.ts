@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type {
   OfferStats,
+  OfferTierBucket,
   ShowSummary,
   VenueArchitecture,
 } from "@/lib/db/repositories";
@@ -11,6 +12,7 @@ import {
   computeShowCapacity,
   presentArtistShowSummary,
   presentArtistSnapshotStats,
+  presentTierBreakdown,
   type ArtistShowSummaryView,
   type ArtistSnapshotStatsView,
 } from "./artist-shows";
@@ -84,6 +86,7 @@ describe("presentArtistShowSummary", () => {
     const now = new Date("2026-05-28T16:00:00-04:00");
     const stats: OfferStats = {
       count: 142,
+      ticketsCount: 487,
       medianCents: 2800,
       topCents: 12000,
     };
@@ -101,6 +104,7 @@ describe("presentArtistShowSummary", () => {
     );
 
     expect(view.offers).toBe(142);
+    expect(view.ticketsCount).toBe(487);
     expect(view.medianPrice).toBe("$28.00");
     expect(view.topPrice).toBe("$120.00");
   });
@@ -109,7 +113,7 @@ describe("presentArtistShowSummary", () => {
     // ArtistDashboard.jsx row 3: offers: 0, medianPrice: '—', topPrice: '—'.
     // The em-dash is U+2014; the prototype uses it literally.
     const now = new Date("2026-05-26T12:00:00-04:00");
-    const stats: OfferStats = { count: 0, medianCents: null, topCents: null };
+    const stats: OfferStats = { count: 0, ticketsCount: 0, medianCents: null, topCents: null };
     const view = presentArtistShowSummary(
       makeSummary(),
       stats,
@@ -128,7 +132,7 @@ describe("presentArtistShowSummary", () => {
     const now = new Date("2026-05-28T16:00:00-04:00");
     const view = presentArtistShowSummary(
       makeSummary(),
-      { count: 0, medianCents: null, topCents: null },
+      { count: 0, ticketsCount: 0, medianCents: null, topCents: null },
       0,
       makeArchitecture([]),
       [],
@@ -147,7 +151,7 @@ describe("presentArtistShowSummary", () => {
     const now = new Date("2026-05-28T16:00:00-04:00");
     const view = presentArtistShowSummary(
       makeSummary(),
-      { count: 5, medianCents: 3000, topCents: 4000 },
+      { count: 5, ticketsCount: 18, medianCents: 3000, topCents: 4000 },
       12,
       makeArchitecture([makeRow({ capacity: 50 })]),
       ["row_a"],
@@ -160,7 +164,7 @@ describe("presentArtistShowSummary", () => {
     const now = new Date("2026-05-28T16:00:00-04:00");
     const view = presentArtistShowSummary(
       makeSummary(),
-      { count: 142, medianCents: 2800, topCents: 12000 },
+      { count: 142, ticketsCount: 487, medianCents: 2800, topCents: 12000 },
       487,
       makeArchitecture([
         makeRow({ id: "row_a", capacity: 200 }),
@@ -180,7 +184,7 @@ describe("presentArtistShowSummary", () => {
     const now = new Date("2026-05-28T16:00:00-04:00");
     const view = presentArtistShowSummary(
       makeSummary(),
-      { count: 0, medianCents: null, topCents: null },
+      { count: 0, ticketsCount: 0, medianCents: null, topCents: null },
       0,
       null,
       null,
@@ -196,7 +200,7 @@ describe("presentArtistShowSummary", () => {
     const now = new Date("2026-05-28T16:00:00-04:00");
     const view = presentArtistShowSummary(
       makeSummary(),
-      { count: 0, medianCents: null, topCents: null },
+      { count: 0, ticketsCount: 0, medianCents: null, topCents: null },
       0,
       makeArchitecture([
         makeRow({ id: "row_a", capacity: 8 }),
@@ -213,7 +217,7 @@ describe("presentArtistShowSummary", () => {
     const now = new Date("2026-05-28T16:00:00-04:00");
     const view: ArtistShowSummaryView = presentArtistShowSummary(
       makeSummary(),
-      { count: 3, medianCents: 2200, topCents: 3500 },
+      { count: 3, ticketsCount: 9, medianCents: 2200, topCents: 3500 },
       0,
       makeArchitecture([makeRow({ capacity: 50 })]),
       ["row_a"],
@@ -230,12 +234,14 @@ describe("presentArtistSnapshotStats", () => {
   it("renders the populated cross-show snapshot", () => {
     const stats: OfferStats = {
       count: 180,
+      ticketsCount: 612,
       medianCents: 2600,
       topCents: 12000,
     };
     const view = presentArtistSnapshotStats(stats);
     expect(view).toEqual<ArtistSnapshotStatsView>({
       offersInPool: 180,
+      ticketsInPool: 612,
       medianOffer: "$26.00",
       topOffer: "$120.00",
     });
@@ -244,13 +250,77 @@ describe("presentArtistSnapshotStats", () => {
   it("renders zero/em-dash when the artist has no live offers anywhere", () => {
     const view = presentArtistSnapshotStats({
       count: 0,
+      ticketsCount: 0,
       medianCents: null,
       topCents: null,
     });
     expect(view).toEqual<ArtistSnapshotStatsView>({
       offersInPool: 0,
+      ticketsInPool: 0,
       medianOffer: "—",
       topOffer: "—",
     });
+  });
+});
+
+describe("presentTierBreakdown", () => {
+  it("returns three zero-buckets for an empty pool", () => {
+    const view = presentTierBreakdown([]);
+    expect(view.totalOffers).toBe(0);
+    expect(view.totalTickets).toBe(0);
+    expect(view.buckets.map((b) => b.key)).toEqual([
+      "premium-only",
+      "premium-or-below",
+      "anywhere",
+    ]);
+    for (const b of view.buckets) {
+      expect(b.offers).toBe(0);
+      expect(b.tickets).toBe(0);
+    }
+  });
+
+  it("maps composer tier_preference values to the three visible buckets", () => {
+    const rows: OfferTierBucket[] = [
+      { tierPreference: "specific", preferredTier: "premium", count: 4, ticketsCount: 12 },
+      { tierPreference: "this_or_worse", preferredTier: "premium", count: 7, ticketsCount: 28 },
+      { tierPreference: "any", preferredTier: null, count: 11, ticketsCount: 41 },
+    ];
+    const view = presentTierBreakdown(rows);
+    expect(view.totalOffers).toBe(22);
+    expect(view.totalTickets).toBe(81);
+    expect(view.buckets.find((b) => b.key === "premium-only")).toMatchObject({
+      offers: 4,
+      tickets: 12,
+    });
+    expect(view.buckets.find((b) => b.key === "premium-or-below")).toMatchObject({
+      offers: 7,
+      tickets: 28,
+    });
+    expect(view.buckets.find((b) => b.key === "anywhere")).toMatchObject({
+      offers: 11,
+      tickets: 41,
+    });
+  });
+
+  it("folds the deferred 'this_or_better' option into 'anywhere'", () => {
+    // The composer doesn't surface this_or_better today. If a row ever
+    // shows up with it, it lands in 'anywhere' — at worst the fan is
+    // willing to take a seat — rather than silently dropping.
+    const rows: OfferTierBucket[] = [
+      { tierPreference: "this_or_better", preferredTier: "mid", count: 2, ticketsCount: 5 },
+      { tierPreference: "any", preferredTier: null, count: 3, ticketsCount: 9 },
+    ];
+    const view = presentTierBreakdown(rows);
+    expect(view.buckets.find((b) => b.key === "anywhere")).toMatchObject({
+      offers: 5,
+      tickets: 14,
+    });
+  });
+
+  it("carries the composer-matching labels through", () => {
+    const view = presentTierBreakdown([]);
+    expect(view.buckets[0]?.label).toBe("Premium only");
+    expect(view.buckets[1]?.label).toBe("Premium or below");
+    expect(view.buckets[2]?.label).toBe("Anywhere I fit");
   });
 });
