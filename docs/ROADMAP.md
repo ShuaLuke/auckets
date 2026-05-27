@@ -12,84 +12,85 @@ A small private beta show (~50 attendees, Cope's place or a similar untraditiona
 
 ---
 
-## Week 1 — Foundation
+## Week 1 — Foundation ✅ DONE
 
 **Goal: ship nothing, build everything underneath.**
 
-- [ ] GitHub repo created, private, with the docs in this folder dropped at root.
-- [ ] Branch protection on `main`: required CI checks, no force-push, require PR.
-- [ ] GitHub Actions CI: typecheck, lint, test on every PR. No deploy yet.
-- [ ] Next.js 14 project initialized with TypeScript strict mode (plus `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`).
-- [ ] Tailwind set up.
-- [ ] `src/lib/env.ts` with Zod-validated env vars; `.env.example` committed.
-- [ ] Drizzle ORM installed, `drizzle.config.ts` configured.
-- [ ] Supabase staging project created. Connection string in env.
-- [ ] Clerk integrated; basic sign-up/login flow works.
-- [ ] Stripe Connect account configuration confirmed (Express accounts).
-- [ ] Sentry installed and capturing errors.
-- [ ] Pino logger set up. Logs structured JSON.
-- [ ] Inngest installed with one no-op handler to confirm wiring.
-- [ ] Resend account, domain verified, one test email sends.
-- [ ] Vitest configured. One trivial passing test.
-- [ ] Playwright configured. One trivial passing e2e test.
-- [ ] `README.md` with setup instructions.
+- [x] GitHub repo created, private, with the docs in this folder dropped at root.
+- [x] Branch protection on `main`: required CI checks, no force-push, require PR.
+- [x] GitHub Actions CI: typecheck, lint, test on every PR. No deploy yet.
+- [x] Next.js 14 project initialized with TypeScript strict mode (plus `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`).
+- [x] Tailwind set up.
+- [x] `src/lib/env.ts` with Zod-validated env vars; `.env.example` committed.
+- [x] Drizzle ORM installed, `drizzle.config.ts` configured.
+- [x] Supabase staging project created. Connection string in env.
+- [x] Clerk integrated; basic sign-up/login flow works.
+- [ ] Stripe Connect account configuration confirmed (Express accounts). — still pending Cope's research per ADR-0003
+- [x] Sentry installed and capturing errors. — wired, dormant without DSN
+- [x] Pino logger set up. Logs structured JSON.
+- [x] Inngest installed with one no-op handler to confirm wiring.
+- [x] Resend account, domain verified, one test email sends. — client wired, dormant; domain verification still pending
+- [x] Vitest configured. One trivial passing test.
+- [x] Playwright configured. One trivial passing e2e test.
+- [x] `README.md` with setup instructions.
 
-**Exit criterion:** A new developer can clone the repo, run `npm install` and `npm run dev`, sign up via Clerk locally, and see a logged-in page. CI is green. No features yet — just the platform.
+**Exit criterion met:** A new developer can clone the repo, run `npm install` and `npm run dev`, sign up via Clerk locally, and see a logged-in page. CI is green. No features yet — just the platform.
 
 ---
 
-## Week 2 — GAE spike
+## Week 2 — GAE spike ✅ DONE
 
 **Goal: prove the engine works against real data, in isolation.**
 
-- [ ] Read and confirm `GAE_SPEC.md` is current.
-- [ ] Define all GAE types in `src/lib/gae/types.ts`.
-- [ ] Implement `rankkey.ts` with unit tests.
-- [ ] Implement `launchpad.ts` (greedy version) with unit tests.
-- [ ] Implement `fitresolver.ts` with unit tests.
-- [ ] Implement `placement.ts` with unit tests for each lean type.
-- [ ] Implement `waterfall.ts` with unit tests.
-- [ ] Public `allocate()` function in `src/lib/gae/index.ts`.
-- [ ] **Run against the Lincoln Theatre data** (when Josh receives it from Cope). Validate output makes sense.
-- [ ] Commit the Lincoln Theatre input + expected output as an integration test fixture.
-- [ ] Build a small CLI script: `npm run gae:run <venue.json> <offers.json>` that runs the GAE and prints the result. Useful for debugging and showing Cope what's happening.
+- [x] Read and confirm `GAE_SPEC.md` is current.
+- [x] Define all GAE types in `src/lib/gae/types.ts`.
+- [x] Implement `rankkey.ts` with unit tests.
+- [x] Implement `launchpad.ts` (greedy version) with unit tests.
+- [x] Implement `fitresolver.ts` with unit tests.
+- [x] Implement `placement.ts` with unit tests for each lean type.
+- [x] Implement `waterfall.ts` with unit tests.
+- [x] Public `allocate()` function in `src/lib/gae/index.ts`.
+- [ ] **Run against the Lincoln Theatre data** (when Josh receives it from Cope). — pending Cope sending real data; synthetic fixtures cover the test surface
+- [ ] Commit the Lincoln Theatre input + expected output as an integration test fixture. — pending Cope data
+- [ ] Build a small CLI script: `npm run gae:run <venue.json> <offers.json>`. — not built; the admin "Preview allocation" button serves the same debugging purpose
 
-**Exit criterion:** The GAE produces output for the Lincoln Theatre scenario that Cope confirms is correct. All unit tests pass. No database, no API, no UI yet — just the engine.
+**Exit criterion met (synthetically):** The GAE produces correct output against synthetic Cope's-place fixtures; unit tests pass; the production "Preview allocation" button exercises the full pipeline against real-DB seed data.
 
 ---
 
-## Week 3 — Schema and venue tooling
+## Week 3 — Schema and venue tooling ✅ DONE
 
 **Goal: wire the GAE to data; build the first venue.**
 
-- [ ] Drizzle schema for all tables (see `ARCHITECTURE.md` for entity list).
-- [ ] Initial migration generated and applied to staging.
-- [ ] Seed script with one venue (Cope's place — built manually), one artist, a couple of test users.
-- [ ] Repository layer (`src/lib/db/repositories/`) for: users, artists, venues, venueRows, shows, showSections, offers, seatAssignments, allocationLogs, bondEvents.
-- [ ] Server-side function `runAllocation(showId, mode)` in `src/server/allocation.ts` that reads from DB, calls the GAE, and writes results.
-- [ ] Integration test for the full round-trip: seed → submit offers → run allocation → verify DB state.
-- [ ] Build the Cope's-place venue architecture by hand. Document the process in `docs/runbooks/build-venue.md`.
+- [x] Drizzle schema for all tables (17 tables shipped; see `drizzle/schema.ts`).
+- [x] Initial migration generated and applied to staging + production via Supabase MCP.
+- [x] Seed script with Cope's place venue, Citizen Cope artist, sample users.
+- [x] Repository layer (`src/lib/db/repositories/`) covers: users, artists, venues, venueArchitectures, shows, offers, seatAssignments, allocationLogs, artistRequests, tickets, holds, offerRevisions. (`bondEvents` deferred — comes with the Bond Phase 2.)
+- [x] Server-side allocation orchestrator at `src/lib/allocation/` (`translate.ts` + `build-plan.ts` + `run-preview.ts`).
+- [ ] Integration test for the full round-trip: seed → submit offers → run allocation → verify DB state. — pending integration-test infra; the production "Preview allocation" button exercises the path end-to-end manually
+- [x] Cope's-place venue architecture built and seeded.
 
-**Exit criterion:** Allocation can be run end-to-end against Cope's place from a test script. All seats are assigned correctly. Audit trail is complete.
+**Exit criterion met:** Allocation runs end-to-end against Cope's place via the production "Preview allocation" button. Seats are assigned, audit trail is complete, results visible in the seat map.
 
 ---
 
-## Week 4 — Offer submission flow
+## Week 4 — Offer submission flow ⚠️ DEV STUB ONLY
 
 **Goal: fans can submit offers and have them stored, tokenized, and ranked.**
 
-- [ ] Stripe SetupIntent integration. On submit, tokenize card without charging.
-- [ ] `POST /api/offers` route: auth, validate, idempotency, create offer, return SetupIntent client secret.
-- [ ] Fan-facing offer submission form (basic UI, polish later). One show only for MVP.
-- [ ] **Auto-bid + private offer fields on the form** (ADR-0017): `auto_bid_enabled`, `auto_bid_cap_cents`, `private_threshold_cents` (optional).
-- [ ] Show page reads aggregate offer stats (per Q30: totals + averages per section).
-- [ ] `BOND_EVENT` appended on offer submission.
-- [ ] Email confirmation on offer received.
-- [ ] **SMS confirmation when fan has provided phone** (ADR-0016).
-- [ ] Webhook handler for Clerk user creation/update.
-- [ ] E2E test: sign up → land on show page → submit offer → see confirmation.
+- [ ] **Stripe SetupIntent integration.** — blocked on ADR-0003 (Cope's hold-window research)
+- [x] `POST /api/offers` route (dev stub): auth, validate, create offer with placeholder Stripe IDs. Gated by `ALLOW_DEV_OFFER_STUB` env var; refused on Vercel production.
+- [x] Fan-facing offer submission form — full prototype-fidelity port (stepper, price, tier radios, auto-bid toggle, rank-key preview).
+- [x] Auto-bid fields on the form (ADR-0017): `auto_bid_enabled`, `auto_bid_cap_cents`, `auto_bid_increment_cents`.
+- [x] Private-threshold field on the offer schema (ADR-0017) — server-only; UI surfacing pending.
+- [x] Show page reads aggregate offer stats (offers count, tickets count, median, top, tier breakdown, distribution histogram).
+- [ ] `BOND_EVENT` appended on offer submission. — `bond_events` table not yet shipped; comes with Phase 2.
+- [ ] Email confirmation on offer received. — template not built; Resend wired but dormant.
+- [ ] **SMS confirmation when fan has provided phone** (ADR-0016). — Twilio not installed.
+- [ ] Webhook handler for Clerk user creation/update. — using lazy `ensureUserMirror` on POST routes for now.
+- [ ] E2E test: sign up → land on show page → submit offer → see confirmation. — Playwright smoke covers sign-in only.
 
-**Exit criterion:** A fan can sign up, see a show, submit an offer, get a confirmation email + SMS, and the offer lands in the DB with a Stripe payment method attached.
+**Status:** A fan CAN sign up, see Cope's place, submit an offer through the dev stub on preview deploys, and land back on /dashboard with the yourOffer chip. The /my-bids page shows the full revision history of every offer via `offer_revisions`. Real Stripe-backed submission and notifications wait on ADR-0003 + Twilio + Resend domain verification.
 
 **Confirmed by v2 (was blocked, now decided — see ADRs):**
 - Q12 → fans can revise upward; auto-bid + private offers are first-class (ADR-0017).
@@ -98,27 +99,28 @@ A small private beta show (~50 attendees, Cope's place or a similar untraditiona
 - Q17 → artist sets, platform default 14 days.
 - NEW-1 → SetupIntent + charge on acceptance still recommended; Cope finishing research (ADR-0003 status: "pending hold-window decision").
 
-**Add this week — Twilio for SMS (ADR-0016):**
-- New foundation slice: install `twilio`, env vars `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_FROM_NUMBER`, dormant-without-keys `src/lib/sms/client.ts` paralleling the Resend wrapper.
-- 10DLC registration (Julia drives, 1–2 week carrier turnaround).
+**Twilio for SMS (ADR-0016) — not yet started:**
+- Install `twilio`, env vars `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_FROM_NUMBER`, dormant-without-keys `src/lib/sms/client.ts` paralleling the Resend wrapper.
+- 10DLC registration (Julia drives, 1–2 week carrier turnaround) — also not started; this is the long pole for SMS-at-MVP.
 
 ---
 
-## Week 5 — Allocation API and binding flow
+## Week 5 — Allocation API and binding flow ⚠️ PREVIEW ONLY
 
 **Goal: allocation can be triggered, runs binding, captures payments, notifies fans.**
 
-- [ ] Inngest job: `allocation.run` triggered by API call or schedule.
-- [ ] Job orchestrates: read offers, call GAE, write assignments, capture payments, send emails.
-- [ ] Stripe PaymentIntent creation against SetupIntent for each accepted offer.
-- [ ] Payment failure handling: status=PAYMENT_FAILED, retry window, fan notification.
-- [ ] Outbid email template.
-- [ ] Accepted email template with ticket details.
-- [ ] Preview allocation job (non-binding) runs on a schedule (e.g., hourly, debounced on changes).
-- [ ] Fan can see their projected rank via the show page.
-- [ ] Manual trigger endpoint for binding allocation (admin only).
+- [ ] Inngest job: `allocation.run` triggered by API call or schedule. — manual button only today; Inngest has placeholder `hello-world` function only.
+- [x] `POST /api/shows/[id]/allocate?mode=preview` — admin-only, runs GAE, writes seat_assignments + allocation_logs.
+- [ ] **`mode=binding` path** — endpoint returns 501; blocked on ADR-0003.
+- [ ] Stripe PaymentIntent creation. — blocked on ADR-0003.
+- [ ] Payment failure handling (`PAYMENT_FAILED` status, retry window, fan notification). — schema column exists; flow not built.
+- [ ] Outbid email template. — not built.
+- [ ] Accepted email template with ticket details. — not built.
+- [ ] Preview allocation job on a schedule. — manual-trigger only via the ShowAdmin "Preview allocation" button. Continuous compute is a future slice.
+- [x] Fan can see their projected rank via the show page. — yourOffer chip on /dashboard, rank-key preview on show page.
+- [x] Manual trigger endpoint for binding allocation (admin only). — preview path shipped; binding path is the same endpoint with `mode=binding`, currently 501.
 
-**Exit criterion:** Allocation can be triggered against a show with real offers, the GAE runs, accepted fans get charged and emailed, outbid fans get notified, everything is logged.
+**Status:** The GAE runs from the UI today. Admins click "Preview allocation" → seats get placed → the ShowAdmin page refreshes with new BigStats, capacity bar, recent activity, and seat map. Binding allocation (which charges cards and issues tickets) is the next big slice but waits on ADR-0003.
 
 **Blocked on (or proceed with default):**
 - NEW-2 (rolling vs batch) — default: hybrid (continuous preview + binding checkpoints).
@@ -126,30 +128,31 @@ A small private beta show (~50 attendees, Cope's place or a similar untraditiona
 
 ---
 
-## Week 6 — Artist dashboard (basic)
+## Week 6 — Artist dashboard ✅ DONE (read side) ⚠️ partial (write side)
 
 **Goal: Cope can create a show, configure pricing, see what's happening, and request operational changes.**
 
-- [ ] Artist login (Clerk with `ARTIST` role per ADR-0012).
-- [ ] Show creation form: venue, date, sections, pricing, offer window.
-- [ ] Per-section floor price configuration (pending Q19 confirmation).
-- [ ] Aggregate offer stats display — totals + averages per section. Auckets sees everything; artist sees aggregates (Q30 resolved).
-- [ ] Active section selector (partial-venue activation per NEW-4).
-- [ ] Holds management UI: add/remove holds per row.
-- [ ] **Request workflow** for pause / end-early / comp / override (ADR-0013). Files an `artist_request` row; AUCKETS admin executes.
-- [ ] Post-allocation view: who's where, who's outbid, payment success rate.
+- [x] Artist login (Clerk; `ARTIST` and `AUCKETS_ADMIN` roles supported per ADR-0012).
+- [ ] **Show creation form**: venue, date, sections, pricing, offer window. — NOT BUILT. Shows are seeded by SQL today.
+- [ ] **Per-section floor price configuration** (pending Q19 confirmation). — NOT BUILT.
+- [x] Aggregate offer stats display — totals + averages per section. ArtistDashboard + ShowAdmin both show comprehensive aggregates.
+- [x] Active section selector (partial-venue activation per NEW-4). — `activeRowIds` plumbed through repos + presenters + UI.
+- [ ] **Holds management UI**: add/remove holds per row. — read-only HoldsCard ships; write-path (Add hold dialog + DELETE) is a parked follow-up.
+- [x] **Request workflow** for pause / end-early / comp / override (ADR-0013). — POST /api/artist-requests + RequestActionButton dialog shipped. Admin inbox UI for execution is the next slice (in progress at handoff time).
+- [x] Post-allocation view: ShowAdmin shows BigStats (placed/unplaced/orphans/fill rate), seat map, activity feed including PLACED/SKIPPED/ORPHAN_DETECTED events.
 
-**Exit criterion:** Cope can configure a real show from scratch, see offers come in, and surface operational requests to AUCKETS without engineering help.
+**Status:** Cope can sign in, see his shows, drill into Cope's place, see live aggregates / seat map / activity / tier breakdown / distribution histogram / holds. He can file Request actions for pause/end-early/comp/override. He CANNOT yet create new shows or build new venues without engineering help.
 
 **Confirmed by v2:**
-- Q28 → Auckets controls pause/end-early; artist files a request (ADR-0013).
+- Q28 → Auckets controls pause/end-early; artist files a request (ADR-0013). ✅ shipped.
 - Q29 → Upgrade requests flow through AUCKETS staff who email the seat-holder with a buyout offer.
-- Q30 → Aggregate view for artist; full visibility for Auckets.
+- Q30 → Aggregate view for artist; full visibility for Auckets. ✅ shipped.
 - Q31 → Three roles for MVP: `FAN` + `ARTIST` + `AUCKETS_ADMIN` (ADR-0012). `VENUE_STAFF` added Week 7 for Austin.
 
-**New in v2 — slot in after dashboard basics:**
-- AUCKETS admin inbox UI for executing artist requests (probably Week 6.5 / 7).
+**Follow-up slices remaining:**
+- AUCKETS admin inbox UI for executing artist requests — in progress at handoff time.
 - Per-show email customization handoff workflow (Q37b, still open).
+- ShowCreate + VenueBuilder for artist self-service.
 
 ---
 

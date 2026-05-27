@@ -109,82 +109,82 @@ auckets/
 
 ## Current state
 
-**Week 1 (Foundation) — complete.**
-**Week 2 (GAE spike) — in progress: types, rankkey, launchpad, fitresolver merged. Placement + waterfall + integration tests still ahead.**
+**Weeks 1–5 — complete and deployed.** PRs #1–#45 merged. Production lives at `auckets-olive.vercel.app`. Preview deploys exercise the dev-stub offer flow end-to-end; production correctly refuses the stub (pending the real Stripe path, see below).
 
-Code (PRs #1–#8 for Foundation, #9–#12 for GAE so far, all merged):
-- [x] Tech stack and architecture decided
-- [x] Open questions documented (see `OPEN_QUESTIONS.md`)
-- [x] Repo and CI set up (GitHub Actions: typecheck + lint + test + build on every PR)
-- [x] Foundation packages installed (Next 14.2.35, Drizzle, Clerk 6.x, Inngest, Sentry, Resend, Zod, pino, Tailwind, Vitest, Playwright)
-- [x] Clerk wired (sign-in / sign-up / `/dashboard` protected route)
-- [x] Sentry wired (dormant without DSN)
-- [x] Pino logger with secret-field redactions
-- [x] Inngest serve handler at `/api/inngest` + one no-op `hello-world` function
-- [x] Resend client (dormant without API key) + placeholder welcome template
-- [x] Vitest + first real unit tests (`src/lib/money.ts`, 10 passing)
-- [x] Playwright + one trivial smoke (real app smoke deferred to when CI env can host Clerk)
-- [x] `src/lib/env.ts` Zod-validated, with prod guard refusing `SKIP_ENV_VALIDATION`
-- [x] **GAE: types, RankKey, LaunchPad, FitResolver** (Week 2 slices 1–4). Placement, waterfall, and `allocate()` entry still pending.
+### Shipped (read-side and bid flow)
 
-External services — set up as keys become available:
-- [x] Clerk dev application created, keys live in `.env.local`
-- [x] Supabase staging project created, connection string in `.env.local`
-- [x] Stripe account access confirmed (not yet wired in code)
+**Foundation, schema, engine:**
+- Next 14, Drizzle, Clerk 6, Inngest, Sentry (dormant), Resend (dormant), Zod, pino, Tailwind, Vitest, Playwright
+- CI: typecheck + lint + 343 tests + build on every PR
+- `src/lib/env.ts` Zod-validated; `ALLOW_DEV_OFFER_STUB` refused on `VERCEL_ENV=production`
+- 17 Drizzle tables; two migrations applied this week (`offer_revisions`, `holds`) via Supabase MCP
+- RLS enabled deny-all on every public table; new tables enable RLS in their migration
+- **GAE is complete:** types, rank-key, launchpad, fit-resolver, placement, waterfall, `allocate()` entry point. All tested.
+
+**Fan UI (`/dashboard`, `/shows/[id]`, `/my-bids`):**
+- Dashboard: open shows with countdowns, status badges, your-offer chips
+- Show detail: prototype-fidelity offer composer (stepper, price, tier radios, auto-bid toggle)
+- Offer submit via dev stub (`POST /api/offers`, ADR-0003 still pending for real Stripe path)
+- /my-bids: every bid the user ever placed, reverse-chrono, with an expandable revision history derived from the `offer_revisions` table
+
+**Artist UI (`/artists/[id]`, `/artists/[id]/shows/[id]`):**
+- ArtistDashboard: snapshot stats (offers in pool, tickets in pool, median, top) + per-show rows with capacity bars
+- ShowAdmin: header with city/venue/date + binding countdown banner, "Request action" button (ADR-0013), "Preview allocation" button (admin-only)
+- ShowAdmin cards: BigStats (5 cells) · Recent activity feed (offer events + GAE decisions interleaved) · Tier preference breakdown · Offer-price distribution histogram (10-bucket Greenwood progression) · Provisional placement seat map (STAGE + tier sections) · Holds & manifest (read-only)
+- Preview allocation runs the GAE for real, writes seat_assignments + allocation_logs, refreshes the page
+
+**Backend services:**
+- `POST /api/artist-requests` — file pause/end-early/comp/override per ADR-0013
+- `POST /api/shows/[id]/allocate` — admin-only preview allocation
+- `POST /api/offers` — dev-stub offer submission gated by `ALLOW_DEV_OFFER_STUB`
+- `GET /api/artists/[id]/shows` + `/stats` — artist read APIs
+
+### External services
+
+- [x] Clerk dev app keys in `.env.local` and Vercel envs
+- [x] Supabase staging in `.env.local`; production project is the same one for now
+- [x] Vercel production deployed (`auckets-olive.vercel.app`); preview env has `ALLOW_DEV_OFFER_STUB=true`
 - [x] GoDaddy / `auckets.com` domain owned
 - [ ] Resend domain verified (`auckets.com`) — needed before real email sends
 - [ ] Sentry project created — optional, can defer until first prod show
 - [ ] HFC's access revoked from Stripe before any production cutover (per `SECURITY.md` #37)
 - [ ] Production Supabase project (separate from staging) — Week 7
-- [ ] Production Vercel deployment — Week 7
+- [ ] **Twilio / SMS**: not yet installed. 10DLC registration not started.
 
-Still ahead:
-- [ ] GAE: `placement.ts`, `waterfall.ts`, `allocate()` entry point, Lincoln Theatre integration test (Week 2 wrap)
-- [ ] **Twilio / SMS foundation** — ADR-0016 puts SMS at MVP; needs install + env + dormant client (slot before or alongside Week 4)
-- [ ] **10DLC SMS registration** (Julia drives, 1–2 week carrier turnaround)
-- [ ] Initial schema written (Week 3) — including the new tables for resale, tickets, artist_requests, bond_events
-- [ ] Venue architecture builder (Week 3)
-- [ ] Offer submission flow with auto-bid + private offers (Week 4)
-- [ ] Allocation API endpoint (Week 5)
-- [ ] Stripe SetupIntent + charge-on-acceptance (Week 5)
-- [ ] Notification system — email + SMS (Weeks 4–5)
-- [ ] Artist dashboard with request-workflow (Week 6)
-- [ ] Rotating geo-gated QR ticket viewer (Weeks 11–14 / Austin prep)
-- [ ] Fan-facing UI polish (Weeks 8+)
-- [ ] First beta show (Week 8)
+### Big-picture state
+
+Roughly **25–30% of the prototype is shipped, all on the read side and bid-submit dev-stub flow.** Everything that touches money, real ticket delivery, scanning, resales, or notifications is unbuilt. See [`REMAINING_WORK.md`](REMAINING_WORK.md) for the full cross-walk.
+
+The dominant blocker is **ADR-0003 (Stripe SetupIntent hold-window)** — pending Cope's research. Until it settles, real money cannot flow, and the entire downstream chain (binding allocation → real tickets → scanner → card-failure recovery → resale) is blocked behind it.
 
 ## Next session
 
-**Working on:** Finish Week 2 — the remaining GAE pieces.
+**Pick from [`REMAINING_WORK.md`](REMAINING_WORK.md).** The short list (in roughly the priority order they make sense to ship):
 
-Where we are: `types.ts` / `rankkey.ts` / `launchpad.ts` / `fitresolver.ts` are merged (PRs #9–#12). Still pending in Week 2:
-- `placement.ts` — within-row placement by lean (CENTER / LEFT / RIGHT / DUAL_AISLE / GA)
-- `waterfall.ts` — cross-tier waterfalling per [ADR-0004](DECISIONS.md) + Q10
-- `index.ts` `allocate()` public entry point that orchestrates all five modules
-- Lincoln Theatre integration test fixture (waits on Cope sending real data — don't block; use synthetic for now)
+**Unblocked admin/artist polish — small slices, no external dependencies:**
+1. **Admin inbox UI** for ops to execute / deny `artist_requests` (the filing side already ships; the execute side is open)
+2. **Add hold dialog** + DELETE — currently HoldsCard is read-only
+3. **Revision diffs in the activity feed** ("$30 → $40" — presenter ready, needs wiring)
+4. **Fans · data export tab** — needs a privacy review first (private offer fields, per ADR-0017)
 
-**v2 product decisions** (just landed in `OPEN_QUESTIONS.md` and new ADRs in `DECISIONS.md`):
-- Group cap = 10 (ADR-0011)
-- Roles = `FAN` + `ARTIST` + `AUCKETS_ADMIN` (ADR-0012), `VENUE_STAFF` later
-- Auckets-controlled pause/end-early (ADR-0013)
-- Resale capped at original price (ADR-0014)
-- Rotating geo-gated QR tickets (ADR-0015)
-- SMS at MVP via Twilio (ADR-0016)
-- Auto-bid + private offers (ADR-0017)
+**Blocked operationally — start whenever the external work clears:**
+5. **Notifications wiring** (Resend templates + Slack #ops) — once domain is verified and a Slack webhook URL is available
+6. **Twilio + SMS** — long pole because of 10DLC carrier registration (1–2 weeks); start the registration anytime
+7. **ShowCreate + VenueBuilder** — artist self-service for shows/venues. Today these are seeded by SQL
 
-**Do not start on:**
-- Offer submission (Week 4) — still waiting on NEW-1 (Cope's Stripe-hold research) before committing to SetupIntent path
-- Stripe payment integration (Week 5)
-- Artist dashboard with request workflow (Week 6)
-- Fan-facing UI polish (last)
-- Rotating QR / door scanner (Austin prep, Weeks 11–14)
+**Blocked on Cope's Stripe research (ADR-0003):**
+8. **Real `POST /api/offers`** with SetupIntent (replaces the dev stub)
+9. **Binding allocation job** — converts a preview into a real charge + ticket issuance
+10. **TicketViewer** (rotating geo-gated QR per ADR-0015)
+11. **Scanner** (paired with TicketViewer)
+12. **CardFailure recovery** flow
+13. **Resale flow** (refund seller at original; uplift to artist per ADR-0014)
+14. **AllocationFinal** — fan-facing "placed / not placed" result page after binding
 
 **Operational follow-ups any time:**
 - Verify `auckets.com` in Resend so real emails can send
-- **Start 10DLC SMS registration with Twilio** (1–2 week carrier turnaround; needs to be done before Week 4)
-- Create a Sentry project + paste DSN into Vercel envs (when we have a Vercel deploy)
-- Set up Vercel project (no rush — pre-production)
-- Enable GitHub branch protection on `main` requiring the CI check
+- **Start 10DLC SMS registration with Twilio** (1–2 week carrier turnaround)
+- Create a Sentry project + paste DSN into Vercel envs
 - Confirm Stripe Connect Express setup on the AUCKETS Stripe account (per Q3)
 
 ## Companion docs
@@ -196,6 +196,7 @@ Read these as needed. They go deep where this file is high-level.
 - **`CONVENTIONS.md`** — coding standards, file layout, testing patterns, naming.
 - **`GAE_SPEC.md`** — the Greenwood Allocation Engine in detail. **Critical** if you are touching `src/lib/gae/`.
 - **`ROADMAP.md`** — week-by-week build plan.
+- **`REMAINING_WORK.md`** — design-vs-shipped cross-walk + priority-ordered backlog. Read this before picking a slice.
 - **`OPEN_QUESTIONS.md`** — what is not yet decided. Things you must not assume.
 - **`SECURITY.md`** — the non-negotiable rules.
 - **`RUNBOOK.md`** — operational procedures.

@@ -1,6 +1,6 @@
 # Notes for Claude
 
-Orientation for a new Claude Code session. Read this first, then [`docs/CONTEXT.md`](docs/CONTEXT.md), then check `git log --oneline -20` for the latest movement.
+Orientation for a new Claude Code session. Read this first, then [`docs/CONTEXT.md`](docs/CONTEXT.md), then [`docs/REMAINING_WORK.md`](docs/REMAINING_WORK.md) to see what's shipped vs what's left and pick a slice, then check `git log --oneline -20` for the latest movement.
 
 ---
 
