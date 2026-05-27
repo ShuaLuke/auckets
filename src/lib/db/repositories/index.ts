@@ -11,6 +11,11 @@ export {
 } from "./artists";
 
 export {
+  listRecentAllocationLogsForShow,
+  type AllocationLog,
+} from "./allocation-logs";
+
+export {
   getOfferByShowAndUser,
   getOfferStatsByShowIds,
   getOfferStatsByTierForShow,

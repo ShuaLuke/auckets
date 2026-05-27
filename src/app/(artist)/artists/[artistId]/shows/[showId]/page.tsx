@@ -27,6 +27,7 @@ import {
   getOfferStatsForShow,
   getProvisionalFilledByShow,
   getShowById,
+  listRecentAllocationLogsForShow,
   listRecentOffersForShow,
   listSeatAssignmentsForShow,
   userCanManageArtist,
@@ -71,14 +72,21 @@ async function loadShowAdmin(
   // show.
   if (showRow.artistId !== artistId) return null;
 
-  const [stats, provisionalFilled, tierBuckets, recentOffers, assignments] =
-    await Promise.all([
-      getOfferStatsForShow(db, showId),
-      getProvisionalFilledByShow(db, showId),
-      getOfferStatsByTierForShow(db, showId),
-      listRecentOffersForShow(db, showId, 50),
-      listSeatAssignmentsForShow(db, showId),
-    ]);
+  const [
+    stats,
+    provisionalFilled,
+    tierBuckets,
+    recentOffers,
+    assignments,
+    recentLogs,
+  ] = await Promise.all([
+    getOfferStatsForShow(db, showId),
+    getProvisionalFilledByShow(db, showId),
+    getOfferStatsByTierForShow(db, showId),
+    listRecentOffersForShow(db, showId, 50),
+    listSeatAssignmentsForShow(db, showId),
+    listRecentAllocationLogsForShow(db, showId, 50),
+  ]);
 
   // Project ShowWithRelations onto the ShowSummary shape that the
   // ArtistShowSummary presenter expects. activeRowIds is stored as
@@ -113,7 +121,13 @@ async function loadShowAdmin(
   return {
     show: view,
     tiers: presentTierBreakdown(tierBuckets),
-    activity: presentRecentActivity(recentOffers, now, 10),
+    activity: presentRecentActivity(
+      recentOffers,
+      recentLogs,
+      showRow.venueArchitecture,
+      now,
+      10,
+    ),
     placement: presentProvisionalPlacement(
       showRow.venueArchitecture,
       summary.activeRowIds,
