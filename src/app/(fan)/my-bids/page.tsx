@@ -13,21 +13,46 @@ import Link from "next/link";
 import { BidCard } from "@/components/bids/BidCard";
 import { Eyebrow } from "@/components/ui/Eyebrow";
 import { db } from "@/lib/db";
-import { listBidsForUser } from "@/lib/db/repositories";
-import { DEFAULT_TZ, presentBidView, type BidView } from "@/lib/presenters";
+import {
+  listBidsForUser,
+  listOfferRevisionsByOfferIds,
+} from "@/lib/db/repositories";
+import {
+  DEFAULT_TZ,
+  presentBidView,
+  presentOfferHistory,
+  type BidView,
+  type OfferHistoryView,
+} from "@/lib/presenters";
 
 export const dynamic = "force-dynamic";
 
-async function loadBids(userId: string): Promise<BidView[]> {
+type LoadedBid = {
+  bid: BidView;
+  history: OfferHistoryView;
+};
+
+async function loadBids(userId: string): Promise<LoadedBid[]> {
   const rows = await listBidsForUser(db, userId);
-  return rows.map((row) => presentBidView(row, DEFAULT_TZ));
+  const revisionsByOfferId = await listOfferRevisionsByOfferIds(
+    db,
+    rows.map((r) => r.offer.id),
+  );
+  return rows.map((row) => ({
+    bid: presentBidView(row, DEFAULT_TZ),
+    history: presentOfferHistory(
+      revisionsByOfferId.get(row.offer.id) ?? [],
+      DEFAULT_TZ,
+    ),
+  }));
 }
 
 export default async function MyBidsPage() {
   const { userId } = await auth();
   if (!userId) redirect("/sign-in");
 
-  const bids = await loadBids(userId);
+  const loaded = await loadBids(userId);
+  const bids = loaded.map((l) => l.bid);
 
   return (
     <main
@@ -79,8 +104,8 @@ export default async function MyBidsPage() {
           </div>
         ) : (
           <div className="flex flex-col gap-3">
-            {bids.map((bid) => (
-              <BidCard key={bid.offerId} bid={bid} />
+            {loaded.map(({ bid, history }) => (
+              <BidCard key={bid.offerId} bid={bid} history={history} />
             ))}
           </div>
         )}

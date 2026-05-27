@@ -42,6 +42,12 @@ export {
 export { presentBidView, type BidView } from "./bids";
 
 export {
+  presentOfferHistory,
+  type OfferHistoryView,
+  type RevisionEntry,
+} from "./revisions";
+
+export {
   formatTimeAgo,
   presentRecentActivity,
   type ActivityEvent,

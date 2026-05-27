@@ -37,12 +37,18 @@ function makeChain<T>(result: T[]): any {
 
 export function makeMockDb<T>(result: T[]): Db {
   const chain = makeChain<T>(result);
-  return {
+  const db = {
     select: () => chain,
     insert: () => chain,
     update: () => chain,
     delete: () => chain,
-  } as unknown as Db;
+    // Mock transactions pass through to the same db — we're verifying
+    // shape transformations, not atomicity. Integration tests
+    // exercise the real transaction behavior once the DB is unblocked.
+    transaction: async <R>(cb: (tx: Db) => Promise<R>): Promise<R> =>
+      cb(db as unknown as Db),
+  };
+  return db as unknown as Db;
 }
 
 // Returns a different result per successive top-level call (select /
@@ -58,10 +64,13 @@ export function makeQueuedMockDb<T>(results: T[][]): Db {
     i++;
     return makeChain<T>(result);
   };
-  return {
+  const db = {
     select: next,
     insert: next,
     update: next,
     delete: next,
-  } as unknown as Db;
+    transaction: async <R>(cb: (tx: Db) => Promise<R>): Promise<R> =>
+      cb(db as unknown as Db),
+  };
+  return db as unknown as Db;
 }

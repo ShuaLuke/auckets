@@ -28,7 +28,13 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
 import type { Db } from "@/lib/db";
-import { artists, offers, shows, venues } from "../../../../drizzle/schema";
+import {
+  artists,
+  offerRevisions,
+  offers,
+  shows,
+  venues,
+} from "../../../../drizzle/schema";
 
 export type Offer = typeof offers.$inferSelect;
 type OfferInsert = typeof offers.$inferInsert;
@@ -319,9 +325,14 @@ export async function getOfferStatsByShowIds(
 // stripe_payment_method_id) are insert-only — the original token
 // stays bound to the original submission per ADR-0010.
 //
+// Wraps the upsert + the offer_revisions write in a single transaction
+// so audit-trail capture is atomic with the offer change. A revision
+// row is written on EVERY upsert (both first INSERT and every UPDATE):
+// the row records the post-write state, so walking offer_revisions
+// ORDER BY recorded_at ASC reconstructs the offer's full timeline.
+//
 // Returns the resulting row plus an `isRevision` flag derived from the
-// returned `revised_at` being non-null. The RETURNING clause keeps it
-// to one round-trip.
+// returned `revised_at` being non-null.
 //
 // NOTE: this is the only write helper that touches offers in the
 // repository layer. The "revise upward only" business rule (price +
@@ -335,33 +346,94 @@ export async function upsertOfferForUser(
     status?: Offer["status"];
   },
 ): Promise<{ offer: Offer; isRevision: boolean }> {
-  const rows = await db
-    .insert(offers)
-    .values(params)
-    .onConflictDoUpdate({
-      target: [offers.showId, offers.userId],
-      set: {
-        groupSize: params.groupSize,
-        pricePerTicketCents: params.pricePerTicketCents,
-        tierPreference: params.tierPreference,
-        preferredTier: params.preferredTier ?? null,
-        channel: params.channel ?? "market",
-        autoBidEnabled: params.autoBidEnabled ?? false,
-        autoBidCapCents: params.autoBidCapCents ?? null,
-        autoBidIncrementCents: params.autoBidIncrementCents ?? 500,
-        privateThresholdCents: params.privateThresholdCents ?? null,
-        revisedAt: sql`NOW()`,
-      },
-    })
-    .returning();
+  return db.transaction(async (tx) => {
+    const rows = await tx
+      .insert(offers)
+      .values(params)
+      .onConflictDoUpdate({
+        target: [offers.showId, offers.userId],
+        set: {
+          groupSize: params.groupSize,
+          pricePerTicketCents: params.pricePerTicketCents,
+          tierPreference: params.tierPreference,
+          preferredTier: params.preferredTier ?? null,
+          channel: params.channel ?? "market",
+          autoBidEnabled: params.autoBidEnabled ?? false,
+          autoBidCapCents: params.autoBidCapCents ?? null,
+          autoBidIncrementCents: params.autoBidIncrementCents ?? 500,
+          privateThresholdCents: params.privateThresholdCents ?? null,
+          revisedAt: sql`NOW()`,
+        },
+      })
+      .returning();
 
-  const row = rows[0];
-  if (!row) {
-    throw new Error(
-      `upsertOfferForUser: no row returned (showId=${params.showId}, userId=${params.userId})`,
-    );
+    const row = rows[0];
+    if (!row) {
+      throw new Error(
+        `upsertOfferForUser: no row returned (showId=${params.showId}, userId=${params.userId})`,
+      );
+    }
+
+    await tx.insert(offerRevisions).values({
+      offerId: row.id,
+      snapshot: {
+        groupSize: row.groupSize,
+        pricePerTicketCents: row.pricePerTicketCents,
+        tierPreference: row.tierPreference,
+        preferredTier: row.preferredTier,
+        channel: row.channel,
+        autoBidEnabled: row.autoBidEnabled,
+        autoBidCapCents: row.autoBidCapCents,
+        autoBidIncrementCents: row.autoBidIncrementCents,
+        privateThresholdCents: row.privateThresholdCents,
+        status: row.status,
+      },
+    });
+
+    return { offer: row, isRevision: row.revisedAt !== null };
+  });
+}
+
+// Read-path helpers for the revision history.
+
+export type OfferRevision = typeof offerRevisions.$inferSelect;
+
+// One offer's full history, oldest-first. The caller pairs adjacent
+// snapshots to render diffs ($30 → $40), and the final row's snapshot
+// matches the live offers row.
+export async function listOfferRevisionsForOffer(
+  db: Db,
+  offerId: string,
+): Promise<OfferRevision[]> {
+  return db
+    .select()
+    .from(offerRevisions)
+    .where(eq(offerRevisions.offerId, offerId))
+    .orderBy(offerRevisions.recordedAt);
+}
+
+// Bulk: all revisions for several offers (e.g. the user's full
+// /my-bids history in one query). Returned as a Map<offerId, OfferRevision[]>
+// with each list already oldest-first. Empty input → empty map; empty
+// keys are NOT backfilled because callers iterate over their offers
+// list and ?? [] their way to a clean view.
+export async function listOfferRevisionsByOfferIds(
+  db: Db,
+  offerIds: string[],
+): Promise<Map<string, OfferRevision[]>> {
+  const out = new Map<string, OfferRevision[]>();
+  if (offerIds.length === 0) return out;
+  const rows = await db
+    .select()
+    .from(offerRevisions)
+    .where(inArray(offerRevisions.offerId, offerIds))
+    .orderBy(offerRevisions.recordedAt);
+  for (const row of rows) {
+    const bucket = out.get(row.offerId);
+    if (bucket) bucket.push(row);
+    else out.set(row.offerId, [row]);
   }
-  return { offer: row, isRevision: row.revisedAt !== null };
+  return out;
 }
 
 export async function getOfferStatsForArtist(
