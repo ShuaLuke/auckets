@@ -105,6 +105,34 @@ Refused in production (`NODE_ENV=production` + `SKIP_ENV_VALIDATION=1` throws at
 
 ---
 
+## Running integration tests locally
+
+The default `npm test` runs the mock-DB unit suite and needs no extra infra.
+The real-Postgres integration suite (`tests/integration/`) needs Docker.
+
+```bash
+docker compose -f docker-compose.test.yml up -d   # Postgres on localhost:5433
+npm run test:integration
+docker compose -f docker-compose.test.yml down     # tear down when finished
+```
+
+Notes:
+
+- The container uses port **5433** (not 5432) to avoid colliding with a
+  developer's existing local Postgres install. If you've overridden
+  `TEST_DATABASE_URL` in your shell, the test config respects it.
+- Migrations apply automatically once per run (see
+  `tests/integration/global-setup.ts`). No `db:migrate` step needed.
+- The setup file refuses to run if `TEST_DATABASE_URL` points at anything
+  that isn't `localhost` / `127.0.0.1` / the CI `postgres` service host.
+  This is defense-in-depth so an accidentally-exported `DATABASE_URL` in
+  your shell can't TRUNCATE staging.
+- CI runs the same suite via `.github/workflows/ci.yml`'s `integration`
+  job against an identical Postgres 17 service container, so a green
+  local run reliably predicts CI.
+
+---
+
 ## When `.env.local` schema changes
 
 If you pull main and `npm run dev` complains about a missing env var, [`.env.example`](../.env.example) is the authoritative list. Diff your local against it and add any new lines.

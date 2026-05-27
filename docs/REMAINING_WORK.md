@@ -2,7 +2,7 @@
 
 A snapshot of what's shipped vs what's not, organized by impact and blocker chain. Pair this with [`CONTEXT.md`](CONTEXT.md) ("Current state") and [`ROADMAP.md`](ROADMAP.md) (week-by-week plan).
 
-Updated 2026-05-27 after PR #45 (slice 11) merged.
+Updated 2026-05-27 after PR #50 (notifications scaffold) merged and the integration-test infra slice opened.
 
 ---
 
@@ -94,7 +94,7 @@ Comprehensive read-side coverage + the bid-submit dev stub. From the prototype:
 - ✅ **Artist request action** dialog and endpoint for pause/end-early/comp/override per ADR-0013 (admin-side execution is the next slice)
 - ✅ **GAE itself** — all five modules complete and tested (types, rank-key, launchpad, fit-resolver, placement, waterfall, allocate() entry point)
 - ✅ **17-table Drizzle schema** including the newly added `offer_revisions` and `holds`. RLS enabled deny-all on every public table.
-- ✅ **CI gates:** typecheck + lint + 343 unit tests + build, four gates on every PR
+- ✅ **CI gates:** typecheck + lint + ~392 unit tests + build on every PR, plus a parallel `integration` job that runs the real-Postgres suite (`tests/integration/`, currently covering `upsertOfferForUser` + the artist-request concurrency guard)
 
 ---
 

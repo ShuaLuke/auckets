@@ -8,8 +8,9 @@ export default defineConfig({
     // per-file with /** @vitest-environment node */ if needed.
     environment: "jsdom",
     globals: true,
-    // Exclude Playwright's tests/ dir so vitest doesn't try to run e2e.
-    exclude: ["node_modules", ".next", "tests/e2e/**"],
+    // Exclude Playwright's e2e and the real-Postgres integration suite —
+    // both have their own runners (npx playwright / npm run test:integration).
+    exclude: ["node_modules", ".next", "tests/e2e/**", "tests/integration/**"],
   },
   resolve: {
     alias: {

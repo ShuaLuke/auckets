@@ -1,0 +1,32 @@
+# Local Postgres for `npm run test:integration`. Matches Supabase prod's
+# major version (17) and mirrors the CI service container in
+# .github/workflows/ci.yml, so a green local run means a green CI run.
+#
+# Usage:
+#   docker compose -f docker-compose.test.yml up -d
+#   npm run test:integration
+#   docker compose -f docker-compose.test.yml down
+#
+# Port 5433 (not 5432) to avoid colliding with a developer's existing
+# local Postgres install (Postgres.app, Homebrew postgres, another
+# project's compose, etc).
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: auckets_test
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # In-memory tmpfs for /var/lib/postgresql/data — the database is meant
+    # to be thrown away between runs, and skipping disk I/O cuts test
+    # times noticeably on slower machines.
+    tmpfs:
+      - /var/lib/postgresql/data

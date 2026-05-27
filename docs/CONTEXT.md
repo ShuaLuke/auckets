@@ -109,13 +109,13 @@ auckets/
 
 ## Current state
 
-**Weeks 1–5 — complete and deployed.** PRs #1–#45 merged. Production lives at `auckets-olive.vercel.app`. Preview deploys exercise the dev-stub offer flow end-to-end; production correctly refuses the stub (pending the real Stripe path, see below).
+**Weeks 1–5 — complete and deployed.** PRs #1–#50 merged. Production lives at `auckets-olive.vercel.app`. Preview deploys exercise the dev-stub offer flow end-to-end; production correctly refuses the stub (pending the real Stripe path, see below).
 
 ### Shipped (read-side and bid flow)
 
 **Foundation, schema, engine:**
 - Next 14, Drizzle, Clerk 6, Inngest, Sentry (dormant), Resend (dormant), Zod, pino, Tailwind, Vitest, Playwright
-- CI: typecheck + lint + 343 tests + build on every PR
+- CI: typecheck + lint + ~392 unit tests + build on every PR. A separate `integration` job stands up a Postgres 17 service container and runs `npm run test:integration` against it for the repository-layer suites that need real SQL semantics.
 - `src/lib/env.ts` Zod-validated; `ALLOW_DEV_OFFER_STUB` refused on `VERCEL_ENV=production`
 - 17 Drizzle tables; two migrations applied this week (`offer_revisions`, `holds`) via Supabase MCP
 - RLS enabled deny-all on every public table; new tables enable RLS in their migration
