@@ -62,6 +62,13 @@ export const env = createEnv({
     // we have a verified domain. sendEmail() warns and no-ops without it.
     RESEND_API_KEY: z.string().min(1).startsWith("re_").optional(),
     RESEND_FROM_EMAIL: z.email().default("noreply@auckets.com"),
+    // Ops notification targets.
+    //   OPS_EMAIL — recipient for admin action emails (e.g. "ops@auckets.com").
+    //   SLACK_OPS_WEBHOOK_URL — Slack incoming-webhook URL for the ops channel.
+    //     Optional; when unset the Slack notifier warns and no-ops, matching
+    //     the Resend pattern.
+    OPS_EMAIL: z.email().default("ops@auckets.com"),
+    SLACK_OPS_WEBHOOK_URL: z.url().optional(),
     // Dev-only escape hatch for the offer-submission flow while ADR-0003
     // (Stripe SetupIntent vs. pre-auth) is still being decided. When
     // "true", POST /api/offers accepts submissions using placeholder
@@ -89,6 +96,8 @@ export const env = createEnv({
     INNGEST_SIGNING_KEY: process.env.INNGEST_SIGNING_KEY,
     RESEND_API_KEY: process.env.RESEND_API_KEY,
     RESEND_FROM_EMAIL: process.env.RESEND_FROM_EMAIL,
+    OPS_EMAIL: process.env.OPS_EMAIL,
+    SLACK_OPS_WEBHOOK_URL: process.env.SLACK_OPS_WEBHOOK_URL,
     NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,
     ALLOW_DEV_OFFER_STUB: process.env.ALLOW_DEV_OFFER_STUB,
   },
