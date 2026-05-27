@@ -1,20 +1,22 @@
-// Presenter for the ShowAdmin Recent activity feed. Source today is
-// the offers table only — submitted_at + revised_at on each row yields
-// up to two events ("new offer" / "revision"). Allocation-run events
-// ("Preview computed · 487 placed, 14 unplaced" in the prototype mock)
-// will land once we wire the allocation_audit table into this feed.
+// Presenter for the ShowAdmin Recent activity feed. Two sources:
 //
-// Each Offer can produce two ActivityEvent rows. We interleave both
-// streams, sort by `at` DESC, then truncate to `limit` (default 10) to
-// match the prototype's ~7-row Card. No per-revision diff is shown —
-// the data model is last-write-wins on the offers row today, so the
-// old price isn't available. The "Revised" event surfaces the current
-// price + the revisedAt time so the artist sees something useful;
-// full $X → $Y diffs land with the offer-revision-history follow-up.
+//   1. offers — submitted_at + revised_at yield "new offer" / "revision"
+//      events. No per-revision diff yet (last-write-wins); old price
+//      isn't available. Tracked under the project_offer_revision_history
+//      follow-up.
+//
+//   2. allocation_logs — preview-mode log rows for PLACED / SKIPPED /
+//      ORPHAN_DETECTED / WATERFALLED actions. One log row → one
+//      ActivityEvent.
+//
+// Both streams are merged, sorted by `at` DESC, and truncated to
+// `limit` (default 10). The cap matches the prototype's ~7-row Card
+// (design/ui_kits/auckets/screens/ShowAdmin.jsx).
 
 import { formatCents } from "@/lib/money";
 
-import type { Offer } from "@/lib/db/repositories";
+import type { AllocationLog, Offer, VenueArchitecture } from "@/lib/db/repositories";
+import type { VenueRow as GaeVenueRow } from "@/lib/gae/types";
 
 const DEFAULT_LIMIT = 10;
 
@@ -52,11 +54,13 @@ export function formatTimeAgo(at: Date, now: Date): string {
 }
 
 export type ActivityEvent = {
-  kind: "new" | "revised";
+  kind: "new" | "revised" | "placed" | "skipped" | "orphan" | "waterfall";
   at: Date;
   timeAgo: string;
   // Last 4 of the offer ID for visual identity, matching the prototype's
-  // "offer_8f3a" treatment. The full ID would dominate the row.
+  // "offer_8f3a" treatment. The full ID would dominate the row. May be
+  // empty for events that aren't tied to a specific offer (e.g.
+  // an orphan-detected row for seats that no offer claimed).
   offerTag: string;
   message: string;
 };
@@ -82,8 +86,80 @@ function revisedMessage(offer: Offer): string {
   return `Revision · ${offerTagFor(offer.id)} · now ${price} × ${offer.groupSize}`;
 }
 
+// Map venue_row_id (the GAE-defined slug stored on logs/assignments)
+// to the display row name (e.g. "A", "AA"). When the architecture is
+// missing or the row id isn't found, fall back to the raw id so the
+// row at least identifies something.
+function rowNameLookup(
+  architecture: Pick<VenueArchitecture, "rows"> | null,
+): (rowId: string | null) => string | null {
+  if (!architecture) return (id) => id;
+  const archRows = architecture.rows as readonly GaeVenueRow[];
+  const byId = new Map<string, string>();
+  for (const r of archRows) byId.set(r.id, r.rowName);
+  return (id) => (id ? (byId.get(id) ?? id) : null);
+}
+
+function logEventFor(
+  log: AllocationLog,
+  rowName: (id: string | null) => string | null,
+  now: Date,
+): ActivityEvent | null {
+  const row = rowName(log.venueRowId);
+  const tag = log.offerId ? offerTagFor(log.offerId) : "";
+  const at = log.createdAt;
+  switch (log.action) {
+    case "PLACED": {
+      const where = row ? ` · Row ${row}` : "";
+      return {
+        kind: "placed",
+        at,
+        timeAgo: formatTimeAgo(at, now),
+        offerTag: tag,
+        message: `Placed · ${tag}${where}`,
+      };
+    }
+    case "SKIPPED":
+      return {
+        kind: "skipped",
+        at,
+        timeAgo: formatTimeAgo(at, now),
+        offerTag: tag,
+        message: `Skipped · ${tag} · ${log.reason}`,
+      };
+    case "ORPHAN_DETECTED": {
+      const where = row ? `Row ${row}` : "Row ?";
+      return {
+        kind: "orphan",
+        at,
+        timeAgo: formatTimeAgo(at, now),
+        offerTag: "",
+        message: `Orphan · ${where} · ${log.reason}`,
+      };
+    }
+    case "WATERFALLED": {
+      const where = row ? ` · Row ${row}` : "";
+      return {
+        kind: "waterfall",
+        at,
+        timeAgo: formatTimeAgo(at, now),
+        offerTag: tag,
+        message: `Waterfalled · ${tag}${where} · ${log.reason}`,
+      };
+    }
+    default:
+      // RUN_START / RUN_END / FIT_RESOLVED / MANUAL_OVERRIDE are not
+      // surfaced today. The repo layer filters these out at the query
+      // boundary; this branch only fires if a new action type sneaks
+      // through.
+      return null;
+  }
+}
+
 export function presentRecentActivity(
   offerRows: readonly Offer[],
+  logRows: readonly AllocationLog[],
+  architecture: Pick<VenueArchitecture, "rows"> | null,
   now: Date,
   limit: number = DEFAULT_LIMIT,
 ): ActivityEvent[] {
@@ -105,6 +181,11 @@ export function presentRecentActivity(
         message: revisedMessage(offer),
       });
     }
+  }
+  const lookupRow = rowNameLookup(architecture);
+  for (const log of logRows) {
+    const ev = logEventFor(log, lookupRow, now);
+    if (ev) events.push(ev);
   }
   events.sort((a, b) => b.at.getTime() - a.at.getTime());
   return events.slice(0, limit);
