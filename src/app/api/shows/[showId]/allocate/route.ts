@@ -19,11 +19,12 @@ import {
   runPreviewAllocation,
   type RunPreviewResult,
 } from "@/lib/allocation/run-preview";
+import { uuidParam } from "@/lib/validators/uuid";
 
 export const dynamic = "force-dynamic";
 
 const ParamsSchema = z.object({
-  showId: z.uuid(),
+  showId: uuidParam,
 });
 
 const BodySchema = z.object({
