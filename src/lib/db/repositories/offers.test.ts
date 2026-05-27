@@ -8,9 +8,12 @@ import {
   getOfferStatsForArtist,
   getOfferStatsForShow,
   listBidsForUser,
+  listOfferRevisionsByOfferIds,
+  listOfferRevisionsForOffer,
   listOffersForUser,
   listPoolOffersForShow,
   upsertOfferForUser,
+  type OfferRevision,
   type OfferStats,
   type OfferTierBucket,
   type UserBidRow,
@@ -509,5 +512,92 @@ describe("listBidsForUser", () => {
 
   it("has the expected return type", () => {
     expectTypeOf(listBidsForUser).returns.resolves.toEqualTypeOf<UserBidRow[]>();
+  });
+});
+
+describe("offer revision repos", () => {
+  function makeRev(overrides: Partial<OfferRevision> = {}): OfferRevision {
+    return {
+      id: "00000000-0000-0000-0000-000000000001",
+      offerId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      snapshot: { pricePerTicketCents: 4200, groupSize: 4 },
+      recordedAt: new Date("2026-05-27T11:00:00Z"),
+      ...overrides,
+    };
+  }
+
+  describe("listOfferRevisionsForOffer", () => {
+    it("returns rows for a single offer", async () => {
+      const db = makeMockDb<OfferRevision>([
+        makeRev({ id: "00000000-0000-0000-0000-000000000001" }),
+        makeRev({ id: "00000000-0000-0000-0000-000000000002" }),
+      ]);
+      const result = await listOfferRevisionsForOffer(
+        db,
+        "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      );
+      expect(result).toHaveLength(2);
+    });
+
+    it("returns an empty array when no revisions exist", async () => {
+      const db = makeMockDb<OfferRevision>([]);
+      expect(
+        await listOfferRevisionsForOffer(
+          db,
+          "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        ),
+      ).toEqual([]);
+    });
+
+    it("has the expected return type", () => {
+      expectTypeOf(listOfferRevisionsForOffer).returns.resolves.toEqualTypeOf<
+        OfferRevision[]
+      >();
+    });
+  });
+
+  describe("listOfferRevisionsByOfferIds", () => {
+    it("returns an empty map when no offer IDs are passed", async () => {
+      const db = makeMockDb<OfferRevision>([]);
+      const result = await listOfferRevisionsByOfferIds(db, []);
+      expect(result.size).toBe(0);
+    });
+
+    it("buckets rows by offer_id, oldest-first per bucket", async () => {
+      const db = makeMockDb<OfferRevision>([
+        makeRev({
+          id: "00000000-0000-0000-0000-000000000001",
+          offerId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+          recordedAt: new Date("2026-05-27T10:00:00Z"),
+        }),
+        makeRev({
+          id: "00000000-0000-0000-0000-000000000002",
+          offerId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+          recordedAt: new Date("2026-05-27T11:00:00Z"),
+        }),
+        makeRev({
+          id: "00000000-0000-0000-0000-000000000003",
+          offerId: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+          recordedAt: new Date("2026-05-27T09:00:00Z"),
+        }),
+      ]);
+      const result = await listOfferRevisionsByOfferIds(db, [
+        "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+      ]);
+      expect(result.size).toBe(2);
+      expect(
+        result.get("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+      ).toHaveLength(2);
+      expect(
+        result.get("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+      ).toHaveLength(1);
+    });
+
+    it("has the expected return type", () => {
+      expectTypeOf(
+        listOfferRevisionsByOfferIds,
+      ).returns.resolves.toEqualTypeOf<Map<string, OfferRevision[]>>();
+    });
   });
 });

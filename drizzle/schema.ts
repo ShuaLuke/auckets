@@ -496,6 +496,51 @@ export const bondEvents = pgTable(
 // lists UNIQUE(user_id, show_id, id) — redundant once id is the PK, so it's
 // not encoded here. Flagged in the PR description.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// 16. offer_revisions — append-only history of every offer state.
+//
+// upsertOfferForUser writes one row inside the same transaction on EVERY
+// upsert: the initial INSERT records the submission state, and each UPDATE
+// records the new state. Walking the rows ORDER BY recorded_at ASC
+// reconstructs the offer's full timeline from first submission to the
+// current state (which is also mirrored in the live offers row).
+//
+// Drives the /my-bids history expander and enables the "$30 → $40" diff
+// copy on the ShowAdmin activity feed.
+//
+// Snapshot is jsonb so the schema can evolve without a migration here —
+// what we capture today is the editable subset of the offers row, plus
+// status, at the moment of write.
+// ---------------------------------------------------------------------------
+export const offerRevisions = pgTable(
+  "offer_revisions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    offerId: uuid("offer_id")
+      .notNull()
+      // RESTRICT: revisions are audit data. Never lose them when an offer
+      // is cleaned up (which shouldn't happen anyway — offers are kept
+      // for payment/refund history).
+      .references(() => offers.id, { onDelete: "restrict" }),
+    // Editable fields after the update (what the user just chose). Kept
+    // as jsonb so adding a new editable field doesn't require a
+    // migration on this table.
+    snapshot: jsonb("snapshot").notNull(),
+    // Captured at the moment of the UPDATE, inside the same transaction.
+    // Defaults to NOW so the write path doesn't have to think about it.
+    recordedAt: timestamp("recorded_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    // Per-offer history lookup, ordered most-recent-first.
+    index("offer_revisions_offer_recorded_idx").on(
+      table.offerId,
+      table.recordedAt.desc(),
+    ),
+  ],
+);
+
 export const offerIdempotencyKeys = pgTable(
   "offer_idempotency_keys",
   {
