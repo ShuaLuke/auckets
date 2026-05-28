@@ -9,7 +9,10 @@
 
 import { describe, expect, it, vi } from "vitest";
 
-import { createOfferPaymentIntent } from "./payment-intents";
+import {
+  cancelOfferPaymentIntent,
+  createOfferPaymentIntent,
+} from "./payment-intents";
 
 // Minimal Stripe shape — only the methods the helper actually calls.
 // Typed as `any` because building a full Stripe type by hand here would
@@ -114,6 +117,35 @@ describe("createOfferPaymentIntent", () => {
     });
   });
 
+  it("passes customer to Stripe when customerId is provided (slice 20)", async () => {
+    const stripe = makeStripe({
+      create: async () => ({ id: "pi_c", status: "requires_capture" }),
+    });
+
+    await createOfferPaymentIntent(stripe, {
+      paymentMethodId: "pm_test",
+      amountCents: 1000,
+      customerId: "cus_abc",
+    });
+
+    const [paramsArg] = stripe.paymentIntents.create.mock.calls[0];
+    expect(paramsArg.customer).toBe("cus_abc");
+  });
+
+  it("omits customer entirely when no customerId is given (back-compat)", async () => {
+    const stripe = makeStripe({
+      create: async () => ({ id: "pi_nc", status: "requires_capture" }),
+    });
+
+    await createOfferPaymentIntent(stripe, {
+      paymentMethodId: "pm_test",
+      amountCents: 1000,
+    });
+
+    const [paramsArg] = stripe.paymentIntents.create.mock.calls[0];
+    expect(paramsArg.customer).toBeUndefined();
+  });
+
   it("returns ok with the actual status when Stripe returns requires_action (3DS challenge)", async () => {
     // 3DS path — caller needs to surface "additional authentication
     // required" to the fan. Helper doesn't decide policy, it reports.
@@ -172,6 +204,49 @@ describe("createOfferPaymentIntent", () => {
       ok: false,
       code: "internal",
       message: "ECONNREFUSED",
+    });
+  });
+});
+
+function makeCancelStripe(
+  cancel: (...args: unknown[]) => unknown,
+): FakeStripe {
+  return { paymentIntents: { cancel: vi.fn(cancel) } };
+}
+
+describe("cancelOfferPaymentIntent", () => {
+  it("returns ok when Stripe cancels the PaymentIntent cleanly", async () => {
+    const stripe = makeCancelStripe(async () => ({
+      id: "pi_x",
+      status: "canceled",
+    }));
+    const result = await cancelOfferPaymentIntent(stripe, "pi_x");
+    expect(result).toEqual({ ok: true });
+    expect(stripe.paymentIntents.cancel).toHaveBeenCalledWith("pi_x");
+  });
+
+  it("treats payment_intent_unexpected_state as a soft success (already canceled/captured)", async () => {
+    // The old auth was already gone — the revision's goal (no live auth
+    // on the old PI) is already met, so we don't fail the revision.
+    const stripe = makeCancelStripe(async () => {
+      throw {
+        code: "payment_intent_unexpected_state",
+        message: "PI already canceled.",
+      };
+    });
+    const result = await cancelOfferPaymentIntent(stripe, "pi_old");
+    expect(result).toEqual({ ok: true });
+  });
+
+  it("returns ok:false for a genuine Stripe error (not the terminal-state case)", async () => {
+    const stripe = makeCancelStripe(async () => {
+      throw { code: "rate_limit", message: "Too many requests." };
+    });
+    const result = await cancelOfferPaymentIntent(stripe, "pi_old");
+    expect(result).toEqual({
+      ok: false,
+      code: "rate_limit",
+      message: "Too many requests.",
     });
   });
 });

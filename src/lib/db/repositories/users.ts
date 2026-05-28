@@ -52,6 +52,18 @@ export async function ensureUserMirror(
   return row;
 }
 
+// Persist a freshly-created Stripe Customer ID onto the user's row.
+// Called once, right after ensureStripeCustomer creates a new Customer
+// on the fan's first real-path offer. The UPDATE is unconditional so a
+// re-call just rewrites the same value (harmless).
+export async function setStripeCustomerId(
+  db: Db,
+  userId: string,
+  stripeCustomerId: string,
+): Promise<void> {
+  await db.update(users).set({ stripeCustomerId }).where(eq(users.id, userId));
+}
+
 // Authorization helper for AUCKETS-only endpoints (allocation,
 // admin-triggered pause/end-early per ADR-0013, etc.). Returns true
 // IFF the user exists AND has role AUCKETS_ADMIN — a missing user row

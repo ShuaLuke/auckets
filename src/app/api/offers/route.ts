@@ -3,13 +3,18 @@
 // Two code paths share this route, picked by the env + body shape:
 //
 //   1. REAL PATH (Stripe-backed): when STRIPE_SECRET_KEY is set AND the
-//      body includes stripePaymentMethodId. Creates a PaymentIntent
-//      with capture_method='manual' to hold the fan's card auth for
-//      the offer window (≤6 days per 2026-05-27 ADR-0003 working
-//      assumption), then upserts the offer with the real
-//      stripe_payment_intent_id. Only handles FIRST submission this
-//      slice — revisions on the real path return 501 (Customer attach
-//      + PaymentMethod reuse for revision lands in the next slice).
+//      body includes stripePaymentMethodId. Ensures the fan has a
+//      Stripe Customer, then creates a PaymentIntent with
+//      capture_method='manual' to hold the card auth for the offer
+//      window (≤6 days per 2026-05-27 ADR-0003 working assumption),
+//      then upserts the offer with the real stripe_payment_intent_id.
+//
+//      Revision (slice 20): when the fan already has an offer on the
+//      show, we cancel the prior PaymentIntent (releasing the old
+//      auth) before creating the new one for the revised amount. The
+//      fan re-enters their card on revision in this version — saved-
+//      card reuse (skip re-collection) is a later UX optimization; the
+//      Customer association created here is the groundwork for it.
 //
 //   2. DEV STUB: when ALLOW_DEV_OFFER_STUB="true" and the real path
 //      isn't selected. Bypasses Stripe with placeholder
@@ -20,19 +25,15 @@
 //   3. Neither configured → 503. Tells the caller offer submission is
 //      disabled and what to enable.
 //
-// Flow: auth → body → ensure user mirror → fetch show → branch on
-// Stripe-mode → (real: create PaymentIntent OR stub) → upsert offer →
-// respond.
-//
-// Out of scope for this slice:
+// Out of scope:
 //   - Idempotency-keys table writes (offer_idempotency_keys). The
 //     real path passes the Stripe Idempotency-Key header through to
-//     Stripe (server-side dedup), which covers retry safety for the
-//     PaymentIntent. App-level dedup against the table lands later.
-//   - Revision on the real path. Reusing a PaymentMethod requires
-//     attaching it to a Customer; current real path keeps PaymentMethod
-//     single-use. Revisions fall through to the dev stub OR return 501.
-//   - "Revise upward only" rule. Lands when revision is supported.
+//     Stripe (server-side dedup). App-level dedup against the table
+//     lands later.
+//   - Saved-card reuse on revision (skip re-collection). The Customer
+//     association here is the prerequisite; the client + route change
+//     to reuse the attached PaymentMethod is a follow-up.
+//   - "Revise upward only" rule. Separate slice.
 //   - Webhook handler for payment_intent.payment_failed (the 2% card-
 //     failure case). Separate slice.
 
@@ -45,12 +46,17 @@ import {
   ensureUserMirror,
   getOfferByShowAndUser,
   getShowById,
+  setStripeCustomerId,
   upsertOfferForUser,
 } from "@/lib/db/repositories";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { stripe } from "@/lib/stripe/client";
-import { createOfferPaymentIntent } from "@/lib/stripe/payment-intents";
+import { ensureStripeCustomer } from "@/lib/stripe/customers";
+import {
+  cancelOfferPaymentIntent,
+  createOfferPaymentIntent,
+} from "@/lib/stripe/payment-intents";
 import { uuidParam } from "@/lib/validators/uuid";
 
 export const dynamic = "force-dynamic";
@@ -212,12 +218,13 @@ export async function POST(
   // pulled from Clerk; primaryEmailAddress is always set for verified
   // accounts. Fallback uses the Clerk user_id in a placeholder domain
   // so the email-UNIQUE constraint doesn't block a corner-case account
-  // without a primary email (rare but possible during signup).
+  // without a primary email (rare but possible during signup). We keep
+  // the returned row to read stripe_customer_id on the real path.
   const clerk = await currentUser();
   const email =
     clerk?.primaryEmailAddress?.emailAddress ??
     `${userId}@placeholder.auckets.local`;
-  await ensureUserMirror(db, { id: userId, email });
+  const userRow = await ensureUserMirror(db, { id: userId, email });
 
   // Show must exist and be eligible to accept offers. 'open' only —
   // paused / closed / allocating / allocated / complete all reject
@@ -234,32 +241,43 @@ export async function POST(
     );
   }
 
-  // Real path: create a PaymentIntent, then upsert. First submission
-  // only in this slice — revisions return 501 here (the stub path
-  // continues to handle them).
+  // Real path: ensure Customer → create PaymentIntent → (on revision)
+  // cancel the prior auth → upsert. Handles both first submission and
+  // revision (slice 20).
   if (realPathAvailable && stripe && body.stripePaymentMethodId) {
     const existing = await getOfferByShowAndUser(db, body.showId, userId);
-    if (existing) {
+
+    // Ensure the fan has a Stripe Customer; persist a newly-created ID
+    // onto their users row so the next offer reuses it.
+    const customerResult = await ensureStripeCustomer(stripe, {
+      userId,
+      email,
+      existingCustomerId: userRow.stripeCustomerId,
+    });
+    if (!customerResult.ok) {
       return NextResponse.json(
-        {
-          error:
-            "real-Stripe revision is not yet supported (slice 20). Existing offer found for this show.",
-        },
-        { status: 501 },
+        { error: customerResult.message, details: { code: customerResult.code } },
+        { status: stripeErrorToHttpStatus(customerResult.code) },
       );
+    }
+    if (customerResult.created) {
+      await setStripeCustomerId(db, userId, customerResult.customerId);
     }
 
     const amountCents = body.pricePerTicketCents * body.groupSize;
     // Optional idempotency key from the request header. Stripe uses
     // this server-side to dedupe retries of the same PaymentIntent
     // create call. When absent, retries CAN create duplicates — the
-    // client SHOULD always send one; we don't enforce it yet because
-    // the dev-stub path doesn't either.
+    // client SHOULD always send one.
     const idempotencyKey = request.headers.get("Idempotency-Key") ?? undefined;
 
+    // Create the NEW PaymentIntent BEFORE cancelling any old one. If
+    // this fails on a revision, the fan's existing auth stays intact
+    // rather than leaving them with no hold at all.
     const piResult = await createOfferPaymentIntent(stripe, {
       paymentMethodId: body.stripePaymentMethodId,
       amountCents,
+      customerId: customerResult.customerId,
       ...(idempotencyKey ? { idempotencyKey } : {}),
       metadata: { showId: body.showId, userId },
     });
@@ -289,6 +307,30 @@ export async function POST(
         },
         { status: 402 },
       );
+    }
+
+    // Revision: now that the new auth is held, cancel the prior
+    // PaymentIntent to release the old hold. Only for offers that
+    // carried a REAL PaymentIntent (pi_ prefix) — stub-era offers have
+    // a placeholder setup_intent_id and nothing to cancel. A cancel
+    // failure is logged but NOT fatal: the new auth is valid, and the
+    // old auth lapses on its own within the offer window. Failing the
+    // fan's revision over a stale-auth cleanup would be worse.
+    if (existing?.stripePaymentIntentId?.startsWith("pi_")) {
+      const cancelResult = await cancelOfferPaymentIntent(
+        stripe,
+        existing.stripePaymentIntentId,
+      );
+      if (!cancelResult.ok) {
+        logger.error(
+          {
+            oldPaymentIntentId: existing.stripePaymentIntentId,
+            newPaymentIntentId: piResult.paymentIntentId,
+            code: cancelResult.code,
+          },
+          "Failed to cancel prior PaymentIntent on revision — old auth will lapse on its own",
+        );
+      }
     }
 
     const { offer, isRevision } = await upsertOfferForUser(db, {

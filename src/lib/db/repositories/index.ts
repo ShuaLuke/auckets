@@ -67,6 +67,7 @@ export {
 export {
   ensureUserMirror,
   getEmailsByUserIds,
+  setStripeCustomerId,
   userIsAdmin,
 } from "./users";
 
