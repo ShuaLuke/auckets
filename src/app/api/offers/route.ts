@@ -1,13 +1,17 @@
 // POST /api/offers — DEV STUB.
 //
 // Submits or revises an offer for the calling user. Bypasses Stripe
-// (placeholder stripe_payment_method_id / stripe_setup_intent_id) so
-// the bid flow is exercisable end-to-end before ADR-0003 (SetupIntent
-// vs. pre-auth hold-window) is finalized.
+// (placeholder stripe_payment_method_id / stripe_setup_intent_id;
+// stripe_payment_intent_id stays null on the stub path) so the bid
+// flow is exercisable end-to-end without configuring Stripe.
 //
 // Gating: env.ALLOW_DEV_OFFER_STUB must be "true". The env validator
 // refuses "true" in production at module load, so this endpoint
-// cannot accidentally ship live.
+// cannot accidentally ship live. The real PaymentIntent path (per the
+// 2026-05-27 ADR-0003 working assumption — auth-based hold via
+// PaymentIntent with capture_method='manual') lands in the next slice
+// and runs alongside the stub: real flow when STRIPE_SECRET_KEY is
+// set, dev stub otherwise.
 //
 // Flow: auth → env flag → Zod body → ensure local users row exists →
 // fetch + validate show → upsert offer → respond.
@@ -110,8 +114,10 @@ const SHOW_OPEN_STATUSES = new Set(["open"]);
 
 // Placeholder Stripe IDs encode the userId + a timestamp so they're
 // unique per submission and obviously fake to any human inspecting
-// the row. Real submission uses real Stripe IDs from a confirmed
-// SetupIntent.
+// the row. The real path (next slice) writes stripe_payment_intent_id
+// (a real PaymentIntent) instead of stripe_setup_intent_id. The
+// schema check (offers_stripe_intent_check) requires at least one of
+// the two columns to be set; the stub fills the SetupIntent slot.
 function stubStripeIds(userId: string) {
   const tag = `${userId}_${Date.now()}`;
   return {

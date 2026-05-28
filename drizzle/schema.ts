@@ -225,7 +225,19 @@ export const offers = pgTable(
     // returned in an API response for any other user.
     privateThresholdCents: integer("private_threshold_cents"),
     stripePaymentMethodId: text("stripe_payment_method_id").notNull(),
-    stripeSetupIntentId: text("stripe_setup_intent_id").notNull(),
+    // stripe_setup_intent_id became nullable 2026-05-28 (slice 18). The
+    // SetupIntent flow stays as the ADR-0003 fallback for >6-day
+    // windows; under the 2026-05-27 ADR-0003 working assumption
+    // (≤6-day window + auth-based hold) we use stripe_payment_intent_id
+    // instead. The CHECK below enforces "at least one of these is set"
+    // so the column-nullability change can't accidentally land rows
+    // with no Stripe reference at all.
+    stripeSetupIntentId: text("stripe_setup_intent_id"),
+    // stripe_payment_intent_id — the PaymentIntent with
+    // capture_method='manual' that holds the fan's card auth for the
+    // duration of the offer window. Null when the offer was submitted
+    // via the SetupIntent fallback path (or the dev stub).
+    stripePaymentIntentId: text("stripe_payment_intent_id"),
     // pool | placed | unplaced | charged | card_failure | refunded | resold |
     // gifted.
     status: text("status").notNull().default("pool"),
@@ -241,6 +253,15 @@ export const offers = pgTable(
     check(
       "offers_auto_bid_cap_check",
       sql`${table.autoBidEnabled} = false OR (${table.autoBidCapCents} IS NOT NULL AND ${table.autoBidCapCents} >= ${table.pricePerTicketCents})`,
+    ),
+    // Defensive: under either Stripe flow (SetupIntent fallback or the
+    // auth-based PaymentIntent path), exactly one of these columns holds
+    // the Stripe reference. The dev stub fills stripe_setup_intent_id
+    // with a placeholder. Either way, every row must have at least one
+    // intent ID so we can chase the row back to Stripe.
+    check(
+      "offers_stripe_intent_check",
+      sql`${table.stripeSetupIntentId} IS NOT NULL OR ${table.stripePaymentIntentId} IS NOT NULL`,
     ),
     // The canonical "offer pool for allocation" query.
     index("offers_pool_idx").on(table.showId, table.status, table.rankKey.desc()),

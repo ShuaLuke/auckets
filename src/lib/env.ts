@@ -69,6 +69,17 @@ export const env = createEnv({
     //     the Resend pattern.
     OPS_EMAIL: z.email().default("ops@auckets.com"),
     SLACK_OPS_WEBHOOK_URL: z.url().optional(),
+    // Stripe — optional; when unset the Stripe client (src/lib/stripe/client.ts)
+    // stays dormant and POST /api/offers falls back to the dev stub (gated on
+    // ALLOW_DEV_OFFER_STUB). Same dormant-without-keys posture as Resend.
+    // STRIPE_SECRET_KEY: sk_test_ for the test mode, sk_live_ for production.
+    //   The env validator accepts either; environment safety (no live keys
+    //   in preview, no test keys in production) is enforced by Vercel env
+    //   scoping, not here.
+    // STRIPE_WEBHOOK_SECRET: whsec_ — used to verify webhook signatures
+    //   (payment_intent.payment_failed, charge.refunded, etc). One per env.
+    STRIPE_SECRET_KEY: z.string().min(1).startsWith("sk_").optional(),
+    STRIPE_WEBHOOK_SECRET: z.string().min(1).startsWith("whsec_").optional(),
     // Dev-only escape hatch for the offer-submission flow while ADR-0003
     // (Stripe SetupIntent vs. pre-auth) is still being decided. When
     // "true", POST /api/offers accepts submissions using placeholder
@@ -85,6 +96,12 @@ export const env = createEnv({
     // access to anything beyond what the Sentry project already accepts.
     // Optional: when unset, Sentry stays dormant.
     NEXT_PUBLIC_SENTRY_DSN: z.url().optional(),
+    // Stripe publishable key — used client-side by Stripe Elements to
+    // tokenize cards into PaymentMethods before the server creates the
+    // PaymentIntent. Public by design (it can only create PaymentMethods,
+    // not charge them). Optional: when unset, the offer composer falls
+    // back to the dev-stub submit path.
+    NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: z.string().min(1).startsWith("pk_").optional(),
   },
   runtimeEnv: {
     DATABASE_URL: process.env.DATABASE_URL,
@@ -98,7 +115,10 @@ export const env = createEnv({
     RESEND_FROM_EMAIL: process.env.RESEND_FROM_EMAIL,
     OPS_EMAIL: process.env.OPS_EMAIL,
     SLACK_OPS_WEBHOOK_URL: process.env.SLACK_OPS_WEBHOOK_URL,
+    STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
+    STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
     NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,
+    NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
     ALLOW_DEV_OFFER_STUB: process.env.ALLOW_DEV_OFFER_STUB,
   },
   skipValidation: process.env.SKIP_ENV_VALIDATION === "1",

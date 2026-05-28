@@ -22,6 +22,7 @@ function makeOffer(overrides: Partial<Offer> = {}): Offer {
     privateThresholdCents: null,
     stripePaymentMethodId: "pm_dev_stub",
     stripeSetupIntentId: "seti_dev_stub",
+    stripePaymentIntentId: null,
     status: "placed",
     submittedAt: new Date("2026-05-25T10:00:00Z"),
     revisedAt: null,
