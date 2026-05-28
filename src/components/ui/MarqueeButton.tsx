@@ -10,6 +10,15 @@
 // Distinct from Button (pill, no shadow). If you're adding a primary
 // or brand CTA, prefer Button — MarqueeButton is reserved for hero /
 // section-leading CTAs where the poster effect is wanted.
+//
+// "use client": this component attaches inline onMouseEnter/onMouseLeave
+// handlers to its <button>, so it must be a Client Component. Without the
+// directive it's treated as a Server Component, and rendering it from one
+// (e.g. the landing page) throws "Event handlers cannot be passed to
+// Client Component props" at render time — which took the marketing page
+// down on the root route.
+
+"use client";
 
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
 
