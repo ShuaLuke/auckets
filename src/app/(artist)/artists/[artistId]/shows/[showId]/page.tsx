@@ -229,6 +229,7 @@ export default async function ArtistShowAdminPage({ params }: Props) {
           artistId={parsed.data.artistId}
           show={data.show}
           canRunPreview={isAdmin}
+          canRunBinding={isAdmin}
         />
 
         <ShowAdminTabs

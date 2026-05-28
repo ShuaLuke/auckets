@@ -13,6 +13,7 @@ import { type ArtistShowSummaryView } from "@/lib/presenters";
 
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { Eyebrow } from "@/components/ui/Eyebrow";
+import { BindingAllocationButton } from "./BindingAllocationButton";
 import { PreviewAllocationButton } from "./PreviewAllocationButton";
 import { RequestActionButton } from "./RequestActionButton";
 
@@ -23,6 +24,10 @@ type Props = {
   // ADR-0013 (the API enforces this too, server-side, as the
   // authoritative check).
   canRunPreview: boolean;
+  // Whether to render the irreversible "Run binding" button. Same
+  // admin-only gate; kept as its own prop so the call site is explicit
+  // that the money-moving action is being exposed.
+  canRunBinding: boolean;
 };
 
 function badgeToneFor(show: ArtistShowSummaryView): BadgeTone {
@@ -30,7 +35,12 @@ function badgeToneFor(show: ArtistShowSummaryView): BadgeTone {
   return "upcoming";
 }
 
-export function ShowAdminHeader({ artistId, show, canRunPreview }: Props) {
+export function ShowAdminHeader({
+  artistId,
+  show,
+  canRunPreview,
+  canRunBinding,
+}: Props) {
   const tone = badgeToneFor(show);
   const offerWord = show.offers === 1 ? "offer" : "offers";
   const ticketWord = show.ticketsCount === 1 ? "ticket" : "tickets";
@@ -66,6 +76,7 @@ export function ShowAdminHeader({ artistId, show, canRunPreview }: Props) {
         <div className="flex items-center gap-2">
           <RequestActionButton showId={show.id} />
           {canRunPreview && <PreviewAllocationButton showId={show.id} />}
+          {canRunBinding && <BindingAllocationButton showId={show.id} />}
         </div>
       </div>
 
