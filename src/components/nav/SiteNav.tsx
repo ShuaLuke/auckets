@@ -7,8 +7,8 @@
 //   - any signed-in user → Dashboard
 //   - artist members / admins → a link per manageable artist (their
 //     ShowAdmin lives one click in, off the artist dashboard)
-//   - AUCKETS_ADMIN → the Ops command center + Requests inbox + an
-//     "Admin" badge
+//   - AUCKETS_ADMIN → the Requests inbox + an "Admin" pill that links to
+//     the ops command center (/admin)
 //
 // Authorization note: these links are convenience only. Every admin and
 // artist page re-checks authorization server-side (userIsAdmin /
@@ -79,24 +79,19 @@ export async function SiteNav() {
           ))}
 
           {isAdmin && (
-            <Link href="/admin" className={linkClass}>
-              Ops
-            </Link>
-          )}
-
-          {isAdmin && (
             <Link href="/admin/requests" className={linkClass}>
               Requests
             </Link>
           )}
 
           {isAdmin && (
-            <span
-              className="rounded-full bg-neutral-900 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-white"
-              title="You have AUCKETS admin access"
+            <Link
+              href="/admin"
+              className="rounded-full bg-neutral-900 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-white no-underline hover:bg-neutral-700"
+              title="AUCKETS ops command center"
             >
               Admin
-            </span>
+            </Link>
           )}
 
           <UserButton afterSignOutUrl="/" />
