@@ -7,7 +7,10 @@ import type { VenueRow } from "@/lib/gae/types";
 
 import type { offers, shows } from "../../../drizzle/schema";
 
-import { buildPreviewAllocationPlan } from "./build-plan";
+import {
+  buildBindingAllocationPlan,
+  buildPreviewAllocationPlan,
+} from "./build-plan";
 
 type Offer = typeof offers.$inferSelect;
 type Show = typeof shows.$inferSelect;
@@ -215,5 +218,59 @@ describe("buildPreviewAllocationPlan", () => {
     for (const row of plan.assignmentRows) {
       expect(row.venueRowId).toBe("row_a");
     }
+  });
+
+  it("does not stamp a stripePaymentIntentId on preview rows (preview never touches money)", () => {
+    const plan = buildPreviewAllocationPlan(
+      makeShow({ activeRowIds: ["row_a"] }),
+      makeArch([makeRow()]),
+      [makeOffer({ groupSize: 4, stripePaymentIntentId: "pi_should_be_ignored" })],
+    );
+    expect(plan.assignmentRows[0]).not.toHaveProperty("stripePaymentIntentId");
+  });
+});
+
+describe("buildBindingAllocationPlan", () => {
+  it("flags every produced assignment row as is_binding=true", () => {
+    const plan = buildBindingAllocationPlan(
+      makeShow({ activeRowIds: ["row_a"] }),
+      makeArch([makeRow()]),
+      [makeOffer({ groupSize: 4, stripePaymentIntentId: "pi_abc" })],
+    );
+    expect(plan.assignmentRows.length).toBeGreaterThan(0);
+    for (const row of plan.assignmentRows) {
+      expect(row.isBinding).toBe(true);
+    }
+  });
+
+  it("emits log rows with mode='binding'", () => {
+    const plan = buildBindingAllocationPlan(
+      makeShow({ activeRowIds: ["row_a"] }),
+      makeArch([makeRow({ capacity: 8 })]),
+      [makeOffer({ groupSize: 4, stripePaymentIntentId: "pi_abc" })],
+    );
+    expect(plan.logRows.length).toBe(plan.result.decisions.length);
+    expect(plan.logRows.every((r) => r.mode === "binding")).toBe(true);
+  });
+
+  it("carries each placed offer's auth PaymentIntent id onto its assignment row (for capture)", () => {
+    const plan = buildBindingAllocationPlan(
+      makeShow({ activeRowIds: ["row_a"] }),
+      makeArch([makeRow()]),
+      [makeOffer({ id: "offer_1", groupSize: 4, stripePaymentIntentId: "pi_xyz" })],
+    );
+    expect(plan.assignmentRows[0]?.stripePaymentIntentId).toBe("pi_xyz");
+  });
+
+  it("sets stripePaymentIntentId to null when a placed offer has no PaymentIntent", () => {
+    // SetupIntent-fallback or legacy stub offer. The column is present
+    // (binding mode) but null — the orchestrator treats this as a
+    // card_failure since there's no auth to capture.
+    const plan = buildBindingAllocationPlan(
+      makeShow({ activeRowIds: ["row_a"] }),
+      makeArch([makeRow()]),
+      [makeOffer({ id: "offer_1", groupSize: 4, stripePaymentIntentId: null })],
+    );
+    expect(plan.assignmentRows[0]?.stripePaymentIntentId).toBeNull();
   });
 });
