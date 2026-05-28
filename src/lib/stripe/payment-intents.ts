@@ -203,3 +203,57 @@ export async function cancelOfferPaymentIntent(
     };
   }
 }
+
+export type CapturePaymentIntentResult =
+  | { ok: true }
+  | { ok: false; code: string; message: string };
+
+// Captures a previously-authorized PaymentIntent at binding allocation —
+// this is the moment the fan's card is actually charged for a placed
+// offer. Pass the full authorized amount (price × group_size); Stripe
+// captures up to the original auth.
+//
+// Deliberately NOT idempotent-soft like cancelOfferPaymentIntent: a
+// payment_intent_unexpected_state here means the auth is no longer
+// capturable (canceled, expired, or already captured). We must NOT
+// swallow that as success — doing so would let the caller mark an offer
+// "charged" when no funds moved. The binding orchestrator maps a failure
+// to the card_failure state instead, which is exactly the ~2% case
+// ADR-0003 describes (card canceled between auth and capture). Because
+// binding is gated so it can't re-run on a show mid-allocation, each PI
+// is captured at most once from a fresh requires_capture state, so the
+// "already captured" sub-case doesn't arise in practice.
+export async function captureOfferPaymentIntent(
+  stripe: Stripe,
+  paymentIntentId: string,
+  amountToCaptureCents?: number,
+): Promise<CapturePaymentIntentResult> {
+  try {
+    await stripe.paymentIntents.capture(
+      paymentIntentId,
+      amountToCaptureCents !== undefined
+        ? { amount_to_capture: amountToCaptureCents }
+        : undefined,
+    );
+    return { ok: true };
+  } catch (err) {
+    if (err && typeof err === "object" && "code" in err) {
+      const stripeErr = err as { code?: string; message?: string };
+      logger.error(
+        { paymentIntentId, code: stripeErr.code, message: stripeErr.message },
+        "Stripe paymentIntents.capture failed",
+      );
+      return {
+        ok: false,
+        code: stripeErr.code ?? "stripe_error",
+        message: stripeErr.message ?? "Unknown Stripe error",
+      };
+    }
+    logger.error({ err, paymentIntentId }, "Non-Stripe error during capture");
+    return {
+      ok: false,
+      code: "internal",
+      message: err instanceof Error ? err.message : String(err),
+    };
+  }
+}

@@ -11,6 +11,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   cancelOfferPaymentIntent,
+  captureOfferPaymentIntent,
   createOfferPaymentIntent,
 } from "./payment-intents";
 
@@ -248,5 +249,69 @@ describe("cancelOfferPaymentIntent", () => {
       code: "rate_limit",
       message: "Too many requests.",
     });
+  });
+});
+
+function makeCaptureStripe(
+  capture: (...args: unknown[]) => unknown,
+): FakeStripe {
+  return { paymentIntents: { capture: vi.fn(capture) } };
+}
+
+describe("captureOfferPaymentIntent", () => {
+  it("returns ok when Stripe captures the auth cleanly (placed offer charged)", async () => {
+    const stripe = makeCaptureStripe(async () => ({
+      id: "pi_x",
+      status: "succeeded",
+    }));
+    const result = await captureOfferPaymentIntent(stripe, "pi_x");
+    expect(result).toEqual({ ok: true });
+  });
+
+  it("passes amount_to_capture when an amount is provided (full authorized amount)", async () => {
+    const stripe = makeCaptureStripe(async () => ({
+      id: "pi_x",
+      status: "succeeded",
+    }));
+    await captureOfferPaymentIntent(stripe, "pi_x", 16_800);
+    const [idArg, optsArg] = stripe.paymentIntents.capture.mock.calls[0];
+    expect(idArg).toBe("pi_x");
+    expect(optsArg).toEqual({ amount_to_capture: 16_800 });
+  });
+
+  it("omits the options object when no amount is provided (capture full auth)", async () => {
+    const stripe = makeCaptureStripe(async () => ({
+      id: "pi_x",
+      status: "succeeded",
+    }));
+    await captureOfferPaymentIntent(stripe, "pi_x");
+    const [, optsArg] = stripe.paymentIntents.capture.mock.calls[0];
+    expect(optsArg).toBeUndefined();
+  });
+
+  it("returns ok:false on payment_intent_unexpected_state — NOT a soft success (auth is dead → card_failure)", async () => {
+    // Unlike cancel, capture must surface this: the auth is no longer
+    // capturable, so the offer cannot be charged. Treating it as success
+    // would mark the offer 'charged' with no funds collected.
+    const stripe = makeCaptureStripe(async () => {
+      throw {
+        code: "payment_intent_unexpected_state",
+        message: "PI cannot be captured.",
+      };
+    });
+    const result = await captureOfferPaymentIntent(stripe, "pi_dead");
+    expect(result).toEqual({
+      ok: false,
+      code: "payment_intent_unexpected_state",
+      message: "PI cannot be captured.",
+    });
+  });
+
+  it("maps non-Stripe errors (e.g. network) into a generic 'internal' code", async () => {
+    const stripe = makeCaptureStripe(async () => {
+      throw new Error("ECONNREFUSED");
+    });
+    const result = await captureOfferPaymentIntent(stripe, "pi_x");
+    expect(result).toEqual({ ok: false, code: "internal", message: "ECONNREFUSED" });
   });
 });

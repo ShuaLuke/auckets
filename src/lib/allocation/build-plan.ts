@@ -41,6 +41,10 @@ export type AssignmentRow = {
   seatNumbers: string[];
   tier: string;
   isBinding: boolean;
+  // Set only in binding mode: links the seat assignment to the auth
+  // PaymentIntent that the binding run captures. Preview omits it (the
+  // column defaults to null) — preview never touches money.
+  stripePaymentIntentId?: string | null;
 };
 
 export type LogRow = {
@@ -79,12 +83,18 @@ function groupAssignmentsByOffer(
   show: Pick<Show, "id">,
   rowById: Map<string, VenueRow>,
   isBinding: boolean,
+  // Present only in binding mode: offerId → auth PaymentIntent id. The
+  // produced rows carry it so the binding orchestrator can capture each
+  // placed offer's auth. Absent in preview (the key is omitted from the
+  // row entirely, leaving the column at its null default).
+  paymentIntentByOfferId?: Map<string, string | null>,
 ): AssignmentRow[] {
   type Bucket = {
     offerId: string;
     venueRowId: string;
     seatNumbers: string[];
     tier: string;
+    stripePaymentIntentId: string | null | undefined;
   };
   const buckets = new Map<string, Bucket>();
 
@@ -105,6 +115,9 @@ function groupAssignmentsByOffer(
         // assignment; we look it up from the row. GA rows have no
         // tier field — fall back to "ga" to keep the column NOT NULL.
         tier: row?.tier ?? (row?.isGa ? "ga" : "unknown"),
+        stripePaymentIntentId: paymentIntentByOfferId
+          ? paymentIntentByOfferId.get(a.offerId) ?? null
+          : undefined,
       };
       buckets.set(key, bucket);
     }
@@ -118,6 +131,11 @@ function groupAssignmentsByOffer(
     seatNumbers: b.seatNumbers,
     tier: b.tier,
     isBinding,
+    // Omit the key entirely in preview (undefined) so the column keeps
+    // its null default; include it (string | null) in binding.
+    ...(b.stripePaymentIntentId !== undefined
+      ? { stripePaymentIntentId: b.stripePaymentIntentId }
+      : {}),
   }));
 }
 
@@ -142,28 +160,28 @@ function buildLogRows(
   }));
 }
 
-// Build a complete preview allocation plan from already-loaded inputs.
-// Pure — no DB, no env, no clock. Caller provides `now` if it wants
-// to embed timestamps anywhere (currently we don't — both tables have
-// default-now timestamp columns at the DB level).
-export function buildPreviewAllocationPlan(
+// Shared core for both preview and binding plans. Pure — no DB, no env,
+// no clock. The only difference between the two modes at the plan level
+// is the `mode`/`isBinding` flags stamped on the rows and, in binding,
+// the per-offer auth PaymentIntent id carried onto each assignment row
+// (so the orchestrator can capture it). Placements themselves are
+// identical: the GAE is deterministic, which is exactly why a preview
+// faithfully shows what binding will do.
+function buildAllocationPlan(
   show: Show,
   architecture: DbVenueArchitecture,
   poolOffers: readonly Offer[],
-  config: AllocationConfig = {
-    mode: "preview",
-    allowOrphans: true,
-    // shows.maxGroupSize defaults to 10 (ADR-0011) but per-show
-    // overrides exist. Hand the show's value to the GAE so the
-    // engine's group-size cap matches the schema constraint.
-    maxGroupSize: 10,
-    orphanPolicy: "leave",
-  },
+  mode: "preview" | "binding",
 ): AllocationPlan {
   const venue = toGaeVenueArchitecture(show, architecture);
   const rankedOffers = poolOffers.map(toGaeRankedOffer);
   const effectiveConfig: AllocationConfig = {
-    ...config,
+    mode,
+    allowOrphans: true,
+    orphanPolicy: "leave",
+    // shows.maxGroupSize defaults to 10 (ADR-0011) but per-show
+    // overrides exist. Hand the show's value to the GAE so the
+    // engine's group-size cap matches the schema constraint.
     maxGroupSize: show.maxGroupSize,
   };
   const result = allocate(venue, rankedOffers, effectiveConfig);
@@ -173,9 +191,40 @@ export function buildPreviewAllocationPlan(
     rowById.set(row.id, row);
   }
 
+  const isBinding = mode === "binding";
+  const paymentIntentByOfferId = isBinding
+    ? new Map(poolOffers.map((o) => [o.id, o.stripePaymentIntentId]))
+    : undefined;
+
   return {
     result,
-    assignmentRows: groupAssignmentsByOffer(result, show, rowById, false),
-    logRows: buildLogRows(result, show.id, "preview"),
+    assignmentRows: groupAssignmentsByOffer(
+      result,
+      show,
+      rowById,
+      isBinding,
+      paymentIntentByOfferId,
+    ),
+    logRows: buildLogRows(result, show.id, mode),
   };
+}
+
+// Build a complete preview allocation plan from already-loaded inputs.
+export function buildPreviewAllocationPlan(
+  show: Show,
+  architecture: DbVenueArchitecture,
+  poolOffers: readonly Offer[],
+): AllocationPlan {
+  return buildAllocationPlan(show, architecture, poolOffers, "preview");
+}
+
+// Build a complete binding allocation plan. Same placements as preview,
+// but rows are flagged is_binding=true and carry each placed offer's
+// auth PaymentIntent id for the capture phase.
+export function buildBindingAllocationPlan(
+  show: Show,
+  architecture: DbVenueArchitecture,
+  poolOffers: readonly Offer[],
+): AllocationPlan {
+  return buildAllocationPlan(show, architecture, poolOffers, "binding");
 }
