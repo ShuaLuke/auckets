@@ -159,4 +159,80 @@ describe("upsertOfferForUser (integration)", () => {
       pricePerTicketCents: 3000,
     });
   });
+
+  it("updates the Stripe PaymentIntent id on revision (regression: revised offers kept the original auth and failed to capture at binding)", async () => {
+    const user = await seedUser();
+    const { show } = await seedShow();
+
+    // First submission — real path shape: a PaymentIntent, no SetupIntent.
+    const first = await upsertOfferForUser(db, {
+      showId: show.id,
+      userId: user.id,
+      groupSize: 4,
+      pricePerTicketCents: 5000, // $200 authorization
+      tierPreference: "any",
+      stripePaymentMethodId: "pm_first",
+      stripePaymentIntentId: "pi_first_auth",
+    });
+    expect(first.offer.stripePaymentIntentId).toBe("pi_first_auth");
+
+    // Revision raises the amount and carries a FRESH PaymentIntent.
+    const second = await upsertOfferForUser(db, {
+      showId: show.id,
+      userId: user.id,
+      groupSize: 5,
+      pricePerTicketCents: 7000, // $350 authorization
+      tierPreference: "any",
+      stripePaymentMethodId: "pm_second",
+      stripePaymentIntentId: "pi_second_auth",
+    });
+
+    // Same row (onConflict fired), and — the regression — the offer now
+    // points at the NEW auth. The bug left this at "pi_first_auth", so
+    // binding tried to capture $350 against the old $200 hold and failed.
+    expect(second.offer.id).toBe(first.offer.id);
+    expect(second.offer.stripePaymentIntentId).toBe("pi_second_auth");
+    expect(second.offer.stripePaymentMethodId).toBe("pm_second");
+    expect(second.offer.stripeSetupIntentId).toBeNull();
+
+    // History records the auth that backed the latest version.
+    const revisions = await listOfferRevisionsForOffer(db, first.offer.id);
+    expect(revisions).toHaveLength(2);
+    expect(revisions[1]?.snapshot).toMatchObject({
+      stripePaymentIntentId: "pi_second_auth",
+    });
+  });
+
+  it("clears the prior SetupIntent when a stub offer is revised onto the real (PaymentIntent) path", async () => {
+    const user = await seedUser();
+    const { show } = await seedShow();
+
+    // Stub-path first submission: SetupIntent slot filled, no PaymentIntent.
+    await upsertOfferForUser(db, {
+      showId: show.id,
+      userId: user.id,
+      groupSize: 2,
+      pricePerTicketCents: 3000,
+      tierPreference: "any",
+      stripePaymentMethodId: STUB_PAYMENT_METHOD_ID,
+      stripeSetupIntentId: STUB_SETUP_INTENT_ID,
+    });
+
+    // Real-path revision: PaymentIntent set, SetupIntent intentionally absent.
+    const revised = await upsertOfferForUser(db, {
+      showId: show.id,
+      userId: user.id,
+      groupSize: 3,
+      pricePerTicketCents: 4000,
+      tierPreference: "any",
+      stripePaymentMethodId: "pm_real",
+      stripePaymentIntentId: "pi_real_auth",
+    });
+
+    // SetupIntent reset to null (no longer the active auth) and the
+    // PaymentIntent now set. The write didn't throw, so the row still
+    // satisfies offers_stripe_intent_check (>= 1 intent column non-null).
+    expect(revised.offer.stripeSetupIntentId).toBeNull();
+    expect(revised.offer.stripePaymentIntentId).toBe("pi_real_auth");
+  });
 });
