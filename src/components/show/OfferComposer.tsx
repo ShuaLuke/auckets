@@ -13,17 +13,29 @@
 //   - preferredTier is hardcoded to "premium" for the two tier-bound
 //     options. Real per-show tier picking lands in a later slice once
 //     the venue's tier list is part of the show view.
-//   - Live preview / venue map / rank board (right column in the
-//     prototype) are NOT included here. They're decorative for the
-//     submit flow and need synthetic placement math that doesn't
-//     reflect real allocation. Slice 11+.
 //
-// The submit POST is the dev stub (ALLOW_DEV_OFFER_STUB=true) until
-// ADR-0003 is decided. When the flag is off the route returns 503 and
-// the composer renders the message.
+// Stripe wiring (slice 21):
+//   - When NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is set, the inner form
+//     is wrapped in <Elements> and a CardElement is rendered. On
+//     submit we createPaymentMethod client-side and send the
+//     PaymentMethod ID to POST /api/offers, which takes the real
+//     PaymentIntent path. First submission only — revisions still go
+//     through the dev-stub path (the real revision flow needs Customer
+//     attach, slice 20; the route returns 501 if you POST a
+//     payment-method on a revision).
+//   - When the key is absent, no card field renders and submit posts
+//     without a payment-method ID — the route falls back to the dev
+//     stub (gated on ALLOW_DEV_OFFER_STUB).
 
 "use client";
 
+import {
+  CardElement,
+  Elements,
+  useElements,
+  useStripe,
+} from "@stripe/react-stripe-js";
+import { loadStripe, type Stripe } from "@stripe/stripe-js";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -34,6 +46,7 @@ import { Field } from "@/components/ui/Field";
 import { RadioGroup, type RadioOption } from "@/components/ui/RadioGroup";
 import { Stepper } from "@/components/ui/Stepper";
 import { TextInput } from "@/components/ui/TextInput";
+import { env } from "@/lib/env";
 import { formatCents, parseDollars } from "@/lib/money";
 import { type OfferView, type ShowDetailView } from "@/lib/presenters";
 
@@ -66,6 +79,29 @@ const TIER_OPTIONS: ReadonlyArray<RadioOption<TierValue>> = [
 
 const RANK_KEY_MULTIPLIER = 1000;
 
+// loadStripe is called once at module load (the recommended pattern —
+// it caches the Stripe.js script load). null when no publishable key
+// is configured, which puts the composer in dev-stub mode.
+const stripePromise: Promise<Stripe | null> | null =
+  env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+    ? loadStripe(env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY)
+    : null;
+
+// CardElement styling — match the design's ink palette + sans font so
+// the Stripe iframe doesn't look pasted-in. Stripe only lets us style a
+// fixed set of properties on the iframe content.
+const CARD_ELEMENT_OPTIONS = {
+  style: {
+    base: {
+      color: "#0E0F0C",
+      fontFamily: '"Geist", system-ui, sans-serif',
+      fontSize: "15px",
+      "::placeholder": { color: "#9C9789" },
+    },
+    invalid: { color: "#A93C2A" },
+  },
+} as const;
+
 function defaultPrice(existingOffer: OfferView | null): string {
   if (!existingOffer) return "42";
   return (existingOffer.priceCents / 100).toFixed(
@@ -73,8 +109,44 @@ function defaultPrice(existingOffer: OfferView | null): string {
   );
 }
 
+// Outer component — decides Stripe mode and provides the Elements
+// context when a publishable key is configured. The form itself lives
+// in OfferComposerForm so it can use the useStripe/useElements hooks
+// (which require an <Elements> ancestor).
 export function OfferComposer({ show, existingOffer }: Props) {
+  const stripeEnabled = stripePromise !== null;
+
+  if (stripeEnabled) {
+    return (
+      <Elements stripe={stripePromise}>
+        <OfferComposerForm
+          show={show}
+          existingOffer={existingOffer}
+          stripeEnabled
+        />
+      </Elements>
+    );
+  }
+
+  return (
+    <OfferComposerForm
+      show={show}
+      existingOffer={existingOffer}
+      stripeEnabled={false}
+    />
+  );
+}
+
+function OfferComposerForm({
+  show,
+  existingOffer,
+  stripeEnabled,
+}: Props & { stripeEnabled: boolean }) {
   const router = useRouter();
+  // These hooks return null until Stripe.js finishes loading (and
+  // always null when there's no <Elements> ancestor, i.e. stub mode).
+  const stripe = useStripe();
+  const elements = useElements();
 
   const [size, setSize] = useState(existingOffer?.size ?? 4);
   const [price, setPrice] = useState(defaultPrice(existingOffer));
@@ -93,7 +165,10 @@ export function OfferComposer({ show, existingOffer }: Props) {
   const autoMaxIsValid =
     !autoBid || (autoMaxCents !== null && priceCents !== null && autoMaxCents >= priceCents);
 
-  const canSubmit = priceIsValid && autoMaxIsValid && !submitting;
+  // In Stripe mode the form can't submit until Stripe.js has loaded
+  // (stripe + elements non-null). In stub mode that gate doesn't apply.
+  const stripeReady = !stripeEnabled || (stripe !== null && elements !== null);
+  const canSubmit = priceIsValid && autoMaxIsValid && stripeReady && !submitting;
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -110,9 +185,6 @@ export function OfferComposer({ show, existingOffer }: Props) {
       channel: "market",
       autoBidEnabled: autoBid,
     };
-    // preferredTier is required for the two tier-bound options.
-    // Hardcoded to "premium" for now — real tier picking lands when
-    // the show view exposes its full tier list.
     if (tier !== "any") {
       payload.preferredTier = "premium";
     }
@@ -120,17 +192,54 @@ export function OfferComposer({ show, existingOffer }: Props) {
       payload.autoBidCapCents = autoMaxCents;
     }
 
+    // Stripe mode: tokenize the card into a PaymentMethod before
+    // posting. The route uses the PaymentMethod ID to create the real
+    // PaymentIntent (auth hold). Any card error short-circuits here
+    // with a user-facing message — we never post a half-formed offer.
+    if (stripeEnabled) {
+      if (!stripe || !elements) {
+        setError("Payment form is still loading. Try again in a moment.");
+        setSubmitting(false);
+        return;
+      }
+      const cardElement = elements.getElement(CardElement);
+      if (!cardElement) {
+        setError("Card field not found. Reload the page and try again.");
+        setSubmitting(false);
+        return;
+      }
+      const { error: pmError, paymentMethod } = await stripe.createPaymentMethod({
+        type: "card",
+        card: cardElement,
+      });
+      if (pmError || !paymentMethod) {
+        setError(pmError?.message ?? "Could not validate your card.");
+        setSubmitting(false);
+        return;
+      }
+      payload.stripePaymentMethodId = paymentMethod.id;
+    }
+
     try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      // Idempotency key per submit attempt — protects the real-path
+      // PaymentIntent create from network-retry duplicates. Harmless
+      // on the stub path (the route only reads it for Stripe).
+      if (stripeEnabled && typeof crypto !== "undefined" && crypto.randomUUID) {
+        headers["Idempotency-Key"] = crypto.randomUUID();
+      }
+
       const res = await fetch("/api/offers", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify(payload),
       });
 
       if (res.ok) {
         // Refresh so the dashboard's "yourOffer" chip reflects the
-        // new state on the way back. router.push is client-side
-        // navigation; refresh forces the RSC to re-fetch.
+        // new state on the way back.
         router.push("/dashboard");
         router.refresh();
         return;
@@ -236,6 +345,26 @@ export function OfferComposer({ show, existingOffer }: Props) {
             </div>
           )}
         </div>
+
+        {/* Card field — only in Stripe mode. The CardElement is a
+            Stripe-hosted iframe; the fan's card details never touch
+            our server, only the resulting PaymentMethod ID does. */}
+        {stripeEnabled && (
+          <Field
+            label="Card"
+            hint="Authorized now; only charged if you're placed."
+          >
+            <div
+              className="rounded-lg px-3 py-3"
+              style={{
+                background: "var(--page)",
+                border: "1px solid var(--border-strong)",
+              }}
+            >
+              <CardElement options={CARD_ELEMENT_OPTIONS} />
+            </div>
+          </Field>
+        )}
 
         {/* Total / rank-key summary. Matches the prototype's panel
             on Show.jsx lines 125-139. */}

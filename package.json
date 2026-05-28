@@ -25,6 +25,8 @@
     "@clerk/nextjs": "^6.39.4",
     "@react-email/components": "^1.0.12",
     "@sentry/nextjs": "^10.53.1",
+    "@stripe/react-stripe-js": "^6.4.0",
+    "@stripe/stripe-js": "^9.7.0",
     "@t3-oss/env-nextjs": "^0.13.11",
     "drizzle-orm": "^0.45.2",
     "inngest": "^4.4.0",
