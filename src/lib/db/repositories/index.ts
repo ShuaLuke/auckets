@@ -75,6 +75,7 @@ export {
 
 export {
   getShowById,
+  listAllShows,
   listOpenShows,
   listShowsForArtist,
   type ShowSummary,
