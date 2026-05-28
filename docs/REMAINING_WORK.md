@@ -108,6 +108,7 @@ These can ship at any time, in any order. Each is a 1-PR slice.
 2. **Add hold dialog + DELETE** flow. Schema is ready (`holds` table, `kind='venue'|'artist'`). Need: POST/DELETE endpoints + client dialog (similar shape to RequestActionButton) + trash icon wired up. Range compaction in seat-number formatting ("1-4" for contiguous) can land here too.
 3. **Revision diffs in the activity feed.** Activity feed currently shows "Revision · offer_xxxx · now $40 × 4". `presentOfferHistory` already builds "$30 → $40" diffs for /my-bids. Pull `listOfferRevisionsByOfferIds` into the ShowAdmin page and pair adjacent revisions in `presentRecentActivity`.
 4. **Fans · data export tab** on ShowAdmin (the Fans tab from `ShowAdmin.jsx`). Per-fan rows with email/phone/group/offer/status/seats + CSV export + "Email all N" action. **Needs a privacy review first** per ADR-0017 (private offer fields are server-only — confirm what's safe to expose).
+5. **Admin command center** — grow `/admin` from a single inbox into the ops cockpit. Multi-slice initiative; see the dedicated section below. Shows-list spine shipped first.
 
 ### 🟡 Blocked operationally — start whenever external work clears
 
@@ -159,6 +160,30 @@ Already covered elsewhere; not re-listed:
 - ShowCreate / VenueBuilder — already in the 🟡 section.
 
 ---
+
+## Admin command center (initiative)
+
+Today `/admin` is a single inbox (`/admin/requests`). The goal is to grow it into the startup's operational cockpit — the one place ops watches and acts on everything the data model already supports. Two audiences, one surface: **a non-technical operator (Julia) should be able to navigate it without a map, while a technical user can drill into raw snapshot/log detail.** Build it incrementally — the shows list is the spine; everything else hangs off a per-show drill-down or its own section.
+
+The data already supports far more than messages. Sections, roughly in priority order:
+
+| Section | What ops watches / does | Source tables |
+|---|---|---|
+| **Shows** (spine) | Every show + window state, offer/ticket counts, allocation status; drill into one show | `shows`, `seatAssignments` |
+| **Offers** | All offers across shows — placed/unplaced, amounts, auto-bid, search by fan | `offers`, `offerRevisions` |
+| **Tickets** | Issued tickets, scan status, resales in flight | `tickets`, `ticketScans`, `resales` |
+| **Money** | Holds (auth'd PaymentIntents), captures, bond events | `holds`, `bondEvents` |
+| **Allocations** | Each binding run's full snapshot/log — what the GAE decided and why | `allocationLogs` |
+| **Requests** | (the inbox shipped today) | `artistRequests` |
+| **People** | Users/artists, roles | `users`, `artists` |
+| **Simulation** | What-if allocation runs against live/synthetic pools. **Julia has a Claude-design outline for this tab — pull it in before building.** | GAE (preview mode) |
+
+Design principles to carry through every slice:
+- **Progressive disclosure.** Summary numbers up top, raw JSON snapshots / logs behind a "dive deeper" toggle — so the non-technical default stays clean and the technical path is one click in.
+- **Read-then-act.** Each section starts read-only; actions (capture a hold, cancel an offer, force a re-run) layer on once the view is trusted. Actions re-check authorization server-side regardless of nav visibility.
+- **Reuse presenters/repos.** Cross-artist admin views are the same shapes as the artist-scoped views, just unscoped — don't fork the formatting.
+
+First slice shipped: the **Shows list** at `/admin` (all shows, all statuses, each row → existing ShowAdmin). Remaining sections above are unbuilt and unordered beyond the priority hint.
 
 ## How to use this doc
 

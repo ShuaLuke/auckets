@@ -138,3 +138,18 @@ export async function listShowsForArtist(
     .orderBy(shows.doorsAt);
   return rows.map(narrowSummary);
 }
+
+// Every show across every artist, no status filter — the admin
+// command-center spine (`/admin`). Unlike listOpenShows / listShowsFor-
+// Artist this is deliberately unscoped: ops needs draft, paused,
+// allocated and complete shows in one view. Ordered by doorsAt so the
+// soonest shows sort first, matching the artist dashboard's ordering.
+export async function listAllShows(db: Db): Promise<ShowSummary[]> {
+  const rows = await db
+    .select(SHOW_SUMMARY_SELECTION)
+    .from(shows)
+    .innerJoin(artists, eq(shows.artistId, artists.id))
+    .innerJoin(venues, eq(shows.venueId, venues.id))
+    .orderBy(shows.doorsAt);
+  return rows.map(narrowSummary);
+}

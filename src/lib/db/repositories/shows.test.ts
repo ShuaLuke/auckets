@@ -2,6 +2,7 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 
 import {
   getShowById,
+  listAllShows,
   listOpenShows,
   listShowsForArtist,
   type ShowSummary,
@@ -138,6 +139,47 @@ describe("listOpenShows", () => {
 
   it("has the expected return type", () => {
     expectTypeOf(listOpenShows).returns.resolves.toEqualTypeOf<ShowSummary[]>();
+  });
+});
+
+describe("listAllShows", () => {
+  it("returns an empty array when there are no shows", async () => {
+    const db = makeMockDb<ShowSummary>([]);
+    expect(await listAllShows(db)).toEqual([]);
+  });
+
+  it("returns the projected summary shape for every status (no filter)", async () => {
+    const draft: ShowSummary = {
+      id: "44444444-4444-4444-4444-444444444444",
+      artistId: "11111111-1111-1111-1111-111111111111",
+      venueId: "22222222-2222-2222-2222-222222222222",
+      venueArchitectureId: "33333333-3333-3333-3333-333333333333",
+      status: "draft",
+      doorsAt: new Date("2026-06-25T00:00:00Z"),
+      offerWindowOpensAt: new Date("2026-05-25T00:00:00Z"),
+      bindingAllocationAt: new Date("2026-06-24T00:00:00Z"),
+      pausedAt: null,
+      activeRowIds: ["row_a"],
+      artistName: "Citizen Cope",
+      venueName: "Cope's place",
+      venueCity: "Brooklyn, NY",
+    };
+    const complete: ShowSummary = {
+      ...draft,
+      id: "55555555-5555-5555-5555-555555555555",
+      status: "complete",
+    };
+
+    const db = makeMockDb([draft, complete]);
+    const result = await listAllShows(db);
+
+    expect(result).toEqual([draft, complete]);
+    // No presenter-derived fields leaked into the summary.
+    expect(result[0]).not.toHaveProperty("statusLabel");
+  });
+
+  it("has the expected return type", () => {
+    expectTypeOf(listAllShows).returns.resolves.toEqualTypeOf<ShowSummary[]>();
   });
 });
 
