@@ -27,9 +27,13 @@ import { logger } from "@/lib/logger";
 
 export type CreateOfferPaymentIntentParams = {
   // The PaymentMethod ID created client-side via Stripe Elements (or
-  // similar). Single-use unless attached to a Customer; for first
-  // submission we don't attach (slice 20 handles Customer + reuse).
+  // similar).
   paymentMethodId: string;
+  // The fan's Stripe Customer (slice 20). Associates the PaymentIntent
+  // with the Customer so all of a fan's payments group together in the
+  // dashboard. Optional for back-compat with the slice-19 first-cut,
+  // but the route always passes it now.
+  customerId?: string;
   // price_per_ticket_cents × group_size. Money is integer cents (per
   // the project's hard constraint), and Stripe expects amounts in the
   // currency's smallest unit (cents for USD).
@@ -83,6 +87,7 @@ export async function createOfferPaymentIntent(
         amount: params.amountCents,
         currency: params.currency ?? "usd",
         payment_method: params.paymentMethodId,
+        ...(params.customerId ? { customer: params.customerId } : {}),
         // Manual capture is the whole point — Stripe holds the funds
         // (auth) but doesn't charge until we explicitly capture at
         // binding allocation. The auth typically holds for 7 days on
@@ -139,6 +144,58 @@ export async function createOfferPaymentIntent(
       };
     }
     logger.error({ err }, "Non-Stripe error during createPaymentIntent");
+    return {
+      ok: false,
+      code: "internal",
+      message: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+export type CancelPaymentIntentResult =
+  | { ok: true }
+  | { ok: false; code: string; message: string };
+
+// Cancels a PaymentIntent, releasing the card authorization (the fan's
+// held funds free up). Used on revision: we cancel the prior auth
+// before placing a new one for the revised amount.
+//
+// Idempotent-ish from our perspective: Stripe rejects cancelling a PI
+// that's already in a terminal state (canceled / succeeded) with an
+// invalid-state error. We treat "already not cancelable" as a soft
+// success — the goal (no live auth on the old PI) is already met — and
+// only surface hard errors. This keeps a revision from failing just
+// because the old auth had already lapsed or been captured.
+export async function cancelOfferPaymentIntent(
+  stripe: Stripe,
+  paymentIntentId: string,
+): Promise<CancelPaymentIntentResult> {
+  try {
+    await stripe.paymentIntents.cancel(paymentIntentId);
+    return { ok: true };
+  } catch (err) {
+    if (err && typeof err === "object" && "code" in err) {
+      const stripeErr = err as { code?: string; message?: string };
+      // payment_intent_unexpected_state → already canceled/succeeded.
+      // Treat as success: there's no live auth to release.
+      if (stripeErr.code === "payment_intent_unexpected_state") {
+        logger.warn(
+          { paymentIntentId, code: stripeErr.code },
+          "Cancel skipped — PaymentIntent already in a terminal state",
+        );
+        return { ok: true };
+      }
+      logger.error(
+        { paymentIntentId, code: stripeErr.code, message: stripeErr.message },
+        "Stripe paymentIntents.cancel failed",
+      );
+      return {
+        ok: false,
+        code: stripeErr.code ?? "stripe_error",
+        message: stripeErr.message ?? "Unknown Stripe error",
+      };
+    }
+    logger.error({ err, paymentIntentId }, "Non-Stripe error during cancel");
     return {
       ok: false,
       code: "internal",

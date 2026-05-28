@@ -14,15 +14,15 @@
 //     options. Real per-show tier picking lands in a later slice once
 //     the venue's tier list is part of the show view.
 //
-// Stripe wiring (slice 21):
+// Stripe wiring (slice 21 + 20):
 //   - When NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is set, the inner form
 //     is wrapped in <Elements> and a CardElement is rendered. On
 //     submit we createPaymentMethod client-side and send the
 //     PaymentMethod ID to POST /api/offers, which takes the real
-//     PaymentIntent path. First submission only — revisions still go
-//     through the dev-stub path (the real revision flow needs Customer
-//     attach, slice 20; the route returns 501 if you POST a
-//     payment-method on a revision).
+//     PaymentIntent path. Both first submission and revision are
+//     supported (slice 20 — revision cancels the prior auth and holds
+//     a new one for the revised amount; the fan re-enters their card
+//     on revision until saved-card reuse lands).
 //   - When the key is absent, no card field renders and submit posts
 //     without a payment-method ID — the route falls back to the dev
 //     stub (gated on ALLOW_DEV_OFFER_STUB).

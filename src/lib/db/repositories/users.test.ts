@@ -1,7 +1,12 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 
 import { users } from "../../../../drizzle/schema";
-import { ensureUserMirror, getEmailsByUserIds, userIsAdmin } from "./users";
+import {
+  ensureUserMirror,
+  getEmailsByUserIds,
+  setStripeCustomerId,
+  userIsAdmin,
+} from "./users";
 import { makeMockDb, makeQueuedMockDb } from "./_mock-db";
 
 type User = typeof users.$inferSelect;
@@ -50,6 +55,19 @@ describe("ensureUserMirror", () => {
 
   it("has the expected return type", () => {
     expectTypeOf(ensureUserMirror).returns.resolves.toEqualTypeOf<User>();
+  });
+});
+
+describe("setStripeCustomerId", () => {
+  it("issues an UPDATE and resolves void (mock-Db can't assert the SET, but the call shape holds)", async () => {
+    const db = makeMockDb<User>([]);
+    await expect(
+      setStripeCustomerId(db, "user_2abc", "cus_123"),
+    ).resolves.toBeUndefined();
+  });
+
+  it("has the expected return type", () => {
+    expectTypeOf(setStripeCustomerId).returns.resolves.toEqualTypeOf<void>();
   });
 });
 
