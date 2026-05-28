@@ -34,6 +34,9 @@ Then fill in real values from the dashboards below. **Do not commit** — `.env.
 | `RESEND_API_KEY` | [resend.com/api-keys](https://resend.com/api-keys), starts with `re_`. Without this, `sendEmail()` logs and no-ops. | No (dormant without) |
 | `RESEND_FROM_EMAIL` | `noreply@auckets.com` default. Won't actually send until the domain is verified in Resend. | Has default |
 | `NEXT_PUBLIC_SENTRY_DSN` | Sentry project → Settings → Client Keys (DSN). Without this, Sentry init is a no-op. | No (dormant without) |
+| `STRIPE_SECRET_KEY` | [dashboard.stripe.com](https://dashboard.stripe.com) → Developers → API keys. **Test mode** for local + Vercel preview — starts with `sk_test_`. Live keys (`sk_live_`) only on Vercel production. Without this, the Stripe client (`src/lib/stripe/client.ts`) stays dormant and `POST /api/offers` falls back to the dev stub. | No (dormant without) |
+| `STRIPE_WEBHOOK_SECRET` | Same dashboard → Developers → Webhooks → your endpoint → Signing secret. Starts with `whsec_`. Required when the webhook handler ships; harmless before. | No (until webhook ships) |
+| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Same dashboard page as the secret key. Starts with `pk_test_` / `pk_live_`. Client-safe by design — Stripe Elements uses it to tokenize cards into PaymentMethods. | No (until Elements wire) |
 
 ### 4. Run
 

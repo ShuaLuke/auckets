@@ -44,6 +44,7 @@ function makeOffer(overrides: Partial<Offer> = {}): Offer {
     privateThresholdCents: null,
     stripePaymentMethodId: "pm_test",
     stripeSetupIntentId: "seti_test",
+    stripePaymentIntentId: null,
     status: "pool",
     submittedAt: new Date("2026-05-26T12:00:00Z"),
     revisedAt: null,
@@ -201,6 +202,7 @@ describe("upsertOfferForUser", () => {
     privateThresholdCents: null,
     stripePaymentMethodId: "pm_dev_stub",
     stripeSetupIntentId: "seti_dev_stub",
+    stripePaymentIntentId: null,
   } as const;
 
   it("returns isRevision=false on a fresh insert (revised_at null)", async () => {
