@@ -4,6 +4,7 @@ import { artists } from "../../../../drizzle/schema";
 import {
   getArtistById,
   getArtistBySlug,
+  listArtistsManageableByUser,
   userCanManageArtist,
 } from "./artists";
 import { makeMockDb, makeQueuedMockDb } from "./_mock-db";
@@ -78,5 +79,47 @@ describe("userCanManageArtist", () => {
 
   it("has the expected return type", () => {
     expectTypeOf(userCanManageArtist).returns.resolves.toEqualTypeOf<boolean>();
+  });
+});
+
+describe("listArtistsManageableByUser", () => {
+  const userId = "user_2abcdefghijklmnop";
+  const OTHER = {
+    id: "99999999-9999-9999-9999-999999999999",
+    name: "Another Artist",
+  };
+
+  it("returns every artist when the user is AUCKETS_ADMIN", async () => {
+    // Queue: admin lookup hits, then the all-artists select resolves.
+    const db = makeQueuedMockDb<
+      { role: string } | { id: string; name: string }
+    >([
+      [{ role: "AUCKETS_ADMIN" }],
+      [
+        { id: COPE.id, name: COPE.name },
+        { id: OTHER.id, name: OTHER.name },
+      ],
+    ]);
+    expect(await listArtistsManageableByUser(db, userId)).toEqual([
+      { id: COPE.id, name: COPE.name },
+      { id: OTHER.id, name: OTHER.name },
+    ]);
+  });
+
+  it("returns only the user's member artists when not an admin", async () => {
+    // Admin lookup misses; the membership-joined select resolves.
+    const db = makeQueuedMockDb<
+      { role: string } | { id: string; name: string }
+    >([[], [{ id: COPE.id, name: COPE.name }]]);
+    expect(await listArtistsManageableByUser(db, userId)).toEqual([
+      { id: COPE.id, name: COPE.name },
+    ]);
+  });
+
+  it("returns an empty list when the user manages no artists", async () => {
+    const db = makeQueuedMockDb<
+      { role: string } | { id: string; name: string }
+    >([[], []]);
+    expect(await listArtistsManageableByUser(db, userId)).toEqual([]);
   });
 });
