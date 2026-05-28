@@ -410,6 +410,19 @@ export async function upsertOfferForUser(
           autoBidCapCents: params.autoBidCapCents ?? null,
           autoBidIncrementCents: params.autoBidIncrementCents ?? 500,
           privateThresholdCents: params.privateThresholdCents ?? null,
+          // Stripe auth refs MUST be updated on revision too. Omitting
+          // them here was a real bug: a fan who revised their offer
+          // (e.g. raised price/group) kept pointing at the ORIGINAL
+          // PaymentIntent, so binding tried to capture the new, larger
+          // amount against the old (smaller, and on the real path
+          // since-cancelled) authorization — Stripe rejected it and the
+          // offer landed in card_failure. Coalesce the two intent
+          // columns to null so the row reflects exactly the submitting
+          // path (real → payment_intent; stub → setup_intent) and still
+          // satisfies offers_stripe_intent_check (>= 1 of the two set).
+          stripePaymentMethodId: params.stripePaymentMethodId,
+          stripeSetupIntentId: params.stripeSetupIntentId ?? null,
+          stripePaymentIntentId: params.stripePaymentIntentId ?? null,
           revisedAt: sql`NOW()`,
         },
       })
@@ -435,6 +448,12 @@ export async function upsertOfferForUser(
         autoBidIncrementCents: row.autoBidIncrementCents,
         privateThresholdCents: row.privateThresholdCents,
         status: row.status,
+        // Record the Stripe auth refs in history too, so we can always
+        // see which PaymentIntent/SetupIntent backed each version of the
+        // offer — the detail we lacked when diagnosing the capture bug.
+        stripePaymentMethodId: row.stripePaymentMethodId,
+        stripeSetupIntentId: row.stripeSetupIntentId,
+        stripePaymentIntentId: row.stripePaymentIntentId,
       },
     });
 
