@@ -48,9 +48,9 @@ Last full revision: **2026-05-25**, based on Julia + Cope answers in
 **Status:** Folded into Q23 operationally.
 
 ### NEW-1 — Stripe hold strategy (length of offer window)
-**Affects:** [ADR-0003](DECISIONS.md#adr-0003--stripe-setupintent--charge-on-acceptance) — currently *Accepted, pending hold-window decision*.
-**Working assumption:** SetupIntent + charge on acceptance lets the offer window be any length without re-auth pain (Stripe pre-auths expire at 7 days).
-**Status:** Cope: "still outstanding need to do research on this." If we keep offer windows ≤6 days we can avoid the SetupIntent dance; if we want weeks-long windows, SetupIntent is the answer. Decide before the offer-submission flow ships (Week 4).
+**Affects:** [ADR-0003](DECISIONS.md#adr-0003--stripe-setupintent--charge-on-acceptance).
+**Working assumption (2026-05-27, Julia):** **Offer windows ≤6 days + auth-based hold** (`PaymentIntent` with `capture_method: "manual"`). Within Stripe's 7-day reliable-auth window for most card networks. Captured at binding allocation; auth released for unplaced offers. See the 2026-05-27 note in ADR-0003 for the full implementation path.
+**Status:** Not confirmed by Cope yet. Locked in as a working assumption to unblock downstream development (real `POST /api/offers`, binding, tickets, scanner, resale). Subsequent slices can build against this; if Cope eventually wants windows >6 days we revert to the SetupIntent path documented in the ADR body and revisit the slices built against the assumption.
 
 ---
 

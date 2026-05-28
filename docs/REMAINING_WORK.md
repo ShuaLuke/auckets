@@ -10,7 +10,7 @@ Updated 2026-05-27 after PR #50 (notifications scaffold) merged and the integrat
 
 **Roughly 25–30% of the prototype is shipped, all on the read side.** Everything that touches money, real ticket delivery, scanning, resales, or notifications is unbuilt.
 
-**Single biggest blocker:** ADR-0003 (Stripe SetupIntent hold-window). Cope is still researching. Until it settles, real money cannot flow — and the entire chain downstream of that (binding allocation → real tickets → scanner → card-failure recovery → resale) is blocked behind it.
+**ADR-0003 update (2026-05-27):** Locked in a working assumption — offer windows ≤6 days + auth-based hold — so the downstream Stripe chain (real `POST /api/offers` → binding allocation → tickets → card-failure recovery → resale) is now buildable. Items 8-15 below move from 🔴 → 🟡 (operationally buildable but pending Cope confirmation of the assumption). See the 2026-05-27 note in [DECISIONS.md ADR-0003](DECISIONS.md#adr-0003--stripe-setupintent--charge-on-acceptance).
 
 ---
 
@@ -72,7 +72,7 @@ Located at `src/components/ui/`. Most are ported; two notable gaps:
 
 | System | Status | Notes |
 |---|---|---|
-| **Stripe / payments** | ❌ Not built | No Stripe SDK import, no SetupIntent, no webhook handler, no payment-method storage. **Blocked on ADR-0003** (Cope's hold-window decision). Offer submission goes through a dev stub that fakes `stripe_payment_method_id` and `stripe_setup_intent_id`. |
+| **Stripe / payments** | ⚠️ Buildable against working assumption | No Stripe SDK import, no PaymentIntent, no webhook handler, no payment-method storage. **Path unblocked by 2026-05-27 ADR-0003 working assumption** (≤6-day offer windows + `PaymentIntent` with `capture_method: "manual"`). Offer submission still goes through the dev stub that fakes `stripe_payment_method_id` / `stripe_setup_intent_id`; the real path ships in its own slice. |
 | **Notifications — Resend (email)** | ⚠️ Client wired, dormant | 1 of 5 templates exists; nothing fires today. |
 | **Notifications — Slack** | ❌ Not built | No webhook integration. Internal ops alerts (card failures, allocation runs, artist requests) have no notification path. |
 | **Notifications — Twilio / SMS** | ❌ Not built | ADR-0016 moved SMS to MVP. No Twilio SDK, no 10DLC registration. **Long pole** — 1–2 week carrier turnaround. |
@@ -87,7 +87,7 @@ Located at `src/components/ui/`. Most are ported; two notable gaps:
 
 Comprehensive read-side coverage + the bid-submit dev stub. From the prototype:
 
-- ✅ The full **fan-side bid flow** end-to-end on Vercel preview deploys (real submit on Vercel production refuses until ADR-0003 settles)
+- ✅ The full **fan-side bid flow** end-to-end on Vercel preview deploys (real submit on Vercel production still refuses pending the real Stripe path; ADR-0003 working assumption now lets that path be built)
 - ✅ The full **artist-side ShowAdmin** experience minus the Fans tab — including BigStats, recent activity (with live GAE decisions interleaved), tier breakdown, distribution histogram, provisional placement seat map, holds & manifest (read-only)
 - ✅ The full **/my-bids fan history** with offer-revision history (every change to every offer captured by `offer_revisions` inside the upsert transaction)
 - ✅ **Admin-only "Preview allocation" button** that runs the real GAE end-to-end and refreshes the page with new placements
@@ -119,16 +119,16 @@ These can ship at any time, in any order. Each is a 1-PR slice.
 6. **ShowCreate** — form + `POST /api/shows` so Cope (or any artist) can create a show without engineering help.
 7. **VenueBuilder** — surface for editing venue architecture (rows, capacity, parity, lean, tier). Needed before any new venue (Austin, etc.).
 
-### 🔴 Blocked on ADR-0003 — Cope's Stripe hold-window research
+### 🟡 Buildable against the 2026-05-27 ADR-0003 working assumption
 
-These cannot move until ADR-0003 settles. They're listed in dependency order.
+Per the working assumption (≤6-day windows + `PaymentIntent` with `capture_method: "manual"`), these become buildable. **The assumption is not yet Cope-confirmed**, so anything built here would need a revisit if his research lands elsewhere. Listed in dependency order.
 
-8. **Real `POST /api/offers` with SetupIntent** — replaces the dev stub. Idempotency keys (table already exists), Stripe SetupIntent, payment-method storage.
-9. **Binding allocation job** — `mode=binding` path on `/api/shows/[id]/allocate`. Converts a preview into PaymentIntent captures + offer.status transitions + show.status transitions.
+8. **Real `POST /api/offers` with `PaymentIntent` (manual capture)** — replaces the dev stub. Idempotency keys (table already exists), card auth held for the offer window (≤6 days), payment-method storage.
+9. **Binding allocation job** — `mode=binding` path on `/api/shows/[id]/allocate`. Captures placed offers' PaymentIntents, cancels auths for unplaced offers, transitions offer + show statuses.
 10. **Inngest schedule** for binding allocation at the announced checkpoint (T-24h before doors).
 11. **TicketViewer** — rotating TOTP QR (60s rotation per ADR-0015) + geolocation gate. Fan-facing route at `/tickets/[id]` or similar.
 12. **Scanner** — door-staff app. Camera/QR scan UI, scan log, attendance recording. `VENUE_STAFF` role gating per ADR-0012.
-13. **CardFailure recovery** — 2% card-failure window. Notification, retry, hold-the-seat logic.
+13. **CardFailure recovery** — 2% card-failure window. Notification, retry, hold-the-seat logic. (Less common with auth-based holds since the auth has already validated the card, but cards can still get cancelled between auth and capture.)
 14. **Resale flow** — refund seller at original, route uplift to artist (ADR-0014). Miracle Tickets (gift mode) builds on this primitive.
 15. **AllocationFinal** — fan-facing "placed / not placed" result page after a binding run.
 

@@ -124,7 +124,7 @@ auckets/
 **Fan UI (`/dashboard`, `/shows/[id]`, `/my-bids`):**
 - Dashboard: open shows with countdowns, status badges, your-offer chips
 - Show detail: prototype-fidelity offer composer (stepper, price, tier radios, auto-bid toggle)
-- Offer submit via dev stub (`POST /api/offers`, ADR-0003 still pending for real Stripe path)
+- Offer submit via dev stub (`POST /api/offers`). Real Stripe path is now unblocked under the 2026-05-27 ADR-0003 working assumption (≤6-day offer windows + auth-based hold); pending Cope confirmation.
 - /my-bids: every bid the user ever placed, reverse-chrono, with an expandable revision history derived from the `offer_revisions` table
 
 **Artist UI (`/artists/[id]`, `/artists/[id]/shows/[id]`):**
@@ -155,7 +155,7 @@ auckets/
 
 Roughly **25–30% of the prototype is shipped, all on the read side and bid-submit dev-stub flow.** Everything that touches money, real ticket delivery, scanning, resales, or notifications is unbuilt. See [`REMAINING_WORK.md`](REMAINING_WORK.md) for the full cross-walk.
 
-The dominant blocker is **ADR-0003 (Stripe SetupIntent hold-window)** — pending Cope's research. Until it settles, real money cannot flow, and the entire downstream chain (binding allocation → real tickets → scanner → card-failure recovery → resale) is blocked behind it.
+**ADR-0003 update (2026-05-27):** Locked in ≤6-day offer windows + auth-based hold as a working assumption (Julia), pending Cope confirmation. This unblocks the entire downstream chain (real `POST /api/offers` → binding allocation → real tickets → card-failure recovery → resale) for development against a concrete model. See the 2026-05-27 note in `docs/DECISIONS.md` ADR-0003 for the implementation path.
 
 ## Next session
 
@@ -172,7 +172,7 @@ The dominant blocker is **ADR-0003 (Stripe SetupIntent hold-window)** — pendin
 6. **Twilio + SMS** — long pole because of 10DLC carrier registration (1–2 weeks); start the registration anytime
 7. **ShowCreate + VenueBuilder** — artist self-service for shows/venues. Today these are seeded by SQL
 
-**Blocked on Cope's Stripe research (ADR-0003):**
+**Now buildable against the 2026-05-27 ADR-0003 working assumption (≤6-day window + auth hold):**
 8. **Real `POST /api/offers`** with SetupIntent (replaces the dev stub)
 9. **Binding allocation job** — converts a preview into a real charge + ticket issuance
 10. **TicketViewer** (rotating geo-gated QR per ADR-0015)

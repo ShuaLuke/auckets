@@ -79,7 +79,7 @@ These are decisions from the May 25 v2 round of Cope/Julia answers. Read `docs/O
 - **Tickets are rotating QR (60s) + geo-gated.** No static printable tickets. ADR-0015.
 - **SMS is at MVP, not Phase 1.5.** Adds Twilio to the foundation. 10DLC registration is the long pole (1–2 weeks of carrier turnaround). ADR-0016.
 - **Auto-bid and private offers are first-class on the offer.** The offer schema carries `auto_bid_enabled`, `auto_bid_cap_cents`, `private_threshold_cents`. ADR-0017.
-- **ADR-0003 (Stripe SetupIntent) is "Accepted, pending hold-window decision."** Cope is still researching whether we want offer windows >6 days. Don't ship offer submission (Week 4) until this is settled.
+- **ADR-0003 (Stripe SetupIntent / hold window).** Working assumption as of 2026-05-27 (Julia): offer windows ≤6 days + auth-based hold (`PaymentIntent` with `capture_method: "manual"`). Subsequent slices can build against this. Not yet confirmed by Cope — if his research lands on "we want windows >6 days," we revert to the SetupIntent-only path documented in the ADR body and revisit any work built against the assumption. See the 2026-05-27 note in `docs/DECISIONS.md` ADR-0003 for the full implementation path.
 - **Bleacher (the design doc's "second channel") is NOT confirmed** by Cope. Don't bake `offers.channel` into the schema until he weighs in. NEW-8.
 
 ---

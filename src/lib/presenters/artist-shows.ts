@@ -12,11 +12,12 @@
 //     row in ArtistDashboard.jsx where the show is upcoming).
 //
 //   ArtistSnapshotStatsView — the top-of-page snapshot row. Cross-show
-//     aggregate over the artist's pre-binding shows. capacityFilled and
-//     provisionalPayout from the prototype's snapshot stay deferred —
-//     capacityFilled needs a cross-show seat sum + a cross-show capacity
-//     sum (a different aggregation shape than what slice 5b ships), and
-//     provisionalPayout additionally needs Stripe fee math.
+//     aggregate over the artist's pre-binding shows. provisionalPayout
+//     from the prototype's snapshot stays deferred — it needs Stripe
+//     Connect fee math, which is itself pending the post-ADR-0003
+//     Connect Express setup. capacityFilled is wired (2026-05-27 slice)
+//     using sum-of-provisional-fills / sum-of-capacities across the
+//     artist's pre-binding shows.
 //
 // Capacity math: sum of `capacity` over the rows in the architecture
 // whose id is in the show's activeRowIds. The architecture stores the
@@ -60,8 +61,22 @@ export type ArtistSnapshotStatsView = {
   offersInPool: number;
   ticketsInPool: number;
   medianOffer: string;
+  // Top offer is kept around as a fallback when the caller hasn't passed
+  // the per-show fill totals (capacity-filled needs cross-show data that
+  // not every page has handy). Where capacityFilled is present it takes
+  // the 4th slot and Top offer rolls into the sub-text; where it isn't,
+  // Top offer remains the 4th cell. See SnapshotStats.tsx for the
+  // mapping.
   topOffer: string;
+  // Brand-tone cell — sum of provisional fills / sum of capacities across
+  // the artist's pre-binding shows. "—" + "no shows yet" when there are
+  // no pre-binding shows OR no architecture loaded for any of them.
+  capacityFilled: string;
+  capacityFilledSub: string;
 };
+
+const NO_CAPACITY_DATA = "—";
+const NO_CAPACITY_SUB = "no shows yet";
 
 function formatStat(cents: number | null): string {
   return cents === null ? EMPTY_POOL_PLACEHOLDER : formatCents(cents);
@@ -201,13 +216,30 @@ export function presentTierBreakdown(
   return { buckets, totalOffers, totalTickets };
 }
 
+// totals defaults to zeros so callers that haven't computed cross-show
+// fill yet keep working — the capacityFilled cell just renders "—" /
+// "no shows yet" in that case rather than NaN%.
 export function presentArtistSnapshotStats(
   stats: OfferStats,
+  totals: { totalFilled: number; totalCapacity: number } = {
+    totalFilled: 0,
+    totalCapacity: 0,
+  },
 ): ArtistSnapshotStatsView {
+  const capacityFilled =
+    totals.totalCapacity > 0
+      ? `${Math.round((totals.totalFilled / totals.totalCapacity) * 100)}%`
+      : NO_CAPACITY_DATA;
+  const capacityFilledSub =
+    totals.totalCapacity > 0
+      ? `${totals.totalFilled} / ${totals.totalCapacity} provisionally placed`
+      : NO_CAPACITY_SUB;
   return {
     offersInPool: stats.count,
     ticketsInPool: stats.ticketsCount,
     medianOffer: formatStat(stats.medianCents),
     topOffer: formatStat(stats.topCents),
+    capacityFilled,
+    capacityFilledSub,
   };
 }

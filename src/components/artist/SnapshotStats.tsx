@@ -6,16 +6,18 @@
 //   prototype                | this UI
 //   ------------------------ | --------------------------
 //   Offers in pool           | Offers in pool
-//   Provisional payout       | Tickets in pool (replaces — payout deferred)
+//   Provisional payout       | Tickets in pool (subs — payout pending
+//                            | Stripe Connect Express fee confirmation)
 //   Median offer             | Median offer
-//   Capacity filled          | Top offer (replaces — capacity-filled deferred)
+//   Capacity filled          | Capacity filled (brand tone, restored
+//                            | 2026-05-27)
 //
-// "Provisional payout" + "Capacity filled" need cross-show seat-and-
-// capacity aggregation lib/presenters/artist-shows.ts deliberately
-// hasn't shipped yet (documented in that file's header comment).
-// "Tickets in pool" and "Top offer" are presenter-derivable from data
-// the API exposes today, so they're the least-wrong substitutes
-// until the deferred two land.
+// Provisional payout stays substituted with Tickets in pool until the
+// Stripe Connect Express fee model is locked in (separate from the
+// ADR-0003 working assumption — the assumption settled the auth path,
+// not the per-charge fee rate). When that lands, the cell swaps in
+// place; Tickets in pool either retires or moves into the per-show row
+// stats below.
 
 import { type ArtistSnapshotStatsView } from "@/lib/presenters";
 
@@ -88,9 +90,10 @@ export function SnapshotStats({ stats, showCount }: Props) {
         sub="across all open shows"
       />
       <Cell
-        label="Top offer"
-        value={stats.topOffer}
-        sub="single highest offer"
+        label="Capacity filled"
+        value={stats.capacityFilled}
+        sub={stats.capacityFilledSub}
+        tone="brand"
       />
     </div>
   );
