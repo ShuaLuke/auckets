@@ -16,6 +16,7 @@ import { auth } from "@clerk/nextjs/server";
 import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
 
+import { FiledRequestsPanel } from "@/components/artist/FiledRequestsPanel";
 import { ShowAdminHeader } from "@/components/artist/ShowAdminHeader";
 import { ShowAdminTabs } from "@/components/artist/ShowAdminTabs";
 import { db } from "@/lib/db";
@@ -25,16 +26,21 @@ import {
   getPriceDistributionForShow,
   getProvisionalFilledByShow,
   getShowById,
+  getVenueArchitectureById,
+  listArtistRequestsForShow,
   listHoldsForShow,
   listOfferRevisionsByOfferIds,
+  listPoolOffersForShow,
   listRecentAllocationLogsForShow,
   listRecentOffersForShow,
   listSeatAssignmentsForShow,
   userCanManageArtist,
   userIsAdmin,
 } from "@/lib/db/repositories";
+import { buildPreviewAllocationPlan } from "@/lib/allocation/build-plan";
 import {
   DEFAULT_TZ,
+  presentArtistRequestStatus,
   presentArtistShowSummary,
   presentHolds,
   presentPriceDistribution,
@@ -42,6 +48,7 @@ import {
   presentRecentActivity,
   presentTierBreakdown,
   type ActivityEvent,
+  type ArtistRequestStatusView,
   type ArtistShowSummaryView,
   type HoldsView,
   type PriceDistributionView,
@@ -57,6 +64,14 @@ const ParamsSchema = z.object({
   showId: uuidParam,
 });
 
+// Pre-binding statuses where a live preview projection is meaningful.
+// Mirrors PREVIEW_ELIGIBLE_STATUSES in run-preview.ts. For these we
+// compute placement in-memory on load (NEW-10: ops-only preview, but
+// auto-run as a read-time projection so the artist never sees a
+// stale/empty map) WITHOUT persisting — only the explicit ops
+// "Run preview"/"Run binding" actions write seat_assignments/logs.
+const PREVIEW_ELIGIBLE_STATUSES = new Set(["draft", "open", "paused"]);
+
 import type { AddHoldRow } from "@/components/artist/AddHoldButton";
 import type { VenueRow as GaeVenueRow } from "@/lib/gae/types";
 
@@ -71,6 +86,11 @@ type LoadedView = {
   // rows in activeRowIds (NEW-4 partial-venue activation) so the
   // dialog can't accidentally hold seats in inactive rows.
   activeHoldRows: AddHoldRow[];
+  requests: ArtistRequestStatusView[];
+  // True when the placement view + fill stat are a live in-memory
+  // projection (no saved run), false when they reflect persisted
+  // seat_assignments (a real ops preview/binding run).
+  placementIsLiveProjection: boolean;
 };
 
 async function loadShowAdmin(
@@ -95,6 +115,7 @@ async function loadShowAdmin(
     recentLogs,
     distributionBuckets,
     holdRows,
+    requestRows,
   ] = await Promise.all([
     getOfferStatsForShow(db, showId),
     getProvisionalFilledByShow(db, showId),
@@ -104,6 +125,7 @@ async function loadShowAdmin(
     listRecentAllocationLogsForShow(db, showId, 50),
     getPriceDistributionForShow(db, showId),
     listHoldsForShow(db, showId),
+    listArtistRequestsForShow(db, showId),
   ]);
 
   // Second-step: fetch revision history only for offers that have been
@@ -118,6 +140,35 @@ async function loadShowAdmin(
     db,
     revisedOfferIds,
   );
+
+  // Live preview projection (NEW-10). For pre-binding shows, compute
+  // placement in-memory via the pure GAE so the artist's view is never
+  // stale or empty — without writing anything (only explicit ops runs
+  // persist). When the show is past the binding gate, fall through to
+  // the persisted assignments, which are the system of record.
+  let placementAssignments: readonly Pick<
+    (typeof assignments)[number],
+    "venueRowId" | "seatNumbers"
+  >[] = assignments;
+  let filledForSummary = provisionalFilled;
+  let placementIsLiveProjection = false;
+  if (PREVIEW_ELIGIBLE_STATUSES.has(showRow.status)) {
+    const [architecture, poolOffers] = await Promise.all([
+      getVenueArchitectureById(db, showRow.venueArchitectureId),
+      listPoolOffersForShow(db, showId),
+    ]);
+    if (architecture) {
+      const plan = buildPreviewAllocationPlan(showRow, architecture, poolOffers);
+      placementAssignments = plan.assignmentRows;
+      // Keep BigStats' fill consistent with the projected placement
+      // map — both derive from the same in-memory run.
+      filledForSummary = plan.assignmentRows.reduce(
+        (n, r) => n + r.seatNumbers.length,
+        0,
+      );
+      placementIsLiveProjection = true;
+    }
+  }
 
   // Project ShowWithRelations onto the ShowSummary shape that the
   // ArtistShowSummary presenter expects. activeRowIds is stored as
@@ -142,7 +193,7 @@ async function loadShowAdmin(
   const view = presentArtistShowSummary(
     summary,
     stats,
-    provisionalFilled,
+    filledForSummary,
     showRow.venueArchitecture,
     summary.activeRowIds,
     now,
@@ -179,11 +230,13 @@ async function loadShowAdmin(
     placement: presentProvisionalPlacement(
       showRow.venueArchitecture,
       summary.activeRowIds,
-      assignments,
+      placementAssignments,
     ),
     distribution: presentPriceDistribution(distributionBuckets),
     holds: presentHolds(holdRows, showRow.venueArchitecture, viewerIsAdmin),
     activeHoldRows,
+    requests: requestRows.map((r) => presentArtistRequestStatus(r, now, DEFAULT_TZ)),
+    placementIsLiveProjection,
   };
 }
 
@@ -232,6 +285,8 @@ export default async function ArtistShowAdminPage({ params }: Props) {
           canRunBinding={isAdmin}
         />
 
+        <FiledRequestsPanel requests={data.requests} />
+
         <ShowAdminTabs
           showId={parsed.data.showId}
           show={data.show}
@@ -239,6 +294,7 @@ export default async function ArtistShowAdminPage({ params }: Props) {
           tiers={data.tiers}
           distribution={data.distribution}
           placement={data.placement}
+          placementIsLiveProjection={data.placementIsLiveProjection}
           holds={data.holds}
           activeHoldRows={data.activeHoldRows}
         />

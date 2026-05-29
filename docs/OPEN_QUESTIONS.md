@@ -16,12 +16,14 @@ referenced inline below.
 | Status              | Count |
 |---|---|
 | Open blocker        | 4     |
-| Open high-priority  | 4     |
+| Open high-priority  | 9     |
 | Phase 2 (deferred)  | 7     |
 | Resolved in v2      | 24    |
 
 Last full revision: **2026-05-25**, based on Julia + Cope answers in
-`AUCKETS_Open_Questions_v2.docx`.
+`AUCKETS_Open_Questions_v2.docx`. NEW-9–NEW-13 added **2026-05-28** from the
+persona audit ([PERSONAS.md](PERSONAS.md)) + Julia's group cost-split and
+functional-auto-bid/alerts requests. NEW-10 decided (ops-only + auto-run).
 
 ---
 
@@ -72,6 +74,41 @@ Last full revision: **2026-05-25**, based on Julia + Cope answers in
 **Affects:** Schema (`offers.channel`), pricing, artist dashboard.
 **Working assumption:** None yet. The design doc proposes ~6% of capacity at a fixed price.
 **Status:** Defer until Cope weighs in. If yes, schema needs `channel`; if no, drop the concept and simplify.
+
+### NEW-9 — Can a fan withdraw an offer?
+**Source:** 2026-05-28 persona audit ([PERSONAS.md](PERSONAS.md) fan #5).
+**Affects:** OfferComposer, `POST /api/offers` (or a new DELETE), offer status model, Stripe auth release.
+**Working assumption:** None. Today the composer only submits/revises and the rule is "revise upward, never downward" — there is no exit. This may be an intentional commitment device.
+**Status (2026-05-28, Julia):** **Defer the real decision to Cope.** Interim: keep no-withdrawal, but make the behavior explicit to the fan in the composer copy so it isn't a silent dead-end. If Cope later allows withdrawal it must release the held PaymentIntent auth and define the cutoff (presumably the binding checkpoint).
+
+### NEW-10 — Preview allocation: ops-only or artist self-serve?
+**Source:** 2026-05-28 persona audit ([PERSONAS.md](PERSONAS.md) artist #2).
+**Affects:** ShowAdmin (`canRunPreview`), artist vs admin authorization.
+**Working assumption (as built):** Ops-only — ShowAdmin passes `canRunPreview={isAdmin}`, so an artist viewing their own show can't run a preview and sees only what an admin last ran (or an empty placement map).
+**Status (2026-05-28, Julia): DECIDED — ops-only + auto-run.** Preview stays an ops/admin action (no artist button), but the show view should auto-run a preview so artists never see a stale/empty placement map. **Implementation note:** auto-running must NOT persist on every page load — today's manual preview writes `seat_assignments` + `allocation_logs`. Auto-run should compute placement in-memory for display (the GAE is pure) and only the explicit ops "Run preview"/"Run binding" actions persist. Treat the persisting run as the system of record; the auto-run is a read-time projection.
+
+### NEW-11 — Per-show tier naming vs. hardcoded "Premium"
+**Source:** 2026-05-28 persona audit ([PERSONAS.md](PERSONAS.md) fan #3).
+**Affects:** OfferComposer tier radios, show detail view, venue tier model.
+**Working assumption (as built):** Tier labels are hardcoded ("Premium only / Premium or below") and the payload always sends `preferredTier = "premium"`. Correct for the single seeded alpha show; misleading for any venue not built around a tier literally named "premium."
+**Status:** Needs the venue's tier list surfaced in the show view so the composer renders real tier names. Tied to VenueBuilder / venue-architecture work. Until then, fine for the current alpha venue only.
+
+### NEW-12 — Group cost-split (one buyer, joiners split the cost)
+**Source:** Julia, 2026-05-28.
+**Affects:** Offer/payment model, Stripe (single PaymentIntent + split tracking vs. per-joiner auths), invites/joins, rank semantics.
+**⚠️ Distinct from NEW-6.** NEW-6 ("group splits never acceptable for MVP, no `accept_split`") ruled out **seat splitting** — the GAE never seating a group across non-adjacent seats. NEW-12 is **cost splitting** — one fan submits/holds the offer for the group, then invites others to join the outing and pay their share. Different concept; needs its own confirmation. **Cope should confirm cost-split doesn't run against the spirit of NEW-6 before any build.**
+**Working assumption:** None. Open design questions: single PaymentIntent on the buyer with app-tracked splits, or per-joiner auths? If a joiner's share fails, does the buyer cover it? Does splitting affect rank (the offer is still one group at one price)? How do invites/joins work pre- vs. post-binding? Needs its own ADR once the model is chosen.
+**Status:** New. Capture now; do not scope slices until the model + Cope's confirmation land.
+
+### NEW-13 — Functional auto-bid + fan displacement alerts (incl. custom alerts)
+**Source:** Julia, 2026-05-28 (persona audit follow-up — wants auto-bid built for real, not hidden, plus fan alerts on displacement).
+**Affects:** ADR-0017 (auto-bid), the preview/binding compute path, notifications (Resend/Twilio/in-app), DisplacementToast, OfferComposer.
+**The shared core — "displacement detection":** when the offer pool changes, recompute provisional placement, diff it per-fan (rank drop / section change / fell out of the event entirely), then (a) auto-raise auto-bidders toward their cap, and (b) fire alerts. Today auto-bid is collected but inert — the allocation layer strips `autoBidEnabled`/`autoBidCapCents` (`translate.test.ts:140-141`).
+**Design captured in [ADR-0018](DECISIONS.md#adr-0018--displacement-engine-auto-bid-resolution--fan-alerts):**
+- **Resolution cadence — DECIDED (compute-time fixed-point):** auto-bid resolves as a pure pre-pass at each preview/binding run — iterate placement, raise displaced auto-bidders ≤cap, re-run until stable. Monotonic + cap-bounded → terminates. Avoids real-time cascade infra; fits the pure-GAE architecture.
+- **Raise rule — DECIDED (Julia, 2026-05-28): $5 above the minimum to hold the preferred section.** When displaced from their preferred section, raise to $5 over the minimum price that keeps them in it, bounded by cap. Reconciles Cope (percentage) and Julia (whole number) as a need-based whole-number raise. **⚠️ Diverges from Cope's percentage preference — Cope to confirm before it ships.** Composer copy updated to the section-defense framing.
+- **Alert delivery:** in-app (DisplacementToast) ships without external services; email needs Resend verified; SMS needs Twilio (unbuilt). Custom alerts = fan-set thresholds ("tell me if I drop below section X" / "if I'm outbid entirely").
+**Status:** Design decided (ADR-0018, working). **Raise rule pending Cope's confirmation** since it diverges from his percentage preference. Build is a multi-slice effort; relates to Q38 (status emails) and the "real-time projected allocation" concept below.
 
 ---
 

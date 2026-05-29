@@ -78,6 +78,8 @@ export {
 export {
   presentArtistRequestInboxRow,
   type ArtistRequestInboxView,
+  presentArtistRequestStatus,
+  type ArtistRequestStatusView,
 } from "./artist-requests";
 
 export { presentRankBoard, type RankBoardView } from "./rank-board";

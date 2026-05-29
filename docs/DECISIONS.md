@@ -369,7 +369,7 @@ This is the same primitive the design system's `TECHNICAL_INTEGRATION.md` § 2.1
 
 **Decision:** Two related features ride on top of the basic offer:
 
-1. **Auto-bid.** A fan can submit an offer with `auto_bid_enabled: true` and `auto_bid_cap_cents: N`. When their offer is displaced by a higher offer at preview time, the system automatically increments their price (default $5) up to `N` to reclaim a placement. The fan is notified at each auto-raise.
+1. **Auto-bid.** A fan can submit an offer with `auto_bid_enabled: true` and `auto_bid_cap_cents: N`. When their offer is displaced by a higher offer at preview time, the system automatically raises their price up to `N` to defend their placement. The fan is notified at each auto-raise. *(Resolution rule + cadence refined by [ADR-0018](#adr-0018--displacement-engine-auto-bid-resolution--fan-alerts): raise to $5 above the minimum to hold the preferred section, resolved as a compute-time fixed-point pre-pass.)*
 
 2. **Private offers (hidden price).** A fan can submit an offer with a `private_threshold_cents` field. The displayed offer price is whatever the fan publicly committed (or a floor). If any other offer in the pool exceeds the threshold, the private offer auto-converts to that price and is placed. The threshold is not visible to other fans.
 
@@ -389,6 +389,43 @@ Auto-bid is the standard "eBay sniping prevention" mechanic, ported to a fairnes
 - Private offers participate in the visible aggregate stats at their *visible* price, not their threshold. The threshold is server-only state.
 - Auto-bid trigger emits an event for the notification dispatcher (the fan gets an email/SMS at each raise).
 - Auto-bid cap is hard — once hit, no further auto-raises, fan is treated as a normal outbid offer.
+
+---
+
+## ADR-0018 — Displacement engine: auto-bid resolution + fan alerts
+
+**Status:** Accepted — build greenlit by Julia 2026-05-28. The **raise rule** is Julia's call and **diverges from Cope's stated preference for percentage-based raises**; Julia chose to proceed rather than block on it. Cope should still confirm — the raise rule is isolated in one pure module, so swapping to a percentage later is a contained change.
+**Date:** 2026-05-28
+**Refines:** [ADR-0017](#adr-0017--auto-bid--private-offers) (gives auto-bid a concrete resolution rule). Builds on [ADR-0004](#adr-0004--hybrid-allocation-continuous-preview--binding-checkpoints) (preview/binding cadence) and relates to Q38 (status emails).
+
+**Context:** Auto-bid is collected on the offer (`auto_bid_enabled`, `auto_bid_cap_cents`) but is currently inert — the allocation layer strips those fields (`translate.test.ts` asserts the ranked offer carries neither). Separately, fans get no signal when their projected placement changes. Both need the same missing core.
+
+**Decision:**
+
+1. **Displacement detection (the shared core).** At each allocation compute (preview or binding), after placement, diff each fan's outcome against their prior projection: rank drop, **section change**, or fell out of the event entirely. This diff drives both auto-bid and alerts.
+
+2. **Resolution cadence — compute-time fixed-point, not real-time.** Auto-bid resolves as a **pure pre-pass at each preview/binding run**, not synchronously on every individual offer submit. Algorithm: run placement → find auto-bidders displaced from their preferred section with cap headroom → raise each per the rule below → re-run → repeat until stable. Raises are monotonic-increasing and cap-bounded, so the iteration **terminates** (each round either lifts someone toward their cap or reaches a fixed point). This keeps the logic pure (fits the GAE isolation directive) and sidesteps real-time cascade infrastructure.
+
+3. **Raise rule — $5 above the minimum to hold the preferred section.** When an auto-bidder is displaced from their preferred section, raise their effective price to **$5 more than the minimum price that would keep them in that section** (i.e. just clear the section's marginal offer, plus a $5 buffer), bounded by `auto_bid_cap_cents`. If $5-above-minimum exceeds the cap, raise to the cap; if even the cap can't hold the section, no further raise — the fan is treated as a normal displaced offer and waterfalls/falls out per the GAE.
+
+4. **Alerts.** Fire on the per-fan transitions from (1): moved sections, or outbid out of the event. Delivery, in dependency order:
+   - **In-app first** (the deferred `DisplacementToast`) — ships without any external service.
+   - **Email** once `auckets.com` is verified in Resend.
+   - **SMS** once Twilio/10DLC is live (ADR-0016).
+   - **Custom alerts** (fan-set thresholds, e.g. "tell me if I drop below section X" / "if I'm outbid entirely") layer on after the default alerts work.
+
+**Reasoning:** Julia's rule reconciles the two instincts on the table — Cope wanted percentage-based raises, Julia wanted a clean whole-number outcome. "$5 over the minimum to hold your section" is a whole-number, **need-based** raise: it spends only what's required to defend the fan's preferred section plus a small buffer, rather than a blind step or a percentage that over- or under-shoots. It's also self-explanatory in fan-facing copy.
+
+**Alternatives:**
+- **Flat +$5 per drop** (ADR-0017's original default). Simple but blind — can underspend (still displaced after the raise) or overspend (raises past what was needed).
+- **Percentage of current price** (Cope's idea). Scales with price but produces odd amounts and can badly over/undershoot the actual section threshold; rejected in favor of need-based.
+- **Real-time resolution on every submit.** Lower latency to "you've been outbid," but introduces cascade/settling complexity and couples auto-bid to the write path. Deferred — compute-time is sufficient given the preview cadence.
+
+**Consequences:**
+- Auto-bid resolution becomes a pure module (input: pool + caps + venue → settled effective prices + a raise log), called as a pre-pass by both `run-preview` and `run-binding`. The GAE stays untouched and pure.
+- Each auto-raise and each displacement transition emits an event for the notification dispatcher (Q38), and is logged (auto-raises are real price changes — they belong in `offer_revisions` / the allocation log for audit).
+- The composer's auto-bid copy changes from "+$5 each time your seat drops" to the section-defense framing.
+- Binding captures the **resolved** (possibly raised) price, not the originally-submitted one — the fan authorized up to their cap, so capturing a raised amount within the cap is within the auth. (Confirm this against the held PaymentIntent amount — a raise beyond the original auth amount may need a re-auth; flag for the Stripe slice.)
 
 ---
 
