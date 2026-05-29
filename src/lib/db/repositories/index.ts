@@ -34,6 +34,13 @@ export {
 } from "./allocation-logs";
 
 export {
+  acknowledgeDisplacementEvent,
+  getLatestRaiseTargetsByOfferForShow,
+  listUnacknowledgedDisplacementEventsForUser,
+  type DisplacementEvent,
+} from "./displacement-events";
+
+export {
   HOLD_KINDS,
   createHold,
   deleteHoldById,

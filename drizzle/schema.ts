@@ -639,3 +639,65 @@ export const offerIdempotencyKeys = pgTable(
     index("offer_idempotency_keys_expires_idx").on(table.expiresAt),
   ],
 );
+
+// ---------------------------------------------------------------------------
+// 19. displacement_events — append-only per-fan alerts emitted by the
+// displacement engine (ADR-0018 §4). Each persisted allocation compute
+// (run-preview / run-binding) diffs each offer's outcome against the prior
+// projection and records the transitions worth telling a fan about:
+//
+//   - 'auto_bid_raise' — an auto-bidder's effective price was raised to hold
+//     its preferred section. detail: { fromCents, toCents, steps, tier }.
+//   - 'section_change' — a placed offer moved to a different tier.
+//     detail: { fromTier, toTier, direction: 'better' | 'worse' }.
+//   - 'outbid_out'    — a previously-placed offer fell out of the event
+//     entirely. detail: { fromTier }.
+//
+// Drives the in-app DisplacementToast first (ADR-0018 §4 delivery order);
+// email/SMS dispatch reads the same rows later. Append-only: a row is the
+// historical fact that a transition happened, never mutated except to stamp
+// acknowledged_at when the fan dismisses the in-app alert.
+// ---------------------------------------------------------------------------
+export const displacementEvents = pgTable(
+  "displacement_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    showId: uuid("show_id")
+      .notNull()
+      // RESTRICT: alerts are part of the show's audit trail.
+      .references(() => shows.id, { onDelete: "restrict" }),
+    offerId: uuid("offer_id")
+      .notNull()
+      // RESTRICT: keep the pointer to the offer the alert is about stable.
+      .references(() => offers.id, { onDelete: "restrict" }),
+    // Denormalized so the fan's "my alerts" query never has to join offers.
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    // 'auto_bid_raise' | 'section_change' | 'outbid_out'.
+    kind: text("kind").notNull(),
+    // Event-specific payload (see file comment). jsonb so the shape can grow
+    // without a migration.
+    detail: jsonb("detail").notNull().default(sql`'{}'::jsonb`),
+    // NULL until the fan dismisses the in-app alert. Drives the
+    // "unacknowledged alerts" query that the toast renders from.
+    acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    // The fan's inbox: their unacknowledged alerts, newest first.
+    index("displacement_events_user_ack_idx").on(
+      table.userId,
+      table.acknowledgedAt,
+      table.createdAt.desc(),
+    ),
+    // Per-offer history + the dedup lookup (latest auto_bid_raise for an
+    // offer) the preview runner does before emitting a fresh raise.
+    index("displacement_events_offer_created_idx").on(
+      table.offerId,
+      table.createdAt.desc(),
+    ),
+  ],
+);
