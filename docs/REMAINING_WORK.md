@@ -32,7 +32,7 @@ The gap to **beta** is the back half of the fan journey plus payment hardening, 
 | **Show.jsx** (fan show detail) | ✅ Real Stripe submit + RankBoard + PreviewBanner/VenuePreview (#55, #56, #59–#61) | `src/app/(fan)/shows/[showId]/page.tsx` | small (DisplacementToast needs polling/push — follow-up) |
 | **TicketViewer.jsx** | ❌ Not built — 🔴 **hard blocker** | — | large (ADR-0015: rotating TOTP QR + geo gate) |
 | **ResaleFlow.jsx** | ❌ Not built (post-beta) | — | large (ADR-0014 anti-scalping mechanics) |
-| **CardFailure.jsx** | ⚠️ Backend shipped; UI pending | recovery backend at `/api/offers/[id]/recover` + `card-failure-expiry` cron | small (the modal — re-collect card via Elements → POST recover; backend + 4h window done) |
+| **CardFailure.jsx** | ✅ Built | `src/components/show/CardFailureRecovery.tsx` on the fan Show page | done (banner + Elements modal → POST recover; backend + 4h window in place). Remaining: the "your card failed" fan/ops notification. |
 | **ArtistDashboard.jsx** | ✅ Close to fidelity | `src/app/(artist)/artists/[artistId]/page.tsx` | small (omitted "New show" button — depends on ShowCreate) |
 | **ShowAdmin.jsx** | ✅ Tabbed shell + Run-binding button (#54, #65) | `src/app/(artist)/artists/[artistId]/shows/[showId]/page.tsx` | small–medium (Fans · data export tab pending) |
 | **ShowCreate.jsx** | ❌ UI not built — 🟡 **soft gap** (`POST /api/shows` exists) | — | medium (form on top of existing route) |
@@ -121,7 +121,7 @@ Beta = real fans, real money, real attendance. The money path is done; the chain
 ### 🟠 Strong blockers — money correctness/trust before real-money beta
 
 3. ~~**Stripe webhook handler**~~ — ✅ **shipped.** Signed (`STRIPE_WEBHOOK_SECRET`) + idempotent (`stripe_webhook_events` receipts) handler at `/api/stripe/webhook`, acting on `payment_intent.payment_failed` / `succeeded` / `canceled`. Satisfies prime-directive #6.
-4. **CardFailure recovery** — ⚠️ **backend shipped** (`recoverCardFailure` + `/api/offers/[id]/recover` + `card-failure-expiry` cron, 4h window). **Remaining:** the fan-facing recovery modal (re-collect card → POST recover) and the fan/ops "your card failed" notification.
+4. **CardFailure recovery** — ✅ **shipped** (backend `recoverCardFailure` + `/api/offers/[id]/recover` + `card-failure-expiry` cron, 4h window; fan-facing `CardFailureRecovery` banner + Stripe Elements modal on the Show page). **Remaining:** the fan/ops "your card failed" notification (email/SMS) so a fan who isn't on the page learns to act within the window.
 5. ~~**Scheduled binding**~~ — ✅ **shipped.** Inngest cron (`scheduled-binding`, every 5 min) sweeps shows past their `binding_allocation_at` and runs binding (`sweepDueBindings`); the manual admin button remains. Paused shows excluded (ADR-0013).
 
 ### 🟡 Soft gaps — beta-tolerable with a manual workaround

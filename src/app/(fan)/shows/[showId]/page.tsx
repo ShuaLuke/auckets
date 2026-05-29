@@ -11,6 +11,7 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
 
+import { CardFailureRecovery } from "@/components/show/CardFailureRecovery";
 import { DisplacementAlerts } from "@/components/show/DisplacementAlerts";
 import { OfferComposer } from "@/components/show/OfferComposer";
 import { PreviewBanner } from "@/components/show/PreviewBanner";
@@ -18,6 +19,7 @@ import { RankBoard } from "@/components/show/RankBoard";
 import { ShowHeader } from "@/components/show/ShowHeader";
 import { VenuePreview } from "@/components/show/VenuePreview";
 import { db } from "@/lib/db";
+import { env } from "@/lib/env";
 import {
   getOfferByShowAndUser,
   getOfferStatsForShow,
@@ -32,11 +34,13 @@ import {
 import {
   DEFAULT_TZ,
   computeShowCapacity,
+  presentCardFailureRecovery,
   presentDisplacementEvents,
   presentFanVenuePreview,
   presentPreviewBanner,
   presentRankBoard,
   presentShowDetail,
+  type CardFailureRecoveryView,
   type DisplacementAlertView,
   type PreviewBannerView,
   type RankBoardView,
@@ -58,6 +62,7 @@ type LoadedShowDetail = {
   venuePreview: VenuePreviewView;
   venueName: string;
   displacementAlerts: DisplacementAlertView[];
+  cardFailureRecovery: CardFailureRecoveryView | null;
 };
 
 async function loadShowDetail(
@@ -139,6 +144,15 @@ async function loadShowDetail(
     unackedEvents.filter((e) => e.showId === showId),
   );
 
+  // Card-failure recovery CTA (ADR-0003 §5): non-null only when this fan's
+  // own offer failed and is still inside the 4h window.
+  const cardFailureRecovery = presentCardFailureRecovery(
+    userOffer,
+    userAssignment,
+    now,
+    env.CARD_FAILURE_RECOVERY_WINDOW_MINUTES,
+  );
+
   return {
     show: view,
     rankBoard,
@@ -146,6 +160,7 @@ async function loadShowDetail(
     venuePreview,
     venueName: show.venue.name,
     displacementAlerts,
+    cardFailureRecovery,
   };
 }
 
@@ -179,6 +194,10 @@ export default async function ShowPage({ params }: Props) {
         style={{ maxWidth: 1100 }}
       >
         <ShowHeader show={data.show} />
+
+        {data.cardFailureRecovery && (
+          <CardFailureRecovery view={data.cardFailureRecovery} />
+        )}
 
         <div
           className="grid items-start gap-6"

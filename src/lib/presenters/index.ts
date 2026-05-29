@@ -91,6 +91,11 @@ export {
 } from "./displacement";
 
 export {
+  presentCardFailureRecovery,
+  type CardFailureRecoveryView,
+} from "./card-failure";
+
+export {
   presentPreviewBanner,
   type PreviewBannerView,
 } from "./preview-banner";
