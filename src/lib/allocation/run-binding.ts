@@ -9,9 +9,10 @@
 //   Phase 1 — decide & persist, with ZERO Stripe calls, in one DB
 //   transaction. The GAE result is materialized into seat_assignments
 //   (is_binding=true) and offer.status transitions (pool → placed /
-//   unplaced), the show is flipped to 'allocating', and the binding
-//   allocation_logs are appended. Once this commits, the placement
-//   decision is durable.
+//   unplaced), the show is flipped to 'allocating', the binding
+//   allocation_logs are appended, and the per-fan displacement_events for
+//   this compute (diffed against the last preview projection, ADR-0018 §4)
+//   are written. Once this commits, the placement decision is durable.
 //
 //   Phase 2 — move money, OUTSIDE the transaction, per offer. Stripe is
 //   network I/O that can take seconds and partially fail; you can't hold
@@ -34,9 +35,11 @@ import { and, eq, inArray } from "drizzle-orm";
 
 import type { Db } from "@/lib/db";
 import {
+  getLatestRaiseTargetsByOfferForShow,
   getShowById,
   getVenueArchitectureById,
   listPoolOffersForShow,
+  listSeatAssignmentsForShow,
 } from "@/lib/db/repositories";
 import {
   cancelOfferPaymentIntent,
@@ -45,6 +48,7 @@ import {
 import { logger } from "@/lib/logger";
 import {
   allocationLogs,
+  displacementEvents,
   offerRevisions,
   offers,
   seatAssignments,
@@ -52,6 +56,7 @@ import {
 } from "../../../drizzle/schema";
 
 import { buildBindingAllocationPlan, type AllocationPlan } from "./build-plan";
+import { detectDisplacementEvents, type Placement } from "./displacement";
 
 export type RunBindingResult = {
   showId: string;
@@ -70,6 +75,9 @@ export type RunBindingResult = {
   // raise was persisted onto the offer + an offer_revisions row, and the
   // raised amount was the one captured.
   autoRaised: number;
+  // Per-fan displacement alerts emitted by diffing the final binding placement
+  // against the fan's last preview projection (ADR-0018 §4).
+  displacementEventsWritten: number;
 };
 
 export type RunBindingError =
@@ -137,6 +145,36 @@ export async function runBindingAllocation(
   // nothing, and its submitted price stands. Recording a raise there would
   // claim a price change the fan was never charged for.
   const placedRaises = plan.autoBidRaises.filter((r) => placedSet.has(r.offerId));
+
+  // ---- Displacement alerts (ADR-0018 §4) ----
+  // Diff the FINAL binding placement against the fan's last PREVIEW projection
+  // (the baseline they last saw) so the binding compute alerts on any
+  // last-moment displacement. Read the baseline now — Phase 1 deletes the
+  // preview rows. auto_bid_raise events already emitted at preview dedupe
+  // against the persisted raise target, so the same raise isn't re-alerted.
+  const priorAssignments = await listSeatAssignmentsForShow(db, showId);
+  const prevByOffer = new Map<string, Placement>();
+  for (const a of priorAssignments) {
+    if (a.isBinding) continue; // baseline is the preview projection only
+    prevByOffer.set(a.offerId, { tier: a.tier, venueRowId: a.venueRowId });
+  }
+  const newByOffer = new Map<string, Placement>();
+  for (const r of plan.assignmentRows) {
+    newByOffer.set(r.offerId, { tier: r.tier, venueRowId: r.venueRowId });
+  }
+  const lastRaiseToByOffer = await getLatestRaiseTargetsByOfferForShow(
+    db,
+    showId,
+  );
+  const floors = (show.tierFloorsCents ?? {}) as Record<string, number>;
+  const displacementEventRows = detectDisplacementEvents({
+    prevByOffer,
+    newByOffer,
+    autoBidRaises: plan.autoBidRaises,
+    offers: plan.resolvedOffers,
+    lastRaiseToByOffer,
+    tierRank: (tier) => (tier ? floors[tier] ?? 0 : 0),
+  });
 
   // ---- Phase 1: decide & persist atomically (no Stripe calls) ----
   await db.transaction(async (tx) => {
@@ -224,6 +262,20 @@ export async function runBindingAllocation(
           autoBidRaise: { fromCents: raise.fromCents, toCents: raise.toCents, steps: raise.steps },
         },
       });
+    }
+
+    // Append the fan-facing displacement alerts for this binding compute,
+    // in the same transaction as the placement that produced them.
+    if (displacementEventRows.length > 0) {
+      await tx.insert(displacementEvents).values(
+        displacementEventRows.map((e) => ({
+          showId,
+          offerId: e.offerId,
+          userId: e.userId,
+          kind: e.kind,
+          detail: e.detail,
+        })),
+      );
     }
   });
 
@@ -328,6 +380,7 @@ export async function runBindingAllocation(
       cardFailures,
       cancelled,
       autoRaised: placedRaises.length,
+      displacementEventsWritten: displacementEventRows.length,
     },
   };
 }

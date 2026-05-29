@@ -1,22 +1,36 @@
 // Integration coverage for the displacement-alert side of runPreviewAllocation
-// (ADR-0018 §4) against a real Postgres. Preview touches no Stripe, so this
-// drives the orchestrator directly and asserts on the displacement_events
-// rows it writes by diffing each run against the prior preview projection.
+// + runBindingAllocation (ADR-0018 §4) against a real Postgres. Preview
+// touches no Stripe; binding takes a hand-rolled fake. Asserts on the
+// displacement_events rows written by diffing each compute against the prior
+// preview projection.
 //
 // What this verifies that the pure detector unit tests can't:
 //   - run-preview reads the PRIOR preview placement as the baseline and
 //     persists outbid_out when a higher offer displaces an earlier one.
 //   - auto_bid_raise is written once and DEDUPED on an identical re-run
 //     (the dedup query reads back the last persisted raise target).
+//   - run-binding alerts on a last-moment displacement vs the last preview,
+//     and dedupes an auto_bid_raise already emitted at preview.
 
 import { and, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
+import type Stripe from "stripe";
 
 import { db } from "@/lib/db";
+import { runBindingAllocation } from "@/lib/allocation/run-binding";
 import { runPreviewAllocation } from "@/lib/allocation/run-preview";
 import { displacementEvents, offers } from "../../drizzle/schema";
 
 import { seedShow, seedUser, seedVenue, seedVenueArchitecture } from "./helpers";
+
+// Binding moves money; these tests only care about the alert rows, so the
+// fake just lets every capture/cancel succeed.
+const fakeStripe = {
+  paymentIntents: {
+    capture: async (id: string) => ({ id, status: "succeeded" }),
+    cancel: async (id: string) => ({ id, status: "canceled" }),
+  },
+} as unknown as Stripe;
 
 // One premium row, capacity 4 — a single group of 4 fills it, forcing a
 // clean placed/unplaced split.
@@ -153,5 +167,56 @@ describe("runPreviewAllocation displacement alerts (integration)", () => {
 
     bEvents = await eventsForOffer(show.id, offerB.id);
     expect(bEvents).toHaveLength(1);
+  });
+
+  it("alerts at binding when the final allocation displaces a previously-previewed offer", async () => {
+    const show = await seedCap4Show();
+    const offerA = await seedPoolOffer(show.id, { priceCents: 6000 });
+
+    // Preview with A only → A placed in premium. This is the baseline the fan
+    // last saw; no alerts yet (no prior projection).
+    const preview = await runPreviewAllocation(db, show.id);
+    expect(preview.ok).toBe(true);
+    if (!preview.ok) return;
+    expect(preview.value.displacementEventsWritten).toBe(0);
+
+    // A higher offer arrives, then binding runs and takes the only row.
+    await seedPoolOffer(show.id, { priceCents: 8000 });
+    const binding = await runBindingAllocation(db, fakeStripe, show.id);
+    expect(binding.ok).toBe(true);
+    if (!binding.ok) return;
+
+    // Binding diffed against the preview baseline: A was premium, now unplaced.
+    expect(binding.value.displacementEventsWritten).toBe(1);
+    const aEvents = await eventsForOffer(show.id, offerA.id);
+    expect(aEvents).toHaveLength(1);
+    expect(aEvents[0]?.kind).toBe("outbid_out");
+    expect((aEvents[0]?.detail as { fromTier?: string }).fromTier).toBe("premium");
+  });
+
+  it("dedupes at binding an auto_bid_raise already emitted at preview", async () => {
+    const show = await seedCap4Show();
+    await seedPoolOffer(show.id, { priceCents: 6200 });
+    const offerB = await seedPoolOffer(show.id, {
+      priceCents: 5000,
+      tierPreference: "specific",
+      preferredTier: "premium",
+      autoBidEnabled: true,
+      autoBidCapCents: 8000,
+    });
+
+    // Preview: B auto-bids to $65 and is placed → one auto_bid_raise.
+    const preview = await runPreviewAllocation(db, show.id);
+    expect(preview.ok).toBe(true);
+    if (!preview.ok) return;
+    expect((await eventsForOffer(show.id, offerB.id))).toHaveLength(1);
+
+    // Binding: B resolves to the same $65. The raise is deduped against the
+    // preview-emitted target and placement is unchanged → no new alert.
+    const binding = await runBindingAllocation(db, fakeStripe, show.id);
+    expect(binding.ok).toBe(true);
+    if (!binding.ok) return;
+    expect(binding.value.displacementEventsWritten).toBe(0);
+    expect((await eventsForOffer(show.id, offerB.id))).toHaveLength(1);
   });
 });
