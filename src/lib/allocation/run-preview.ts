@@ -5,12 +5,15 @@
 // Flow:
 //   1. Load show + venue architecture + pool offers (read-only).
 //   2. Build the allocation plan (pure call).
-//   3. In a single transaction:
+//   3. Diff this run against the prior preview projection to derive per-fan
+//      displacement alerts (ADR-0018 §4) — read the baseline before the swap.
+//   4. In a single transaction:
 //        - Delete prior preview rows for this show (preview is
 //          re-runnable, so this is the cleanup of the previous run).
 //        - Insert new seat_assignments rows (is_binding=false).
 //        - Insert allocation_logs rows (mode='preview').
-//   4. Return stats + write counts to the caller.
+//        - Insert displacement_events rows for the alerts from step 3.
+//   5. Return stats + write counts to the caller.
 //
 // Binding mode is NOT implemented in this slice. It needs additional
 // concerns — offer.status transitions (pool → placed/unplaced),
@@ -24,12 +27,15 @@ import { and, eq } from "drizzle-orm";
 
 import type { Db } from "@/lib/db";
 import {
+  getLatestRaiseTargetsByOfferForShow,
   getShowById,
   getVenueArchitectureById,
   listPoolOffersForShow,
+  listSeatAssignmentsForShow,
 } from "@/lib/db/repositories";
 import {
   allocationLogs,
+  displacementEvents,
   seatAssignments,
 } from "../../../drizzle/schema";
 
@@ -37,6 +43,7 @@ import {
   buildPreviewAllocationPlan,
   type AllocationPlan,
 } from "./build-plan";
+import { detectDisplacementEvents, type Placement } from "./displacement";
 
 export type RunPreviewResult = {
   showId: string;
@@ -45,6 +52,9 @@ export type RunPreviewResult = {
   stats: AllocationPlan["result"]["stats"];
   assignmentsWritten: number;
   logsWritten: number;
+  // Per-fan displacement alerts emitted by diffing this run against the prior
+  // preview projection (ADR-0018 §4).
+  displacementEventsWritten: number;
 };
 
 export type RunPreviewError =
@@ -101,9 +111,38 @@ export async function runPreviewAllocation(
   const poolOffers = await listPoolOffersForShow(db, showId);
   const plan = buildPreviewAllocationPlan(show, architecture, poolOffers);
 
-  // Transactional swap: drop the previous preview, write the new one.
-  // Binding rows (is_binding=true) are never touched — they're
-  // post-binding state that survives preview re-runs.
+  // ---- Displacement alerts (ADR-0018 §4) ----
+  // Diff this run against the PRIOR preview projection to find the per-fan
+  // transitions worth alerting on. Read the baseline (current preview rows)
+  // before the swap below deletes them.
+  const priorAssignments = await listSeatAssignmentsForShow(db, showId);
+  const prevByOffer = new Map<string, Placement>();
+  for (const a of priorAssignments) {
+    if (a.isBinding) continue; // baseline is the preview projection only
+    prevByOffer.set(a.offerId, { tier: a.tier, venueRowId: a.venueRowId });
+  }
+  const newByOffer = new Map<string, Placement>();
+  for (const r of plan.assignmentRows) {
+    newByOffer.set(r.offerId, { tier: r.tier, venueRowId: r.venueRowId });
+  }
+  const lastRaiseToByOffer = await getLatestRaiseTargetsByOfferForShow(
+    db,
+    showId,
+  );
+  // Tier ordering for better/worse: a higher floor is a better section.
+  const floors = (show.tierFloorsCents ?? {}) as Record<string, number>;
+  const displacementEventRows = detectDisplacementEvents({
+    prevByOffer,
+    newByOffer,
+    autoBidRaises: plan.autoBidRaises,
+    offers: plan.resolvedOffers,
+    lastRaiseToByOffer,
+    tierRank: (tier) => (tier ? floors[tier] ?? 0 : 0),
+  });
+
+  // Transactional swap: drop the previous preview, write the new one, and
+  // append any displacement alerts. Binding rows (is_binding=true) are never
+  // touched — they're post-binding state that survives preview re-runs.
   await db.transaction(async (tx) => {
     await tx
       .delete(seatAssignments)
@@ -119,6 +158,17 @@ export async function runPreviewAllocation(
     if (plan.logRows.length > 0) {
       await tx.insert(allocationLogs).values(plan.logRows);
     }
+    if (displacementEventRows.length > 0) {
+      await tx.insert(displacementEvents).values(
+        displacementEventRows.map((e) => ({
+          showId,
+          offerId: e.offerId,
+          userId: e.userId,
+          kind: e.kind,
+          detail: e.detail,
+        })),
+      );
+    }
   });
 
   return {
@@ -133,6 +183,7 @@ export async function runPreviewAllocation(
       stats: plan.result.stats,
       assignmentsWritten: plan.assignmentRows.length,
       logsWritten: plan.logRows.length,
+      displacementEventsWritten: displacementEventRows.length,
     },
   };
 }
