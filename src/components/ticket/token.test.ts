@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  buildPlaceholderToken,
-  rotationWindow,
-  secondsUntilRotation,
-} from "./token";
+import { rotationWindow, secondsUntilRotation } from "./token";
 
 describe("rotationWindow", () => {
   it("buckets epoch-ms into 60s windows", () => {
@@ -28,16 +24,5 @@ describe("secondsUntilRotation", () => {
     for (let ms = 0; ms < 60_000; ms += 137) {
       expect(secondsUntilRotation(ms)).toBeGreaterThanOrEqual(1);
     }
-  });
-});
-
-describe("buildPlaceholderToken", () => {
-  it("is deterministic for the same (ticketId, window)", () => {
-    expect(buildPlaceholderToken("t1", 5)).toBe("auckets:ticket:t1:w5");
-    expect(buildPlaceholderToken("t1", 5)).toBe(buildPlaceholderToken("t1", 5));
-  });
-
-  it("changes when the window advances", () => {
-    expect(buildPlaceholderToken("t1", 5)).not.toBe(buildPlaceholderToken("t1", 6));
   });
 });

@@ -109,3 +109,33 @@ export async function listTicketsByAssignmentIds(
   }
   return out;
 }
+
+// The dedicated, loudly-named secret-fetching helper the file header
+// anticipates. This is the ONLY function that SELECTs tickets.totp_secret.
+//
+// It exists solely so the rotating-QR token endpoint can sign a token
+// server-side. The returned secret MUST be used only to compute the HMAC
+// (src/lib/tickets/token.ts) and MUST NOT be serialized into any response —
+// the route returns the signed token, never the secret. userId is included
+// so the route can enforce ownership before minting a token.
+export type TicketSecret = {
+  id: string;
+  userId: string;
+  totpSecret: string;
+};
+
+export async function getTicketSecretForRotatingQr(
+  db: Db,
+  ticketId: string,
+): Promise<TicketSecret | null> {
+  const rows = await db
+    .select({
+      id: tickets.id,
+      userId: tickets.userId,
+      totpSecret: tickets.totpSecret,
+    })
+    .from(tickets)
+    .where(eq(tickets.id, ticketId))
+    .limit(1);
+  return rows[0] ?? null;
+}

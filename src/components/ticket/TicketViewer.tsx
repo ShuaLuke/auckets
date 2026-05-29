@@ -37,12 +37,7 @@ import { Button } from "@/components/ui/Button";
 import type { TicketView } from "@/lib/presenters/ticket";
 
 import { haversineMeters, isWithinVenue } from "./geo";
-import {
-  buildPlaceholderToken,
-  rotationWindow,
-  secondsUntilRotation,
-  ROTATION_PERIOD_MS,
-} from "./token";
+import { rotationWindow, secondsUntilRotation, ROTATION_PERIOD_MS } from "./token";
 
 type GeoState = "prompt" | "requesting" | "granted" | "denied" | "far";
 
@@ -62,6 +57,10 @@ export function TicketViewer({ view }: { view: TicketView }) {
   const [geoState, setGeoState] = useState<GeoState>("prompt");
   const [distanceM, setDistanceM] = useState<number | null>(null);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
+  // The signed token comes from the server (GET /api/tickets/[id]/token); we
+  // never mint it client-side. null = not yet fetched for the current window.
+  const [token, setToken] = useState<string | null>(null);
+  const [tokenError, setTokenError] = useState(false);
 
   // Drive the rotation countdown. 1s tick is enough for the "rotates in Ns"
   // label and the bar; the QR value only changes at the 60s boundary.
@@ -69,6 +68,29 @@ export function TicketViewer({ view }: { view: TicketView }) {
     const id = setInterval(() => setNowMs(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
+
+  // Fetch the server-signed token once unlocked, then refetch whenever the
+  // 60s window rolls over (currentWindow changes only at the boundary).
+  const currentWindow = rotationWindow(nowMs);
+  useEffect(() => {
+    if (geoState !== "granted") return;
+    let cancelled = false;
+    setTokenError(false);
+    fetch(`/api/tickets/${view.ticketId}/token`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((body: { token: string }) => {
+        if (!cancelled) setToken(body.token);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setToken(null);
+          setTokenError(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [geoState, currentWindow, view.ticketId]);
 
   function requestGeo() {
     setGeoState("requesting");
@@ -104,7 +126,6 @@ export function TicketViewer({ view }: { view: TicketView }) {
   }
 
   const secondsLeft = secondsUntilRotation(nowMs);
-  const token = buildPlaceholderToken(view.ticketId, rotationWindow(nowMs));
   const periodSeconds = ROTATION_PERIOD_MS / 1000;
 
   return (
@@ -224,7 +245,7 @@ export function TicketViewer({ view }: { view: TicketView }) {
                 </span>
               </div>
 
-              {/* Real QR over the (placeholder) rotating token */}
+              {/* Real QR over the server-signed rotating token */}
               <div
                 style={{
                   background: "#FFFFFF",
@@ -232,19 +253,31 @@ export function TicketViewer({ view }: { view: TicketView }) {
                   padding: 16,
                   width: "100%",
                   maxWidth: 280,
+                  aspectRatio: "1 / 1",
                   margin: "0 auto",
                   display: "flex",
+                  alignItems: "center",
                   justifyContent: "center",
                 }}
               >
-                <QRCodeSVG
-                  value={token}
-                  size={232}
-                  level="M"
-                  bgColor="#FFFFFF"
-                  fgColor={C.ink}
-                  aria-label="Your rotating entry QR code"
-                />
+                {token ? (
+                  <QRCodeSVG
+                    value={token}
+                    size={232}
+                    level="M"
+                    bgColor="#FFFFFF"
+                    fgColor={C.ink}
+                    aria-label="Your rotating entry QR code"
+                  />
+                ) : tokenError ? (
+                  <div style={{ textAlign: "center", color: "#A93C2A", fontSize: 13 }}>
+                    Couldn&apos;t load your ticket code.
+                    <br />
+                    It&apos;ll retry at the next refresh.
+                  </div>
+                ) : (
+                  <Loader2 size={28} aria-hidden style={{ color: C.green }} className="animate-spin" />
+                )}
               </div>
 
               {/* Countdown bar */}
@@ -289,7 +322,7 @@ export function TicketViewer({ view }: { view: TicketView }) {
                   wordBreak: "break-all",
                 }}
               >
-                token: <span style={{ color: C.gold }}>{token}</span>
+                token: <span style={{ color: C.gold }}>{token ? `…${token.slice(-12)}` : "—"}</span>
                 {" · "}exp: <span style={{ color: "#6A8F6F" }}>{secondsLeft}s</span>
               </div>
             </>
