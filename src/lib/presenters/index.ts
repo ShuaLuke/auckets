@@ -85,6 +85,12 @@ export {
 export { presentRankBoard, type RankBoardView } from "./rank-board";
 
 export {
+  presentDisplacementEvents,
+  type DisplacementAlertTone,
+  type DisplacementAlertView,
+} from "./displacement";
+
+export {
   presentPreviewBanner,
   type PreviewBannerView,
 } from "./preview-banner";
