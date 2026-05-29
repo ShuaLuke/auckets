@@ -23,6 +23,7 @@ import type {
 
 import type { offers, shows } from "../../../drizzle/schema";
 
+import { resolveAutoBids, type AutoBidRaise } from "./auto-bid";
 import {
   toGaeRankedOffer,
   toGaeVenueArchitecture,
@@ -62,6 +63,11 @@ export type AllocationPlan = {
   result: AllocationResult;
   assignmentRows: AssignmentRow[];
   logRows: LogRow[];
+  // Auto-bid raises applied to reach this plan (ADR-0018). Populated in
+  // preview; always empty in binding (binding doesn't auto-raise yet — see
+  // buildBindingAllocationPlan). Ephemeral in preview: the projection
+  // raises are for display + future displacement alerts, not persisted.
+  autoBidRaises: AutoBidRaise[];
 };
 
 // Maps the GAE's enum of actions to the schema's enum. They're
@@ -167,15 +173,10 @@ function buildLogRows(
 // (so the orchestrator can capture it). Placements themselves are
 // identical: the GAE is deterministic, which is exactly why a preview
 // faithfully shows what binding will do.
-function buildAllocationPlan(
-  show: Show,
-  architecture: DbVenueArchitecture,
-  poolOffers: readonly Offer[],
-  mode: "preview" | "binding",
-): AllocationPlan {
-  const venue = toGaeVenueArchitecture(show, architecture);
-  const rankedOffers = poolOffers.map(toGaeRankedOffer);
-  const effectiveConfig: AllocationConfig = {
+// Build the GAE config for a show in a given mode. Shared so the auto-bid
+// resolver (which runs the GAE itself) and the plan use identical config.
+function makeConfig(show: Show, mode: "preview" | "binding"): AllocationConfig {
+  return {
     mode,
     allowOrphans: true,
     orphanPolicy: "leave",
@@ -184,6 +185,18 @@ function buildAllocationPlan(
     // engine's group-size cap matches the schema constraint.
     maxGroupSize: show.maxGroupSize,
   };
+}
+
+function buildAllocationPlan(
+  show: Show,
+  architecture: DbVenueArchitecture,
+  poolOffers: readonly Offer[],
+  mode: "preview" | "binding",
+  autoBidRaises: AutoBidRaise[] = [],
+): AllocationPlan {
+  const venue = toGaeVenueArchitecture(show, architecture);
+  const rankedOffers = poolOffers.map(toGaeRankedOffer);
+  const effectiveConfig = makeConfig(show, mode);
   const result = allocate(venue, rankedOffers, effectiveConfig);
 
   const rowById = new Map<string, VenueRow>();
@@ -206,21 +219,39 @@ function buildAllocationPlan(
       paymentIntentByOfferId,
     ),
     logRows: buildLogRows(result, show.id, mode),
+    autoBidRaises,
   };
 }
 
 // Build a complete preview allocation plan from already-loaded inputs.
+// Auto-bid is resolved first (ADR-0018): displaced auto-bidders climb in
+// $5 steps to defend their preferred section, capped, then the plan is
+// built from the settled pool. The raises are returned for display /
+// future displacement alerts but are NOT persisted (preview is a
+// re-runnable projection).
 export function buildPreviewAllocationPlan(
   show: Show,
   architecture: DbVenueArchitecture,
   poolOffers: readonly Offer[],
 ): AllocationPlan {
-  return buildAllocationPlan(show, architecture, poolOffers, "preview");
+  const { offers: resolved, raises } = resolveAutoBids(
+    show,
+    architecture,
+    poolOffers,
+    makeConfig(show, "preview"),
+  );
+  return buildAllocationPlan(show, architecture, resolved, "preview", raises);
 }
 
-// Build a complete binding allocation plan. Same placements as preview,
-// but rows are flagged is_binding=true and carry each placed offer's
-// auth PaymentIntent id for the capture phase.
+// Build a complete binding allocation plan.
+//
+// Deliberately does NOT resolve auto-bids: run-binding captures
+// price*groupSize, but each offer's PaymentIntent was authorized at the
+// *submitted* amount, so capturing an auto-raised amount would exceed the
+// auth. Auto-bid will affect binding only once offers are authorized up to
+// their cap at submission (a separate Stripe slice — ADR-0018). Until then
+// binding uses the submitted prices, so a fan defended in preview is not
+// yet defended at binding; this gap is tracked, not silent.
 export function buildBindingAllocationPlan(
   show: Show,
   architecture: DbVenueArchitecture,
