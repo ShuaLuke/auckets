@@ -63,6 +63,10 @@ type Props = {
   tiers: TierBreakdownView;
   distribution: PriceDistributionView;
   placement: ProvisionalPlacementView;
+  // When true, `placement` is a live in-memory projection (auto-run on
+  // load, not a saved ops run) — caption it so the artist knows it
+  // reflects the current pool, not a persisted allocation.
+  placementIsLiveProjection: boolean;
   holds: HoldsView;
   activeHoldRows: AddHoldRow[];
 };
@@ -74,6 +78,7 @@ export function ShowAdminTabs({
   tiers,
   distribution,
   placement,
+  placementIsLiveProjection,
   holds,
   activeHoldRows,
 }: Props) {
@@ -147,6 +152,16 @@ export function ShowAdminTabs({
           role="tabpanel"
           aria-labelledby="showadmin-tab-allocation"
         >
+          {placementIsLiveProjection && (
+            <p
+              className="mb-3 font-sans text-[11px]"
+              style={{ color: "var(--fg-subtle)", lineHeight: 1.5 }}
+            >
+              Live projection of the current offer pool — updates as offers
+              come in. Not a saved run; AUCKETS ops runs the binding
+              allocation that locks placements.
+            </p>
+          )}
           <ProvisionalPlacementCard placement={placement} />
         </div>
       )}

@@ -155,6 +155,11 @@ function OfferComposerForm({
   const [autoMax, setAutoMax] = useState("60");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Inline success state — replaces the old silent redirect to /dashboard
+  // (PERSONAS.md fan #1). We stay on the show page and router.refresh()
+  // so the right column (PreviewBanner + RankBoard) re-renders with the
+  // fan's projected seat and rank for the offer they just placed.
+  const [succeeded, setSucceeded] = useState(false);
 
   const priceCents = parseDollars(price);
   const priceIsValid = priceCents !== null && priceCents > 0;
@@ -176,6 +181,7 @@ function OfferComposerForm({
 
     setSubmitting(true);
     setError(null);
+    setSucceeded(false);
 
     const payload: Record<string, unknown> = {
       showId: show.id,
@@ -238,9 +244,9 @@ function OfferComposerForm({
       });
 
       if (res.ok) {
-        // Refresh so the dashboard's "yourOffer" chip reflects the
-        // new state on the way back.
-        router.push("/dashboard");
+        // Stay on the page and refresh the server component so the right
+        // column (projected seat + rank) reflects the offer just placed.
+        setSucceeded(true);
         router.refresh();
         return;
       }
@@ -314,7 +320,8 @@ function OfferComposerForm({
                 className="mt-0.5 font-sans text-[11px]"
                 style={{ color: "var(--fg-subtle)" }}
               >
-                Raise by $5 each time my projected seat drops, up to my cap.
+                If I&apos;m displaced, raise me to $5 over the minimum needed
+                to keep my section, up to my cap.
               </div>
             </div>
           </label>
@@ -405,6 +412,22 @@ function OfferComposerForm({
           </div>
         )}
 
+        {succeeded && !error && (
+          <div
+            className="rounded-lg p-3 font-sans text-xs"
+            style={{
+              background: "var(--paper-2)",
+              color: "var(--fg)",
+              border: "1px solid var(--border-strong)",
+              lineHeight: 1.5,
+            }}
+          >
+            <strong>You&apos;re in the pool.</strong> Your offer is placed —
+            see your projected seat and rank on the right. You can revise upward
+            any time until 24h before doors.
+          </div>
+        )}
+
         <Button
           variant="brand"
           size="lg"
@@ -419,7 +442,8 @@ function OfferComposerForm({
           className="text-center font-sans text-[11px]"
           style={{ color: "var(--fg-subtle)" }}
         >
-          You can revise upward until 24h before doors. Never downward.
+          Once submitted, an offer can&apos;t be lowered or withdrawn — you can
+          only revise it upward, until 24h before doors.
         </div>
       </form>
     </Card>

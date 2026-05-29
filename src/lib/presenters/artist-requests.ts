@@ -9,6 +9,7 @@
 // the client component and call PATCH /api/artist-requests/[id].
 
 import type {
+  ArtistRequest,
   ArtistRequestInboxRow,
   ArtistRequestKind,
   ArtistRequestStatus,
@@ -120,5 +121,56 @@ export function presentArtistRequestInboxRow(
     filedTimeAgo: formatTimeAgo(row.createdAt, now),
     filedDisplay: formatDateLong(row.createdAt, tz),
     executor,
+  };
+}
+
+// Compact, show-scoped view of a request the artist filed, for the
+// ShowAdmin "Filed requests" panel (PERSONAS.md artist #3). Unlike the
+// admin inbox view it carries no show/artist/venue context (we're
+// already on the show) and no executor email (ops identity isn't the
+// artist's concern — only whether it was executed/denied + any notes).
+export type ArtistRequestStatusView = {
+  id: string;
+  kind: ArtistRequestKind;
+  kindLabel: string;
+  status: ArtistRequestStatus;
+  details: string;
+  filedTimeAgo: string;
+  filedDisplay: string;
+  // Populated once ops has executed or denied the request.
+  resolution: {
+    status: "executed" | "denied";
+    timeAgo: string;
+    display: string;
+    notes: string | null;
+  } | null;
+};
+
+export function presentArtistRequestStatus(
+  row: ArtistRequest,
+  now: Date,
+  tz: string = DEFAULT_TZ,
+): ArtistRequestStatusView {
+  const kind = kindOf(row.kind);
+  const status = statusOf(row.status);
+  const resolution =
+    (status === "executed" || status === "denied") && row.executedAt
+      ? {
+          status,
+          timeAgo: formatTimeAgo(row.executedAt, now),
+          display: formatDateLong(row.executedAt, tz),
+          notes: row.notes,
+        }
+      : null;
+
+  return {
+    id: row.id,
+    kind,
+    kindLabel: KIND_LABELS[kind] ?? row.kind,
+    status,
+    details: row.details,
+    filedTimeAgo: formatTimeAgo(row.createdAt, now),
+    filedDisplay: formatDateLong(row.createdAt, tz),
+    resolution,
   };
 }
