@@ -4,9 +4,10 @@
 //
 // Wired as a Next.js <Link> rather than the prototype's button —
 // SSR-friendly navigation, no JS needed for the main click target.
-// The "open ticket viewer if ready, else open show" logic in the
-// prototype (Dashboard.jsx line 62) lands once the ticket viewer
-// page lands.
+// Per the prototype (Dashboard.jsx line 62): when the fan's ticket is
+// ready, the row opens the ticket viewer (/tickets/[showId], the rotating
+// QR); otherwise it opens the show. The viewer is the only UI entry point
+// to a fan's QR, so this link is load-bearing for the attend path.
 
 import { ChevronRight } from "lucide-react";
 import Link from "next/link";
@@ -54,10 +55,14 @@ export function ShowRow({ show }: Props) {
   const stub = splitDateShort(show.dateShort);
   const tone = badgeToneFor(show);
   const label = statusLabelFor(show);
+  // A ready ticket routes to the viewer (the QR); otherwise to the show.
+  const href = show.yourOffer?.ticketReady
+    ? `/tickets/${show.id}`
+    : `/shows/${show.id}`;
 
   return (
     <Link
-      href={`/shows/${show.id}`}
+      href={href}
       className="flex items-center gap-5 rounded-xl border bg-[var(--page)] px-5 py-[18px] no-underline transition-shadow hover:shadow-[0_4px_12px_rgba(14,15,12,0.06)]"
       style={{ borderColor: "var(--border)" }}
     >
