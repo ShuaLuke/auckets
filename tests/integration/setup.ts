@@ -19,6 +19,10 @@ const TABLES_TO_TRUNCATE = [
   "tickets",
   "seat_assignments",
   "allocation_logs",
+  "displacement_events",
+  // No FK to a truncated table, so CASCADE won't reach it — must be listed
+  // explicitly or webhook-receipt rows leak across tests.
+  "stripe_webhook_events",
   "offer_revisions",
   "offer_idempotency_keys",
   "resales",

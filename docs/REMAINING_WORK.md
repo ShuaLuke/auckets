@@ -13,7 +13,7 @@ Updated 2026-05-28 after PRs #51–#67 merged (real Stripe path, binding allocat
 The gap to **beta** is the back half of the fan journey plus payment hardening, in three buckets:
 
 - 🔴 **Hard blockers** — a beta fan cannot attend without these: **TicketViewer** + **Scanner**.
-- 🟠 **Strong blockers** — money correctness/trust: ~~**Stripe webhook handler**~~ (✅ shipped — signed + idempotent `/api/stripe/webhook`), **CardFailure recovery**, **scheduled binding**.
+- 🟠 **Strong blockers** — money correctness/trust: ~~**Stripe webhook handler**~~ (✅ shipped — signed + idempotent `/api/stripe/webhook`), **CardFailure recovery**, ~~**scheduled binding**~~ (✅ shipped — Inngest cron sweeps due checkpoints).
 - 🟡 **Soft gaps** — beta-tolerable with manual workarounds: 4 fan email templates, **AllocationFinal**, **ShowCreate UI**.
 
 **ADR-0003 (2026-05-27):** ≤6-day offer windows + auth-based hold is still a working assumption (Julia), **not yet Cope-confirmed**. The money path is built against it; if his research lands on windows >6 days, revisit the PaymentIntent path. See the 2026-05-27 note in [DECISIONS.md ADR-0003](DECISIONS.md#adr-0003--stripe-setupintent--charge-on-acceptance).
@@ -87,7 +87,7 @@ Located at `src/components/ui/`. Most are ported; two notable gaps:
 | **Tickets** | ⚠️ Data + read only — 🔴 **hard blocker** | `tickets`/`ticketScans` tables + read repo (`src/lib/db/repositories/tickets.ts`) exist. No QR generation, no rotating-token logic, no geo-validation, no fan-facing viewer. |
 | **Scanner** | ❌ Not built — 🔴 **hard blocker** | Door-entry app; paired with TicketViewer. Needs `VENUE_STAFF` role (per ADR-0012, added for Austin). |
 | **Resales** | ❌ Not built (post-beta) | `resales` table exists; no refund logic, no artist-uplift routing, no Miracle Tickets gift flow. |
-| **Binding allocation** | ✅ Live (#62) | `mode=binding` on the allocate route (`src/lib/allocation/run-binding.ts`) captures placed offers' PaymentIntents, cancels unplaced auths, transitions statuses. Driven by an admin "Run binding" button (#65). **Gap:** manual-button-only — no scheduled (Inngest T-24h) trigger yet (🟠). |
+| **Binding allocation** | ✅ Live (#62) | `mode=binding` on the allocate route (`src/lib/allocation/run-binding.ts`) captures placed offers' PaymentIntents, cancels unplaced auths, transitions statuses. Triggered by an admin "Run binding" button (#65) **and** an Inngest cron (`scheduled-binding`, every 5 min) that sweeps shows whose `binding_allocation_at` has passed (`sweepDueBindings`). Paused shows are excluded — ops decides. |
 
 ---
 
@@ -122,7 +122,7 @@ Beta = real fans, real money, real attendance. The money path is done; the chain
 
 3. ~~**Stripe webhook handler**~~ — ✅ **shipped.** Signed (`STRIPE_WEBHOOK_SECRET`) + idempotent (`stripe_webhook_events` receipts) handler at `/api/stripe/webhook`, acting on `payment_intent.payment_failed` / `succeeded` / `canceled`. Satisfies prime-directive #6.
 4. **CardFailure recovery** — the 2% capture-failure case (`payment_intent.payment_failed`). Notification + retry + hold-the-seat logic. Less common with auth-based holds (card already validated) but auths can be cancelled between auth and capture.
-5. **Scheduled binding** — Inngest T-24h job to run binding at the announced checkpoint, replacing the manual admin button. A single supervised beta show can run the button manually, so this is "strong" not "hard".
+5. ~~**Scheduled binding**~~ — ✅ **shipped.** Inngest cron (`scheduled-binding`, every 5 min) sweeps shows past their `binding_allocation_at` and runs binding (`sweepDueBindings`); the manual admin button remains. Paused shows excluded (ADR-0013).
 
 ### 🟡 Soft gaps — beta-tolerable with a manual workaround
 
