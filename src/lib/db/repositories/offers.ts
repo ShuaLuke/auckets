@@ -129,6 +129,23 @@ export async function listOffersForUser(
   return db.select().from(offers).where(eq(offers.userId, userId));
 }
 
+// Look up the offer backing a Stripe PaymentIntent — the join the webhook
+// handler uses to map a payment_intent.* event back to its offer. The real
+// path writes a unique pi_… per live offer (revision cancels the old PI and
+// stores a new one), so at most one current offer references a given id;
+// `.limit(1)` guards the type regardless.
+export async function getOfferByPaymentIntentId(
+  db: Db,
+  paymentIntentId: string,
+): Promise<Offer | null> {
+  const rows = await db
+    .select()
+    .from(offers)
+    .where(eq(offers.stripePaymentIntentId, paymentIntentId))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
 // Bid history view: one row per offer the user has placed, across all
 // shows (open + paused + closed + allocating + allocated + complete).
 // Joins enough show/artist/venue context so the presenter can render

@@ -13,7 +13,7 @@ Updated 2026-05-28 after PRs #51–#67 merged (real Stripe path, binding allocat
 The gap to **beta** is the back half of the fan journey plus payment hardening, in three buckets:
 
 - 🔴 **Hard blockers** — a beta fan cannot attend without these: **TicketViewer** + **Scanner**.
-- 🟠 **Strong blockers** — money correctness/trust: **Stripe webhook handler** (none exists), **CardFailure recovery**, **scheduled binding**.
+- 🟠 **Strong blockers** — money correctness/trust: ~~**Stripe webhook handler**~~ (✅ shipped — signed + idempotent `/api/stripe/webhook`), **CardFailure recovery**, **scheduled binding**.
 - 🟡 **Soft gaps** — beta-tolerable with manual workarounds: 4 fan email templates, **AllocationFinal**, **ShowCreate UI**.
 
 **ADR-0003 (2026-05-27):** ≤6-day offer windows + auth-based hold is still a working assumption (Julia), **not yet Cope-confirmed**. The money path is built against it; if his research lands on windows >6 days, revisit the PaymentIntent path. See the 2026-05-27 note in [DECISIONS.md ADR-0003](DECISIONS.md#adr-0003--stripe-setupintent--charge-on-acceptance).
@@ -80,7 +80,7 @@ Located at `src/components/ui/`. Most are ported; two notable gaps:
 
 | System | Status | Notes |
 |---|---|---|
-| **Stripe / payments** | ✅ Live (real path) | Stripe SDK + `src/lib/stripe/` (client, `customers.ts`, `payment-intents.ts`). `POST /api/offers` ensures a Customer and creates a manual-capture `PaymentIntent` to hold the auth (≤6-day window, ADR-0003). Elements card collection wired. Revision cancels prior intent + recreates. **Gaps:** no webhook handler (signature verify + idempotent events — 🟠), no `payment_intent.payment_failed` recovery (🟠), no app-level idempotency-table writes, dev stub remains as fallback only. |
+| **Stripe / payments** | ✅ Live (real path) | Stripe SDK + `src/lib/stripe/` (client, `customers.ts`, `payment-intents.ts`, `webhook.ts`). `POST /api/offers` ensures a Customer and creates a manual-capture `PaymentIntent` to hold the auth (≤6-day window, ADR-0003). Elements card collection wired. Revision cancels prior intent + recreates. **Signed, idempotent webhook** at `/api/stripe/webhook` (receipts in `stripe_webhook_events`): `payment_intent.payment_failed` → `card_failure`, `succeeded` → `charged` backstop, `canceled` recorded. **Gaps:** CardFailure *recovery* flow (the webhook records the failure; retry/notify is a separate slice — 🟠), no app-level offer-idempotency-table writes, dev stub remains as fallback only. |
 | **Notifications — Resend (email)** | ⚠️ Client + ops scaffold wired | `welcome` + `RequestActioned` templates exist; ops (Slack/Resend) notification on request actions fires (#50). 4 fan-facing templates still missing; `auckets.com` not yet verified in Resend. |
 | **Notifications — Slack** | ⚠️ Scaffold wired (#50) | Ops alerts on request actions go out; broader coverage (card-failure, allocation-run) not wired. |
 | **Notifications — Twilio / SMS** | ❌ Not built (post-beta) | ADR-0016 moved SMS to MVP. No Twilio SDK, no 10DLC registration. **Long pole** — 1–2 week carrier turnaround; can start registration anytime. |
@@ -120,7 +120,7 @@ Beta = real fans, real money, real attendance. The money path is done; the chain
 
 ### 🟠 Strong blockers — money correctness/trust before real-money beta
 
-3. **Stripe webhook handler** — **none exists today.** Prime-directive #6 requires signature verification + idempotent handlers. We are holding real card auths with no async event handling. Highest-priority correctness gap. Route at `/api/stripe/webhook`.
+3. ~~**Stripe webhook handler**~~ — ✅ **shipped.** Signed (`STRIPE_WEBHOOK_SECRET`) + idempotent (`stripe_webhook_events` receipts) handler at `/api/stripe/webhook`, acting on `payment_intent.payment_failed` / `succeeded` / `canceled`. Satisfies prime-directive #6.
 4. **CardFailure recovery** — the 2% capture-failure case (`payment_intent.payment_failed`). Notification + retry + hold-the-seat logic. Less common with auth-based holds (card already validated) but auths can be cancelled between auth and capture.
 5. **Scheduled binding** — Inngest T-24h job to run binding at the announced checkpoint, replacing the manual admin button. A single supervised beta show can run the button manually, so this is "strong" not "hard".
 

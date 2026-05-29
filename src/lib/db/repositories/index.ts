@@ -41,6 +41,14 @@ export {
 } from "./displacement-events";
 
 export {
+  WEBHOOK_TERMINAL_STATUSES,
+  getWebhookEvent,
+  markWebhookEvent,
+  recordWebhookReceived,
+  type StripeWebhookEvent,
+} from "./stripe-webhook-events";
+
+export {
   HOLD_KINDS,
   createHold,
   deleteHoldById,
@@ -51,6 +59,7 @@ export {
 } from "./holds";
 
 export {
+  getOfferByPaymentIntentId,
   getOfferByShowAndUser,
   getOfferStatsByShowIds,
   getOfferStatsByTierForShow,
