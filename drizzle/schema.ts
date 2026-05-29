@@ -701,3 +701,41 @@ export const displacementEvents = pgTable(
     ),
   ],
 );
+
+// ---------------------------------------------------------------------------
+// 20. stripe_webhook_events — append-only receipt log for Stripe webhooks
+// (SECURITY.md / prime directive #6: verify signatures, handle idempotently).
+//
+// The primary key is Stripe's own event id (evt_…). Stripe can deliver the
+// same event more than once; the handler reads this row first and skips
+// re-processing an event already in a terminal status — so a redelivery is a
+// no-op. A row that errored mid-processing is left non-terminal so a Stripe
+// retry reprocesses it. The underlying state handlers are idempotent too, so
+// this table is the fast-path dedupe + an audit trail of what we received and
+// what we did with it.
+// ---------------------------------------------------------------------------
+export const stripeWebhookEvents = pgTable(
+  "stripe_webhook_events",
+  {
+    // Stripe's event id (evt_…). Natural idempotency key.
+    eventId: text("event_id").primaryKey(),
+    // The Stripe event type, e.g. 'payment_intent.payment_failed'.
+    type: text("type").notNull(),
+    // The PaymentIntent the event is about (evt.data.object.id) when the event
+    // is a payment_intent.* — lets us correlate to an offer. NULL otherwise.
+    paymentIntentId: text("payment_intent_id"),
+    // 'received' (claimed, not yet done) | 'processed' (acted on) | 'ignored'
+    // (recognized but no action) | 'error' (handler threw; retry-eligible).
+    status: text("status").notNull().default("received"),
+    // Free-form: the action taken, or an error message for the 'error' status.
+    note: text("note"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    processedAt: timestamp("processed_at", { withTimezone: true }),
+  },
+  (table) => [
+    // Audit lookup: "what did we receive for this PaymentIntent?"
+    index("stripe_webhook_events_pi_idx").on(table.paymentIntentId),
+  ],
+);
