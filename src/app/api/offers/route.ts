@@ -264,7 +264,18 @@ export async function POST(
       await setStripeCustomerId(db, userId, customerResult.customerId);
     }
 
-    const amountCents = body.pricePerTicketCents * body.groupSize;
+    // Authorize up to the AUTO-BID CAP, not just the submitted price, when
+    // auto-bid is on (ADR-0018). Binding can auto-raise a defended offer up
+    // to its cap and capture the raised amount — but Stripe only ever
+    // captures ≤ the authorized amount, so the hold must cover the ceiling.
+    // The DB/Zod check guarantees cap ≥ price, so this only ever holds more.
+    // Capturing less than the auth at binding releases the remainder. For
+    // non-auto-bid offers the auth is exactly the submitted amount.
+    const authPricePerTicketCents =
+      body.autoBidEnabled && body.autoBidCapCents !== undefined
+        ? body.autoBidCapCents
+        : body.pricePerTicketCents;
+    const amountCents = authPricePerTicketCents * body.groupSize;
     // Optional idempotency key from the request header. Stripe uses
     // this server-side to dedupe retries of the same PaymentIntent
     // create call. When absent, retries CAN create duplicates — the

@@ -19,7 +19,12 @@ import type Stripe from "stripe";
 
 import { db } from "@/lib/db";
 import { runBindingAllocation } from "@/lib/allocation/run-binding";
-import { offers, seatAssignments, shows } from "../../drizzle/schema";
+import {
+  offerRevisions,
+  offers,
+  seatAssignments,
+  shows,
+} from "../../drizzle/schema";
 
 import { seedShow, seedUser, seedVenue, seedVenueArchitecture } from "./helpers";
 
@@ -54,7 +59,15 @@ async function seedCap4Show() {
 
 async function seedPoolOffer(
   showId: string,
-  opts: { groupSize: number; priceCents: number; paymentIntentId: string },
+  opts: {
+    groupSize: number;
+    priceCents: number;
+    paymentIntentId: string;
+    tierPreference?: "specific" | "this_or_better" | "this_or_worse" | "any";
+    preferredTier?: string;
+    autoBidEnabled?: boolean;
+    autoBidCapCents?: number;
+  },
 ) {
   const user = await seedUser();
   const rows = await db
@@ -64,7 +77,10 @@ async function seedPoolOffer(
       userId: user.id,
       groupSize: opts.groupSize,
       pricePerTicketCents: opts.priceCents,
-      tierPreference: "any",
+      tierPreference: opts.tierPreference ?? "any",
+      preferredTier: opts.preferredTier ?? null,
+      autoBidEnabled: opts.autoBidEnabled ?? false,
+      autoBidCapCents: opts.autoBidCapCents ?? null,
       stripePaymentMethodId: "pm_test_stub",
       stripePaymentIntentId: opts.paymentIntentId,
       status: "pool",
@@ -215,5 +231,70 @@ describe("runBindingAllocation (integration)", () => {
       .from(shows)
       .where(eq(shows.id, show.id));
     expect(showRow?.status).toBe("allocated");
+  });
+
+  it("auto-raises a defended offer at binding, captures the raised amount, and persists the raise (ADR-0018)", async () => {
+    const show = await seedCap4Show();
+    // A ($62, no auto-bid) outranks B's submitted $50, so without auto-bid B
+    // is unplaced. B auto-bids up to $80 to defend premium and climbs in $5
+    // steps until it outranks A ($65), displacing A.
+    const offerA = await seedPoolOffer(show.id, {
+      groupSize: 4,
+      priceCents: 6200,
+      paymentIntentId: "pi_A",
+    });
+    const offerB = await seedPoolOffer(show.id, {
+      groupSize: 4,
+      priceCents: 5000,
+      paymentIntentId: "pi_B",
+      tierPreference: "specific",
+      preferredTier: "premium",
+      autoBidEnabled: true,
+      autoBidCapCents: 8000,
+    });
+
+    const { stripe, captureCalls, cancelCalls } = makeFakeStripe();
+    const outcome = await runBindingAllocation(db, stripe, show.id);
+
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(outcome.value.captured).toBe(1);
+    expect(outcome.value.cancelled).toBe(1);
+    expect(outcome.value.autoRaised).toBe(1);
+
+    // B won the row at the RAISED price: charged 4 × $65 = $260, and the
+    // offer-of-record's price was bumped to match (+ revisedAt stamped).
+    const [rowB] = await db.select().from(offers).where(eq(offers.id, offerB.id));
+    expect(rowB?.status).toBe("charged");
+    expect(rowB?.pricePerTicketCents).toBe(6500);
+    expect(rowB?.revisedAt).toBeInstanceOf(Date);
+    const [assignB] = await db
+      .select()
+      .from(seatAssignments)
+      .where(eq(seatAssignments.offerId, offerB.id));
+    expect(assignB?.chargedAmountCents).toBe(26000);
+
+    // The capture used the raised amount — within the cap the auth covers.
+    expect(captureCalls).toEqual([
+      { id: "pi_B", opts: { amount_to_capture: 26000 } },
+    ]);
+
+    // A was displaced and its auth released.
+    const [rowA] = await db.select().from(offers).where(eq(offers.id, offerA.id));
+    expect(rowA?.status).toBe("unplaced");
+    expect(cancelCalls).toEqual(["pi_A"]);
+
+    // The raise is captured as an append-only offer_revisions row, marked as
+    // an auto-bid raise so the activity feed can distinguish it from a
+    // fan-initiated revision.
+    const revisions = await db
+      .select()
+      .from(offerRevisions)
+      .where(eq(offerRevisions.offerId, offerB.id));
+    expect(revisions).toHaveLength(1);
+    const snapshot = revisions[0]?.snapshot as Record<string, unknown>;
+    expect(snapshot.pricePerTicketCents).toBe(6500);
+    expect(snapshot.status).toBe("placed");
+    expect(snapshot.autoBidRaise).toMatchObject({ fromCents: 5000, toCents: 6500 });
   });
 });
