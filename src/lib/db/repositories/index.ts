@@ -101,7 +101,9 @@ export {
 
 export {
   getTicketByAssignmentId,
+  getTicketSecretForRotatingQr,
   listTicketsByAssignmentIds,
+  type TicketSecret,
   type TicketStatus,
   type TicketSummary,
 } from "./tickets";
