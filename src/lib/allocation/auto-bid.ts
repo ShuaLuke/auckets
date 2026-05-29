@@ -19,13 +19,11 @@
 //     entirely". (An "any" fan who merely waterfalls to a worse tier is
 //     content there; we don't spend their money to climb.)
 //
-// SCOPE (slice 1): this resolves auto-bids for PREVIEW only (the continuous
-// projection fans/artists see between checkpoints). It is deliberately NOT
-// wired into binding yet: run-binding captures price*groupSize, but the
-// offer's PaymentIntent was authorized at the *submitted* amount, so
-// capturing an auto-raised amount would exceed the auth. Making auto-bid
-// affect binding requires authorizing up to the cap at submission — a
-// separate Stripe slice. See ADR-0018 + build-plan.ts.
+// SCOPE: this pure resolver is now used by BOTH preview and binding plans
+// (build-plan.ts). Binding is safe to charge a resolved (raised) price
+// because the submission path authorizes auto-bid offers up to their CAP
+// (cap×groupSize), so any resolved price (≤ cap) is within the held auth.
+// run-binding persists each placed raise and captures the resolved amount.
 
 import { allocate } from "@/lib/gae";
 import type { AllocationConfig, VenueRow } from "@/lib/gae/types";

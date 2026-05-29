@@ -64,10 +64,17 @@ export type AllocationPlan = {
   assignmentRows: AssignmentRow[];
   logRows: LogRow[];
   // Auto-bid raises applied to reach this plan (ADR-0018). Populated in
-  // preview; always empty in binding (binding doesn't auto-raise yet — see
-  // buildBindingAllocationPlan). Ephemeral in preview: the projection
-  // raises are for display + future displacement alerts, not persisted.
+  // both modes now. In preview they're ephemeral (a re-runnable projection,
+  // surfaced for display + displacement alerts). In binding the orchestrator
+  // persists each placed raise onto the offer + an offer_revisions row, and
+  // captures the raised amount.
   autoBidRaises: AutoBidRaise[];
+  // The settled pool the plan was built from — i.e. poolOffers with auto-bid
+  // raises applied (price + rankKey). The binding orchestrator reads the
+  // resolved price off these to compute each capture amount; preview carries
+  // them for symmetry. Same ids/groupSize/Stripe refs as the input pool —
+  // only price + rankKey differ for raised offers.
+  resolvedOffers: readonly Offer[];
 };
 
 // Maps the GAE's enum of actions to the schema's enum. They're
@@ -220,6 +227,9 @@ function buildAllocationPlan(
     ),
     logRows: buildLogRows(result, show.id, mode),
     autoBidRaises,
+    // poolOffers here is already the auto-bid-settled pool (both builders
+    // resolve before calling in).
+    resolvedOffers: poolOffers,
   };
 }
 
@@ -245,17 +255,25 @@ export function buildPreviewAllocationPlan(
 
 // Build a complete binding allocation plan.
 //
-// Deliberately does NOT resolve auto-bids: run-binding captures
-// price*groupSize, but each offer's PaymentIntent was authorized at the
-// *submitted* amount, so capturing an auto-raised amount would exceed the
-// auth. Auto-bid will affect binding only once offers are authorized up to
-// their cap at submission (a separate Stripe slice — ADR-0018). Until then
-// binding uses the submitted prices, so a fan defended in preview is not
-// yet defended at binding; this gap is tracked, not silent.
+// Resolves auto-bids first, identically to preview (ADR-0018): displaced
+// auto-bidders climb in $5 steps to defend their preferred section, capped,
+// then the plan is built from the settled pool — so a fan defended in
+// preview is also defended at binding. This is safe to charge because the
+// submission path authorizes auto-bid offers up to their CAP (cap×groupSize),
+// so the resolved price (≤ cap) is always within the held auth. The
+// orchestrator (run-binding) persists each placed raise + captures the
+// resolved amount; `autoBidRaises` carries the diff and `resolvedOffers` the
+// settled prices.
 export function buildBindingAllocationPlan(
   show: Show,
   architecture: DbVenueArchitecture,
   poolOffers: readonly Offer[],
 ): AllocationPlan {
-  return buildAllocationPlan(show, architecture, poolOffers, "binding");
+  const { offers: resolved, raises } = resolveAutoBids(
+    show,
+    architecture,
+    poolOffers,
+    makeConfig(show, "binding"),
+  );
+  return buildAllocationPlan(show, architecture, resolved, "binding", raises);
 }

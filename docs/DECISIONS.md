@@ -425,7 +425,7 @@ Auto-bid is the standard "eBay sniping prevention" mechanic, ported to a fairnes
 - Auto-bid resolution becomes a pure module (input: pool + caps + venue → settled effective prices + a raise log), called as a pre-pass by both `run-preview` and `run-binding`. The GAE stays untouched and pure.
 - Each auto-raise and each displacement transition emits an event for the notification dispatcher (Q38), and is logged (auto-raises are real price changes — they belong in `offer_revisions` / the allocation log for audit).
 - The composer's auto-bid copy changes from "+$5 each time your seat drops" to the section-defense framing.
-- Binding captures the **resolved** (possibly raised) price, not the originally-submitted one — the fan authorized up to their cap, so capturing a raised amount within the cap is within the auth. (Confirm this against the held PaymentIntent amount — a raise beyond the original auth amount may need a re-auth; flag for the Stripe slice.)
+- Binding captures the **resolved** (possibly raised) price, not the originally-submitted one — the fan authorized up to their cap, so capturing a raised amount within the cap is within the auth. **Implemented:** the submission path (`POST /api/offers`) authorizes auto-bid offers at `cap × group_size` (the DB check guarantees `cap ≥ price`, so the hold only ever grows); `buildBindingAllocationPlan` now resolves auto-bids identically to preview; and `run-binding` captures the resolved amount (≤ cap, always within the held auth — no re-auth needed) and persists each placed raise onto the offer + an `offer_revisions` row so the charge matches the offer-of-record.
 
 ---
 

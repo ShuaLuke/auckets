@@ -273,4 +273,51 @@ describe("buildBindingAllocationPlan", () => {
     );
     expect(plan.assignmentRows[0]?.stripePaymentIntentId).toBeNull();
   });
+
+  it("resolves auto-bids at binding: a displaced auto-bidder climbs to defend its section and is placed at the raised price (ADR-0018)", () => {
+    // One premium row, capacity 4 → only one group of 4 fits. A ($62) outranks
+    // B's submitted $50, so without auto-bid B is unplaced. B auto-bids up to
+    // $80 to defend premium and climbs in $5 steps until it outranks A ($65).
+    const show = makeShow({ activeRowIds: ["row_a"] });
+    const arch = makeArch([
+      makeRow({ capacity: 4, seatNumbers: ["1", "2", "3", "4"], tier: "premium" }),
+    ]);
+    const offerA = makeOffer({
+      id: "offer_a",
+      groupSize: 4,
+      pricePerTicketCents: 6200,
+      rankKey: BigInt(6200 * 1000 + 4),
+      stripePaymentIntentId: "pi_a",
+    });
+    const offerB = makeOffer({
+      id: "offer_b",
+      groupSize: 4,
+      pricePerTicketCents: 5000,
+      rankKey: BigInt(5000 * 1000 + 4),
+      tierPreference: "specific",
+      preferredTier: "premium",
+      autoBidEnabled: true,
+      autoBidCapCents: 8000,
+      stripePaymentIntentId: "pi_b",
+    });
+
+    const plan = buildBindingAllocationPlan(show, arch, [offerA, offerB]);
+
+    // B climbed past A and now holds the only row; A is displaced.
+    expect(plan.assignmentRows.map((r) => r.offerId)).toEqual(["offer_b"]);
+
+    const raiseB = plan.autoBidRaises.find((r) => r.offerId === "offer_b");
+    expect(raiseB).toBeDefined();
+    expect(raiseB?.fromCents).toBe(5000);
+    expect(raiseB?.toCents).toBe(6500);
+
+    // resolvedOffers carries the raised price (the orchestrator captures it)
+    // while leaving the non-auto-bidder untouched.
+    expect(
+      plan.resolvedOffers.find((o) => o.id === "offer_b")?.pricePerTicketCents,
+    ).toBe(6500);
+    expect(
+      plan.resolvedOffers.find((o) => o.id === "offer_a")?.pricePerTicketCents,
+    ).toBe(6200);
+  });
 });

@@ -45,6 +45,7 @@ import {
 import { logger } from "@/lib/logger";
 import {
   allocationLogs,
+  offerRevisions,
   offers,
   seatAssignments,
   shows,
@@ -65,6 +66,10 @@ export type RunBindingResult = {
   cardFailures: number;
   // Unplaced offers whose auth was released.
   cancelled: number;
+  // Placed offers whose price was auto-raised at binding (ADR-0018) — the
+  // raise was persisted onto the offer + an offer_revisions row, and the
+  // raised amount was the one captured.
+  autoRaised: number;
 };
 
 export type RunBindingError =
@@ -122,6 +127,17 @@ export async function runBindingAllocation(
   const placedSet = new Set(placedOfferIds);
   const unplacedOffers = poolOffers.filter((o) => !placedSet.has(o.id));
 
+  // The auto-bid-settled pool the plan was built from. Capture amounts and
+  // the raise persistence below read the RESOLVED price off these (≤ the
+  // offer's cap, which is what we authorized at submission).
+  const resolvedOfferById = new Map(plan.resolvedOffers.map((o) => [o.id, o]));
+
+  // Only persist raises for offers that actually ENDED placed: an auto-bidder
+  // that climbed to its cap and still didn't hold a seat is unplaced, pays
+  // nothing, and its submitted price stands. Recording a raise there would
+  // claim a price change the fan was never charged for.
+  const placedRaises = plan.autoBidRaises.filter((r) => placedSet.has(r.offerId));
+
   // ---- Phase 1: decide & persist atomically (no Stripe calls) ----
   await db.transaction(async (tx) => {
     // Lock in the run so a concurrent or duplicate trigger sees status
@@ -168,6 +184,47 @@ export async function runBindingAllocation(
           ),
         );
     }
+
+    // Persist auto-bid raises for placed offers (ADR-0018): the offer-of-
+    // record's price + rankKey become the resolved amount, and an
+    // offer_revisions row captures the change so /my-bids and the activity
+    // feed show the raise — and so the charged amount matches the offer. The
+    // append-only revisions snapshot mirrors upsertOfferForUser's shape.
+    for (const raise of placedRaises) {
+      const resolved = resolvedOfferById.get(raise.offerId);
+      if (!resolved) continue; // derived from the plan; defensive
+      // rank_key is a GENERATED STORED column (price*1000 + group_size), so
+      // Postgres recomputes it from the new price — we never set it directly.
+      await tx
+        .update(offers)
+        .set({
+          pricePerTicketCents: resolved.pricePerTicketCents,
+          revisedAt: new Date(),
+        })
+        .where(eq(offers.id, raise.offerId));
+      await tx.insert(offerRevisions).values({
+        offerId: raise.offerId,
+        snapshot: {
+          groupSize: resolved.groupSize,
+          pricePerTicketCents: resolved.pricePerTicketCents,
+          tierPreference: resolved.tierPreference,
+          preferredTier: resolved.preferredTier,
+          channel: resolved.channel,
+          autoBidEnabled: resolved.autoBidEnabled,
+          autoBidCapCents: resolved.autoBidCapCents,
+          autoBidIncrementCents: resolved.autoBidIncrementCents,
+          privateThresholdCents: resolved.privateThresholdCents,
+          // Post-write state: this offer is being placed by this run.
+          status: "placed",
+          stripePaymentMethodId: resolved.stripePaymentMethodId,
+          stripeSetupIntentId: resolved.stripeSetupIntentId,
+          stripePaymentIntentId: resolved.stripePaymentIntentId,
+          // Mark the provenance so the activity feed can label it an
+          // auto-bid raise rather than a fan-initiated revision.
+          autoBidRaise: { fromCents: raise.fromCents, toCents: raise.toCents, steps: raise.steps },
+        },
+      });
+    }
   });
 
   // ---- Phase 2: move money (outside the transaction, per offer) ----
@@ -175,11 +232,11 @@ export async function runBindingAllocation(
   let cardFailures = 0;
   let cancelled = 0;
 
-  const offerById = new Map(poolOffers.map((o) => [o.id, o]));
-
+  // Source placed offers from the RESOLVED pool so the capture amount is the
+  // auto-raised price (when raised) — always ≤ the cap we authorized.
   for (const row of plan.assignmentRows) {
-    const offer = offerById.get(row.offerId);
-    if (!offer) continue; // plan rows derive from poolOffers; defensive
+    const offer = resolvedOfferById.get(row.offerId);
+    if (!offer) continue; // plan rows derive from the resolved pool; defensive
     const amountCents = offer.pricePerTicketCents * offer.groupSize;
 
     let charged = false;
@@ -270,6 +327,7 @@ export async function runBindingAllocation(
       captured,
       cardFailures,
       cancelled,
+      autoRaised: placedRaises.length,
     },
   };
 }
