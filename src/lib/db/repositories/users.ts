@@ -52,6 +52,19 @@ export async function ensureUserMirror(
   return row;
 }
 
+export type UserRow = User;
+
+// Read a single local user row by Clerk user id. Used by card-failure
+// recovery to resolve the fan's email + existing Stripe Customer before
+// charging their replacement card. Returns null if the mirror row is absent.
+export async function getUserById(
+  db: Db,
+  userId: string,
+): Promise<User | null> {
+  const rows = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  return rows[0] ?? null;
+}
+
 // Persist a freshly-created Stripe Customer ID onto the user's row.
 // Called once, right after ensureStripeCustomer creates a new Customer
 // on the fan's first real-path offer. The UPDATE is unconditional so a

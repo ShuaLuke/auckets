@@ -32,7 +32,7 @@ The gap to **beta** is the back half of the fan journey plus payment hardening, 
 | **Show.jsx** (fan show detail) | ✅ Real Stripe submit + RankBoard + PreviewBanner/VenuePreview (#55, #56, #59–#61) | `src/app/(fan)/shows/[showId]/page.tsx` | small (DisplacementToast needs polling/push — follow-up) |
 | **TicketViewer.jsx** | ❌ Not built — 🔴 **hard blocker** | — | large (ADR-0015: rotating TOTP QR + geo gate) |
 | **ResaleFlow.jsx** | ❌ Not built (post-beta) | — | large (ADR-0014 anti-scalping mechanics) |
-| **CardFailure.jsx** | ❌ Not built — 🟠 **strong blocker** | — | medium (Stripe is in; needs webhook + recovery flow) |
+| **CardFailure.jsx** | ⚠️ Backend shipped; UI pending | recovery backend at `/api/offers/[id]/recover` + `card-failure-expiry` cron | small (the modal — re-collect card via Elements → POST recover; backend + 4h window done) |
 | **ArtistDashboard.jsx** | ✅ Close to fidelity | `src/app/(artist)/artists/[artistId]/page.tsx` | small (omitted "New show" button — depends on ShowCreate) |
 | **ShowAdmin.jsx** | ✅ Tabbed shell + Run-binding button (#54, #65) | `src/app/(artist)/artists/[artistId]/shows/[showId]/page.tsx` | small–medium (Fans · data export tab pending) |
 | **ShowCreate.jsx** | ❌ UI not built — 🟡 **soft gap** (`POST /api/shows` exists) | — | medium (form on top of existing route) |
@@ -80,7 +80,7 @@ Located at `src/components/ui/`. Most are ported; two notable gaps:
 
 | System | Status | Notes |
 |---|---|---|
-| **Stripe / payments** | ✅ Live (real path) | Stripe SDK + `src/lib/stripe/` (client, `customers.ts`, `payment-intents.ts`, `webhook.ts`). `POST /api/offers` ensures a Customer and creates a manual-capture `PaymentIntent` to hold the auth (≤6-day window, ADR-0003). Elements card collection wired. Revision cancels prior intent + recreates. **Signed, idempotent webhook** at `/api/stripe/webhook` (receipts in `stripe_webhook_events`): `payment_intent.payment_failed` → `card_failure`, `succeeded` → `charged` backstop, `canceled` recorded. **Gaps:** CardFailure *recovery* flow (the webhook records the failure; retry/notify is a separate slice — 🟠), no app-level offer-idempotency-table writes, dev stub remains as fallback only. |
+| **Stripe / payments** | ✅ Live (real path) | Stripe SDK + `src/lib/stripe/` (client, `customers.ts`, `payment-intents.ts`, `webhook.ts`, `card-failure-recovery.ts`). `POST /api/offers` ensures a Customer and creates a manual-capture `PaymentIntent` to hold the auth (≤6-day window, ADR-0003). Elements card collection wired. Revision cancels prior intent + recreates. **Signed, idempotent webhook** at `/api/stripe/webhook` (receipts in `stripe_webhook_events`): `payment_intent.payment_failed` → `card_failure`, `succeeded` → `charged` backstop, `canceled` recorded. **Card-failure recovery (backend):** `POST /api/offers/[id]/recover` charges a new card within the 4h window (`recoverCardFailure`); the `card-failure-expiry` cron releases lapsed seats. **Gaps:** the recovery *UI modal* + fan/ops failure notification, no app-level offer-idempotency-table writes, dev stub remains as fallback only. |
 | **Notifications — Resend (email)** | ⚠️ Client + ops scaffold wired | `welcome` + `RequestActioned` templates exist; ops (Slack/Resend) notification on request actions fires (#50). 4 fan-facing templates still missing; `auckets.com` not yet verified in Resend. |
 | **Notifications — Slack** | ⚠️ Scaffold wired (#50) | Ops alerts on request actions go out; broader coverage (card-failure, allocation-run) not wired. |
 | **Notifications — Twilio / SMS** | ❌ Not built (post-beta) | ADR-0016 moved SMS to MVP. No Twilio SDK, no 10DLC registration. **Long pole** — 1–2 week carrier turnaround; can start registration anytime. |
@@ -121,7 +121,7 @@ Beta = real fans, real money, real attendance. The money path is done; the chain
 ### 🟠 Strong blockers — money correctness/trust before real-money beta
 
 3. ~~**Stripe webhook handler**~~ — ✅ **shipped.** Signed (`STRIPE_WEBHOOK_SECRET`) + idempotent (`stripe_webhook_events` receipts) handler at `/api/stripe/webhook`, acting on `payment_intent.payment_failed` / `succeeded` / `canceled`. Satisfies prime-directive #6.
-4. **CardFailure recovery** — the 2% capture-failure case (`payment_intent.payment_failed`). Notification + retry + hold-the-seat logic. Less common with auth-based holds (card already validated) but auths can be cancelled between auth and capture.
+4. **CardFailure recovery** — ⚠️ **backend shipped** (`recoverCardFailure` + `/api/offers/[id]/recover` + `card-failure-expiry` cron, 4h window). **Remaining:** the fan-facing recovery modal (re-collect card → POST recover) and the fan/ops "your card failed" notification.
 5. ~~**Scheduled binding**~~ — ✅ **shipped.** Inngest cron (`scheduled-binding`, every 5 min) sweeps shows past their `binding_allocation_at` and runs binding (`sweepDueBindings`); the manual admin button remains. Paused shows excluded (ADR-0013).
 
 ### 🟡 Soft gaps — beta-tolerable with a manual workaround

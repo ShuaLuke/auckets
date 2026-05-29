@@ -80,6 +80,16 @@ export const env = createEnv({
     //   (payment_intent.payment_failed, charge.refunded, etc). One per env.
     STRIPE_SECRET_KEY: z.string().min(1).startsWith("sk_").optional(),
     STRIPE_WEBHOOK_SECRET: z.string().min(1).startsWith("whsec_").optional(),
+    // Card-failure recovery window (OPEN_QUESTION B, resolved 2026-05-29 by
+    // Julia → 4h). A fan whose card fails at binding has this many minutes
+    // from card_failure_at to submit a new card and reclaim the seat; after
+    // that the expiry cron releases it. Tunable per environment without a
+    // code change. z.coerce because env vars arrive as strings.
+    CARD_FAILURE_RECOVERY_WINDOW_MINUTES: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(240),
     // Dev-only escape hatch for the offer-submission flow while ADR-0003
     // (Stripe SetupIntent vs. pre-auth) is still being decided. When
     // "true", POST /api/offers accepts submissions using placeholder
@@ -117,6 +127,8 @@ export const env = createEnv({
     SLACK_OPS_WEBHOOK_URL: process.env.SLACK_OPS_WEBHOOK_URL,
     STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
     STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
+    CARD_FAILURE_RECOVERY_WINDOW_MINUTES:
+      process.env.CARD_FAILURE_RECOVERY_WINDOW_MINUTES,
     NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,
     NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
     ALLOW_DEV_OFFER_STUB: process.env.ALLOW_DEV_OFFER_STUB,

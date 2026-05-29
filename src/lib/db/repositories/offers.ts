@@ -25,13 +25,14 @@
 // data); `getOfferByShowAndUser` strictly filters by the calling userId
 // so it can only ever return the caller's own offer.
 
-import { and, desc, eq, gt, inArray, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, lt, lte, or, sql } from "drizzle-orm";
 
 import type { Db } from "@/lib/db";
 import {
   artists,
   offerRevisions,
   offers,
+  seatAssignments,
   shows,
   venues,
 } from "../../../../drizzle/schema";
@@ -127,6 +128,51 @@ export async function listOffersForUser(
   userId: string,
 ): Promise<Offer[]> {
   return db.select().from(offers).where(eq(offers.userId, userId));
+}
+
+// Single offer by id. Used by the card-failure recovery route to load the
+// offer for ownership + status + window checks before charging a new card.
+export async function getOfferById(
+  db: Db,
+  offerId: string,
+): Promise<Offer | null> {
+  const rows = await db
+    .select()
+    .from(offers)
+    .where(eq(offers.id, offerId))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export type ExpiredCardFailure = {
+  offerId: string;
+  seatAssignmentId: string;
+};
+
+// Card-failure offers whose recovery window has lapsed — the work list for the
+// expiry cron. An offer is in 'card_failure' and its binding seat assignment
+// carries the card_failure_at stamp; this returns those whose stamp is at or
+// before the cutoff (now − window). The expiry releases the seat (offer →
+// unplaced, assignment deleted) per offer.
+export async function listExpiredCardFailures(
+  db: Db,
+  cutoff: Date,
+): Promise<ExpiredCardFailure[]> {
+  const rows = await db
+    .select({
+      offerId: offers.id,
+      seatAssignmentId: seatAssignments.id,
+    })
+    .from(offers)
+    .innerJoin(seatAssignments, eq(seatAssignments.offerId, offers.id))
+    .where(
+      and(
+        eq(offers.status, "card_failure"),
+        eq(seatAssignments.isBinding, true),
+        lte(seatAssignments.cardFailureAt, cutoff),
+      ),
+    );
+  return rows;
 }
 
 // Look up the offer backing a Stripe PaymentIntent — the join the webhook
