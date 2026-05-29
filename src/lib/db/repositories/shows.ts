@@ -152,6 +152,22 @@ export async function listShowIdsDueForBinding(
   return rows.map((r) => r.id);
 }
 
+// Shows ready for ticket issuance: bound ('allocated') and within the T-48h
+// issuance horizon (doors within `horizon`). Tickets issue T-48h before doors
+// per TECHNICAL_INTEGRATION.md; the issuance sweep passes now + 48h as the
+// horizon. Returns ids only — the sweep loads each show's charged seats.
+export async function listShowIdsDueForTicketIssuance(
+  db: Db,
+  horizon: Date,
+): Promise<string[]> {
+  const rows = await db
+    .select({ id: shows.id })
+    .from(shows)
+    .where(and(eq(shows.status, "allocated"), lte(shows.doorsAt, horizon)))
+    .orderBy(shows.doorsAt);
+  return rows.map((r) => r.id);
+}
+
 export async function listShowsForArtist(
   db: Db,
   artistId: string,

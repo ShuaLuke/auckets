@@ -26,10 +26,14 @@
 // Ticket — by design, so consumers can't widen back to the secret-
 // carrying shape without an explicit second query.
 
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 
 import type { Db } from "@/lib/db";
-import { tickets } from "../../../../drizzle/schema";
+import {
+  offers,
+  seatAssignments,
+  tickets,
+} from "../../../../drizzle/schema";
 
 // Status enum from schema line 376. Kept as a union so unknown future
 // values surface a TS error at the presenter boundary rather than
@@ -138,4 +142,65 @@ export async function getTicketSecretForRotatingQr(
     .where(eq(tickets.id, ticketId))
     .limit(1);
   return rows[0] ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// Issuance (write path).
+// ---------------------------------------------------------------------------
+
+export type IssuableSeat = {
+  seatAssignmentId: string;
+  // The seat's owner — the offer's user (ticket.user_id references users.id).
+  userId: string;
+};
+
+// Binding seat assignments for a show whose offer is 'charged' (paid) but that
+// don't yet have a ticket — the work list for issuance. A left join to tickets
+// with an IS NULL filter excludes seats already issued, so this is naturally
+// idempotent across re-runs.
+export async function listChargedAssignmentsWithoutTicket(
+  db: Db,
+  showId: string,
+): Promise<IssuableSeat[]> {
+  const rows = await db
+    .select({
+      seatAssignmentId: seatAssignments.id,
+      userId: offers.userId,
+    })
+    .from(seatAssignments)
+    .innerJoin(offers, eq(offers.id, seatAssignments.offerId))
+    .leftJoin(tickets, eq(tickets.seatAssignmentId, seatAssignments.id))
+    .where(
+      and(
+        eq(seatAssignments.showId, showId),
+        eq(seatAssignments.isBinding, true),
+        eq(offers.status, "charged"),
+        isNull(tickets.id),
+      ),
+    );
+  return rows;
+}
+
+export type TicketToIssue = {
+  seatAssignmentId: string;
+  userId: string;
+  // Server-minted via generateTicketSecret(). Written, never read back here.
+  totpSecret: string;
+};
+
+// Insert issued tickets. ON CONFLICT (seat_assignment_id) DO NOTHING makes a
+// concurrent or repeated issuance run a no-op for already-issued seats.
+// Returns the count actually inserted; deliberately does NOT return the rows
+// (and never the secret) — issuance is fire-and-forget.
+export async function insertIssuedTickets(
+  db: Db,
+  rows: TicketToIssue[],
+): Promise<number> {
+  if (rows.length === 0) return 0;
+  const inserted = await db
+    .insert(tickets)
+    .values(rows)
+    .onConflictDoNothing({ target: tickets.seatAssignmentId })
+    .returning({ id: tickets.id });
+  return inserted.length;
 }
