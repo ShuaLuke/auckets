@@ -51,6 +51,24 @@ update users set role = 'FAN' where email = 'julia@auckets.com';
 
 ---
 
+## Grant VENUE_STAFF (door scanner)
+
+The role that works the door scanner (`/scan`). [`userCanScan`](../../src/lib/db/repositories/users.ts) admits `VENUE_STAFF` **and** `AUCKETS_ADMIN` (ops covering a venue), so an admin can scan without this grant.
+
+```sql
+update users set role = 'VENUE_STAFF' where email = 'door@thevenue.example';
+```
+
+After reload, `/scan` resolves for them (instead of redirecting) and POSTs to `/api/scan` succeed. To revoke:
+
+```sql
+update users set role = 'FAN' where email = 'door@thevenue.example';
+```
+
+> Note: `role` is single-valued, so a `VENUE_STAFF` user is not also a `FAN`/`ARTIST`. For the MVP door-staff use case that's fine; a user who needs multiple hats gets the most-privileged role they need.
+
+---
+
 ## Grant artist management (e.g. Cope on his own artist)
 
 Two parts: (1) optionally set `role = 'ARTIST'`, and (2) add the `artist_members` row that actually grants management of a specific artist. The membership row is the load-bearing one.

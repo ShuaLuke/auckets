@@ -78,6 +78,17 @@ function constantTimeEquals(a: string, b: string): boolean {
   return timingSafeEqual(ab, bb);
 }
 
+// Pull the ticketId out of a scanned token WITHOUT verifying it — the scanner
+// needs the id to fetch that ticket's secret before it can verify. Returns
+// null on a token that isn't even shaped right (so the scan is logged as
+// invalid with no ticket reference). Verification still happens afterward via
+// verifyTicketToken against the fetched secret.
+export function parseTicketId(token: string): string | null {
+  const parts = token.split(".");
+  if (parts.length !== 5 || parts[0] !== "auckets") return null;
+  return parts[2] ?? null;
+}
+
 // Mint the token a fan's QR should currently encode. `nowMs` is injectable
 // for deterministic tests.
 export function generateTicketToken(

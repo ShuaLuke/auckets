@@ -90,6 +90,7 @@ export {
   getEmailsByUserIds,
   getUserById,
   setStripeCustomerId,
+  userCanScan,
   userIsAdmin,
   type UserRow,
 } from "./users";
@@ -124,11 +125,16 @@ export {
 
 export {
   getTicketByAssignmentId,
+  getTicketForScan,
   getTicketSecretForRotatingQr,
   insertIssuedTickets,
+  insertTicketScan,
   listChargedAssignmentsWithoutTicket,
   listTicketsByAssignmentIds,
+  markTicketScanned,
   type IssuableSeat,
+  type TicketForScan,
+  type TicketScanRecord,
   type TicketSecret,
   type TicketStatus,
   type TicketSummary,
