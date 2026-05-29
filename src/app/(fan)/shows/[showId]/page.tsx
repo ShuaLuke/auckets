@@ -11,6 +11,7 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
 
+import { DisplacementAlerts } from "@/components/show/DisplacementAlerts";
 import { OfferComposer } from "@/components/show/OfferComposer";
 import { PreviewBanner } from "@/components/show/PreviewBanner";
 import { RankBoard } from "@/components/show/RankBoard";
@@ -26,14 +27,17 @@ import {
   getTicketByAssignmentId,
   getUserRankInShowPool,
   listSeatAssignmentsForShow,
+  listUnacknowledgedDisplacementEventsForUser,
 } from "@/lib/db/repositories";
 import {
   DEFAULT_TZ,
   computeShowCapacity,
+  presentDisplacementEvents,
   presentFanVenuePreview,
   presentPreviewBanner,
   presentRankBoard,
   presentShowDetail,
+  type DisplacementAlertView,
   type PreviewBannerView,
   type RankBoardView,
   type ShowDetailView,
@@ -53,6 +57,7 @@ type LoadedShowDetail = {
   previewBanner: PreviewBannerView;
   venuePreview: VenuePreviewView;
   venueName: string;
+  displacementAlerts: DisplacementAlertView[];
 };
 
 async function loadShowDetail(
@@ -70,6 +75,7 @@ async function loadShowDetail(
     provisionalFilled,
     userRank,
     allAssignments,
+    unackedEvents,
   ] = await Promise.all([
     getShowById(db, showId),
     getOfferByShowAndUser(db, showId, userId),
@@ -77,6 +83,7 @@ async function loadShowDetail(
     getProvisionalFilledByShow(db, showId),
     getUserRankInShowPool(db, showId, userId),
     listSeatAssignmentsForShow(db, showId),
+    listUnacknowledgedDisplacementEventsForUser(db, userId),
   ]);
   if (!show) return null;
 
@@ -125,12 +132,20 @@ async function loadShowDetail(
     userAssignment,
   );
 
+  // The repo returns the fan's unacknowledged alerts across all shows; scope
+  // to this show for the on-page toasts. (A global inbox can reuse the
+  // unscoped list later.)
+  const displacementAlerts = presentDisplacementEvents(
+    unackedEvents.filter((e) => e.showId === showId),
+  );
+
   return {
     show: view,
     rankBoard,
     previewBanner,
     venuePreview,
     venueName: show.venue.name,
+    displacementAlerts,
   };
 }
 
@@ -174,11 +189,13 @@ export default async function ShowPage({ params }: Props) {
             existingOffer={data.show.yourOffer ?? null}
           />
 
-          {/* Right column — full design fidelity except for
-              DisplacementToast, which needs polling/push and is a
-              follow-up. Card order matches the prototype: live preview
-              banner first, venue map second, RankBoard third. */}
+          {/* Right column. Card order matches the prototype: displacement
+              alerts first (when any), then live preview banner, venue map,
+              RankBoard. Alerts are server-rendered from displacement_events
+              and update on refresh (ADR-0018 §4); the live-toast-on-push
+              variant remains a future enhancement. */}
           <div className="flex flex-col gap-5">
+            <DisplacementAlerts alerts={data.displacementAlerts} />
             <PreviewBanner view={data.previewBanner} />
             <VenuePreview view={data.venuePreview} venueName={data.venueName} />
             <RankBoard view={data.rankBoard} />
