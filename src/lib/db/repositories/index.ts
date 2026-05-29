@@ -99,6 +99,7 @@ export {
   listAllShows,
   listOpenShows,
   listShowIdsDueForBinding,
+  listShowIdsDueForTicketIssuance,
   listShowsForArtist,
   type ShowSummary,
   type ShowWithRelations,
@@ -124,8 +125,12 @@ export {
 export {
   getTicketByAssignmentId,
   getTicketSecretForRotatingQr,
+  insertIssuedTickets,
+  listChargedAssignmentsWithoutTicket,
   listTicketsByAssignmentIds,
+  type IssuableSeat,
   type TicketSecret,
   type TicketStatus,
   type TicketSummary,
+  type TicketToIssue,
 } from "./tickets";

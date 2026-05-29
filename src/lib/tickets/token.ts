@@ -20,7 +20,15 @@
 // into a client component — the browser fetches the token from the
 // GET /api/tickets/[ticketId]/token endpoint instead.
 
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+
+// Mint a ticket's signing secret at issuance. The token scheme uses this as
+// the HMAC key (not an otplib seed), so any high-entropy string works — 32
+// random bytes (256 bits) base64url-encoded. SERVER ONLY: the secret is
+// written to tickets.totp_secret and never leaves the server (ADR-0015).
+export function generateTicketSecret(): string {
+  return randomBytes(32).toString("base64url");
+}
 
 export const TOKEN_VERSION = "v1";
 export const WINDOW_MS = 60_000;
