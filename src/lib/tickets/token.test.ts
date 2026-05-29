@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   generateTicketToken,
+  parseTicketId,
   verifyTicketToken,
   WINDOW_MS,
 } from "./token";
@@ -88,5 +89,22 @@ describe("verifyTicketToken", () => {
       ok: false,
       reason: "bad_version",
     });
+  });
+});
+
+describe("parseTicketId", () => {
+  it("extracts the ticketId from a well-formed token without verifying", () => {
+    const { token } = generateTicketToken(TICKET, SECRET, NOW);
+    expect(parseTicketId(token)).toBe(TICKET);
+  });
+
+  it("returns the id even when the signature is wrong (parsing != verifying)", () => {
+    expect(parseTicketId(`auckets.v1.${TICKET}.28333334.bogus_sig`)).toBe(TICKET);
+  });
+
+  it("returns null for a malformed token", () => {
+    expect(parseTicketId("garbage")).toBeNull();
+    expect(parseTicketId("auckets.v1.only.three")).toBeNull();
+    expect(parseTicketId("nope.v1.x.1.sig")).toBeNull();
   });
 });

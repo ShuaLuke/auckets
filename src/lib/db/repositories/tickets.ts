@@ -32,6 +32,7 @@ import type { Db } from "@/lib/db";
 import {
   offers,
   seatAssignments,
+  ticketScans,
   tickets,
 } from "../../../../drizzle/schema";
 
@@ -203,4 +204,71 @@ export async function insertIssuedTickets(
     .onConflictDoNothing({ target: tickets.seatAssignmentId })
     .returning({ id: tickets.id });
   return inserted.length;
+}
+
+// ---------------------------------------------------------------------------
+// Scanning (door — Scanner). Like getTicketSecretForRotatingQr, getTicketForScan
+// is a loudly-named, server-only read that touches totp_secret (to verify the
+// scanned token). The secret is used only to recompute the HMAC and is never
+// returned to a response.
+// ---------------------------------------------------------------------------
+
+export type TicketForScan = {
+  id: string;
+  status: string;
+  totpSecret: string;
+};
+
+export async function getTicketForScan(
+  db: Db,
+  ticketId: string,
+): Promise<TicketForScan | null> {
+  const rows = await db
+    .select({
+      id: tickets.id,
+      status: tickets.status,
+      totpSecret: tickets.totpSecret,
+    })
+    .from(tickets)
+    .where(eq(tickets.id, ticketId))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+// Mark a ticket admitted. Guarded on status='issued' so a concurrent double
+// scan can't admit twice — the second update matches 0 rows, which the caller
+// reads as a replay. Returns the number of rows updated (0 or 1).
+export async function markTicketScanned(
+  db: Db,
+  ticketId: string,
+  staffId: string,
+): Promise<number> {
+  const updated = await db
+    .update(tickets)
+    .set({ status: "scanned", scannedAt: new Date(), scannedByStaffId: staffId })
+    .where(and(eq(tickets.id, ticketId), eq(tickets.status, "issued")))
+    .returning({ id: tickets.id });
+  return updated.length;
+}
+
+export type TicketScanRecord = {
+  // Null for a scan that didn't resolve to a known ticket (malformed token /
+  // unknown id) — the FK only allows a real ticket id.
+  ticketId: string | null;
+  scannedByStaffId: string;
+  result: "ok" | "invalid" | "replay" | "expired_token" | "geo_failed" | "staff_override";
+  reason?: string;
+};
+
+// Append a scan to the audit log (every scan, valid or not — SECURITY.md #19).
+export async function insertTicketScan(
+  db: Db,
+  record: TicketScanRecord,
+): Promise<void> {
+  await db.insert(ticketScans).values({
+    ticketId: record.ticketId,
+    scannedByStaffId: record.scannedByStaffId,
+    result: record.result,
+    reason: record.reason ?? null,
+  });
 }

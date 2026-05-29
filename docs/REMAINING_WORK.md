@@ -12,7 +12,7 @@ Updated 2026-05-28 after PRs #51–#67 merged (real Stripe path, binding allocat
 
 The gap to **beta** is the back half of the fan journey plus payment hardening, in three buckets:
 
-- 🔴 **Hard blockers** — a beta fan cannot attend without these: ~~**TicketViewer**~~ (✅ shipped — front-end #68, signed rotating-token endpoint #69, and T-48h issuance now mints the ticket rows), **Scanner** (remaining).
+- 🔴 ~~**Hard blockers**~~ — **all shipped.** ~~TicketViewer~~ (front-end #68, signed rotating-token endpoint #69, T-48h issuance) and ~~Scanner~~ (VENUE_STAFF-gated `/scan` + `/api/scan` validating the rotating QR into the `ticket_scans` log). A beta fan can now get a ticket and through the door.
 - 🟠 **Strong blockers** — money correctness/trust: ~~**Stripe webhook handler**~~ (✅ shipped — signed + idempotent `/api/stripe/webhook`), **CardFailure recovery**, ~~**scheduled binding**~~ (✅ shipped — Inngest cron sweeps due checkpoints).
 - 🟡 **Soft gaps** — beta-tolerable with manual workarounds: 4 fan email templates, **AllocationFinal**, **ShowCreate UI**.
 
@@ -39,7 +39,7 @@ The gap to **beta** is the back half of the fan journey plus payment hardening, 
 | **VenueBuilder.jsx** | ❌ Not built (post-beta) | — | large (rows, capacity, parity, lean, tier, holds builder) |
 | **Allocation.jsx** | ❌ Not built (post-beta polish) | — | small–medium ("you're in the room" confirmation page after submit) |
 | **AllocationFinal.jsx** | ❌ Not built — 🟡 **soft gap** | — | medium (fan "placed / not placed" result page after binding) |
-| **Scanner.jsx** | ❌ Not built — 🔴 **hard blocker** | — | large (door-staff scan app; paired with TicketViewer) |
+| **Scanner.jsx** | ✅ Built | `/scan` + `src/components/scan/Scanner.tsx` | done (camera via BarcodeDetector + manual token fallback → `/api/scan`; VENUE_STAFF-gated). Geo-gating stays on the fan viewer. |
 
 ---
 
@@ -85,7 +85,7 @@ Located at `src/components/ui/`. Most are ported; two notable gaps:
 | **Notifications — Slack** | ⚠️ Scaffold wired (#50) | Ops alerts on request actions go out; broader coverage (card-failure, allocation-run) not wired. |
 | **Notifications — Twilio / SMS** | ❌ Not built (post-beta) | ADR-0016 moved SMS to MVP. No Twilio SDK, no 10DLC registration. **Long pole** — 1–2 week carrier turnaround; can start registration anytime. |
 | **Tickets** | ✅ Issuance + viewer live | `tickets` table + repo; **T-48h issuance** (`issueTicketsForDueShows`, `ticket-issuance` cron) mints a ticket + server-only `totp_secret` per paid seat of a bound show; the signed rotating-QR endpoint (#69) + geo-gated TicketViewer (#68) consume it. **Remaining:** the Scanner that validates the QR at the door (`ticketScans` still write-unused). |
-| **Scanner** | ❌ Not built — 🔴 **hard blocker** | Door-entry app; paired with TicketViewer. Needs `VENUE_STAFF` role (per ADR-0012, added for Austin). |
+| **Scanner** | ✅ Live | `/scan` (VENUE_STAFF / AUCKETS_ADMIN gated via `userCanScan`) → `POST /api/scan` → `processTicketScan` verifies the rotating QR (`verifyTicketToken`), admits the ticket (status → `scanned`), and appends every scan to `ticketScans` (ok / replay / expired_token / invalid). Camera (BarcodeDetector) + manual fallback. |
 | **Resales** | ❌ Not built (post-beta) | `resales` table exists; no refund logic, no artist-uplift routing, no Miracle Tickets gift flow. |
 | **Binding allocation** | ✅ Live (#62) | `mode=binding` on the allocate route (`src/lib/allocation/run-binding.ts`) captures placed offers' PaymentIntents, cancels unplaced auths, transitions statuses. Triggered by an admin "Run binding" button (#65) **and** an Inngest cron (`scheduled-binding`, every 5 min) that sweeps shows whose `binding_allocation_at` has passed (`sweepDueBindings`). Paused shows are excluded — ops decides. |
 
@@ -116,7 +116,7 @@ Beta = real fans, real money, real attendance. The money path is done; the chain
 ### 🔴 Hard blockers — a beta fan literally cannot attend without these
 
 1. ~~**TicketViewer**~~ — ✅ **shipped.** Geo-gated 60s rotating QR (#68), server-signed token endpoint `/api/tickets/[id]/token` (#69), and T-48h issuance (`ticket-issuance` cron) that mints the ticket + `totp_secret`. The fan-facing viewer is live for any bound show within 48h of doors.
-2. **Scanner** — door-staff scan app paired with TicketViewer. Camera/QR scan UI, scan log (`ticketScans`), attendance recording, `VENUE_STAFF` role gating (ADR-0012). Validates via the already-shipped `verifyTicketToken`. **Now the sole remaining hard blocker.**
+2. ~~**Scanner**~~ — ✅ **shipped.** `/scan` (VENUE_STAFF-gated) + `POST /api/scan` validate the rotating QR via `verifyTicketToken`, admit the ticket, and log every scan to `ticketScans` (ok / replay / expired / invalid). Camera (BarcodeDetector) with a manual token fallback. **Both hard blockers are now done** — the beta attend-path is complete end-to-end.
 
 ### 🟠 Strong blockers — money correctness/trust before real-money beta
 

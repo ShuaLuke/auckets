@@ -95,6 +95,23 @@ export async function userIsAdmin(db: Db, userId: string): Promise<boolean> {
   return rows.length > 0;
 }
 
+// Authorization for the door scanner (ADR-0012 / ADR-0015). VENUE_STAFF is
+// the role that works the door; AUCKETS_ADMIN can scan too (ops covering a
+// venue). A missing user row is "can't scan", same posture as userIsAdmin.
+export async function userCanScan(db: Db, userId: string): Promise<boolean> {
+  const rows = await db
+    .select({ role: users.role })
+    .from(users)
+    .where(
+      and(
+        eq(users.id, userId),
+        inArray(users.role, ["VENUE_STAFF", "AUCKETS_ADMIN"]),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
 // Batch email lookup keyed by Clerk user_id. Used by the admin inbox
 // presenter to resolve the executor's email without growing the inbox
 // query into a second users-self-join. Empty input short-circuits to
