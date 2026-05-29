@@ -7,7 +7,7 @@
 // design/ui_kits/auckets/screens/*.jsx are the presenter contract, not the
 // repository contract.
 
-import { eq } from "drizzle-orm";
+import { and, eq, inArray, lte } from "drizzle-orm";
 
 import type { Db } from "@/lib/db";
 import type { VenueRow } from "@/lib/gae/types";
@@ -123,6 +123,33 @@ export async function listOpenShows(db: Db): Promise<ShowSummary[]> {
     .where(eq(shows.status, "open"))
     .orderBy(shows.doorsAt);
   return rows.map(narrowSummary);
+}
+
+// Statuses a show can be auto-bound from. Mirrors run-binding's
+// BINDING_ELIGIBLE_STATUSES. 'paused' is excluded on purpose — a halt was
+// requested (ADR-0013), so ops decides whether to bind, not the scheduler.
+const BINDING_DUE_STATUSES = ["open", "closed"] as const;
+
+// Shows whose announced binding checkpoint (binding_allocation_at) has arrived
+// but that haven't been bound yet — the work list for the scheduled-binding
+// cron. Returns ids only; the sweep loads + binds each via runBindingAllocation
+// (which re-checks eligibility, so a show that flips state between this query
+// and the call is handled safely). Backed by shows_binding_at_idx.
+export async function listShowIdsDueForBinding(
+  db: Db,
+  now: Date,
+): Promise<string[]> {
+  const rows = await db
+    .select({ id: shows.id })
+    .from(shows)
+    .where(
+      and(
+        lte(shows.bindingAllocationAt, now),
+        inArray(shows.status, [...BINDING_DUE_STATUSES]),
+      ),
+    )
+    .orderBy(shows.bindingAllocationAt);
+  return rows.map((r) => r.id);
 }
 
 export async function listShowsForArtist(

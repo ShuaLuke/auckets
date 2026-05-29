@@ -93,6 +93,7 @@ export {
   getShowById,
   listAllShows,
   listOpenShows,
+  listShowIdsDueForBinding,
   listShowsForArtist,
   type ShowSummary,
   type ShowWithRelations,
