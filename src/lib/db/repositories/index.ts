@@ -59,6 +59,7 @@ export {
 } from "./holds";
 
 export {
+  getOfferById,
   getOfferByPaymentIntentId,
   getOfferByShowAndUser,
   getOfferStatsByShowIds,
@@ -68,12 +69,14 @@ export {
   getPriceDistributionForShow,
   getUserRankInShowPool,
   listBidsForUser,
+  listExpiredCardFailures,
   listOfferRevisionsByOfferIds,
   listOfferRevisionsForOffer,
   listOffersForUser,
   listPoolOffersForShow,
   listRecentOffersForShow,
   upsertOfferForUser,
+  type ExpiredCardFailure,
   type Offer,
   type OfferRevision,
   type OfferStats,
@@ -85,8 +88,10 @@ export {
 export {
   ensureUserMirror,
   getEmailsByUserIds,
+  getUserById,
   setStripeCustomerId,
   userIsAdmin,
+  type UserRow,
 } from "./users";
 
 export {

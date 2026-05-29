@@ -257,3 +257,88 @@ export async function captureOfferPaymentIntent(
     };
   }
 }
+
+export type ChargeNowResult =
+  | { ok: true; paymentIntentId: string; amountChargedCents: number }
+  | { ok: false; code: string; message: string };
+
+// Immediately charge a fan's (new) card — for card-failure recovery. Unlike
+// submission (manual capture: authorize now, capture at binding), the binding
+// decision has already happened, so this captures right away (capture_method
+// defaults to 'automatic'). Used when a fan submits a new card to reclaim a
+// seat after their original auth failed at binding. On success the caller
+// resolves the offer to 'charged' and stores the new PaymentIntent id.
+export async function chargeOfferImmediately(
+  stripe: Stripe,
+  params: {
+    paymentMethodId: string;
+    customerId: string;
+    amountCents: number;
+    currency?: "usd";
+    idempotencyKey?: string;
+    metadata?: Record<string, string>;
+  },
+): Promise<ChargeNowResult> {
+  try {
+    const intent = await stripe.paymentIntents.create(
+      {
+        amount: params.amountCents,
+        currency: params.currency ?? "usd",
+        payment_method: params.paymentMethodId,
+        customer: params.customerId,
+        // Charge immediately — no auth-and-hold; the seat is already the
+        // fan's, this just collects the money on the replacement card.
+        confirm: true,
+        automatic_payment_methods: {
+          enabled: true,
+          allow_redirects: "never",
+        },
+        ...(params.metadata ? { metadata: params.metadata } : {}),
+      },
+      params.idempotencyKey
+        ? { idempotencyKey: params.idempotencyKey }
+        : undefined,
+    );
+
+    if (intent.status === "succeeded") {
+      return {
+        ok: true,
+        paymentIntentId: intent.id,
+        amountChargedCents: intent.amount_received ?? params.amountCents,
+      };
+    }
+
+    // requires_action (3DS — not wired) / requires_payment_method (declined):
+    // the recovery charge didn't complete, so the seat stays in card_failure
+    // and the fan can try another card within the window.
+    logger.warn(
+      { paymentIntentId: intent.id, status: intent.status },
+      "Recovery charge did not succeed post-confirm",
+    );
+    return {
+      ok: false,
+      code:
+        intent.status === "requires_action" ? "requires_action" : "not_completed",
+      message: `PaymentIntent status ${intent.status}`,
+    };
+  } catch (err) {
+    if (err && typeof err === "object" && "code" in err) {
+      const stripeErr = err as { code?: string; message?: string };
+      logger.error(
+        { code: stripeErr.code, message: stripeErr.message },
+        "Stripe recovery charge failed",
+      );
+      return {
+        ok: false,
+        code: stripeErr.code ?? "stripe_error",
+        message: stripeErr.message ?? "Unknown Stripe error",
+      };
+    }
+    logger.error({ err }, "Non-Stripe error during recovery charge");
+    return {
+      ok: false,
+      code: "internal",
+      message: err instanceof Error ? err.message : String(err),
+    };
+  }
+}

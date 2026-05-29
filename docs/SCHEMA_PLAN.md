@@ -282,7 +282,7 @@ Money is always `INTEGER` cents (column name ends `_cents`) per [ADR-0007](DECIS
 **Provenance:** TECHNICAL_INTEGRATION.md § 2.8 + CardFailure.jsx + AllocationFinal.jsx.
 
 **Open:**
-- **Card failure recovery window: 30 min vs 24h.** CardFailure.jsx shows 30 minutes; ADR-0003 says "grace window (proposed: 24 hours)." **This needs to be reconciled before Week 5.** The schema doesn't have to encode the window length (it's a config value), but the operational story has to be decided. 30 min is aggressive for "I'm at work and missed the email"; 24h is generous but holds seats out of the pool too long. Recommend a middle ground (e.g., 4 hours) — flag for Cope/Julia decision.
+- **Card failure recovery window: ✅ RESOLVED 2026-05-29 (Julia) → 4 hours.** CardFailure.jsx showed 30 minutes; ADR-0003 proposed 24h; Julia chose the 4h compromise — long enough for "I was at work and missed the email," short enough not to hold seats out of the pool for a day. Stored as config, not schema: `CARD_FAILURE_RECOVERY_WINDOW_MINUTES` (default 240) in `src/lib/env.ts`, read by the recovery route + the `card-failure-expiry` cron. Tunable per environment.
 
 ---
 
@@ -501,7 +501,7 @@ These need answers before Week 3 ships:
 | # | Question | Cost of waiting | Recommend |
 |---|---|---|---|
 | **A** | Bleacher confirmed? (NEW-8) | Low — add columns now with safe defaults; drop if no | Ship columns; mark `bleacher_enabled DEFAULT false` |
-| **B** | Card-failure recovery window (30 min vs 24h)? | Medium — affects Week 5 PaymentIntent retry job design | Decide before Week 5. Recommend 4h compromise. |
+| **B** | Card-failure recovery window (30 min vs 24h)? | Medium — affects Week 5 PaymentIntent retry job design | ✅ RESOLVED 2026-05-29 (Julia) → **4h**, config `CARD_FAILURE_RECOVERY_WINDOW_MINUTES`. |
 | **C** | `artist_members` join table for delegation? | Low if added now; expensive to retrofit | Ship now empty; only Cope uses it day one |
 | **D** | Show-holds vs manifest-holds split? | Low | Ship both, document the lifecycle in a runbook |
 | **E** | Bond `delta` computed at event-emit time? | Low | Yes; backfill if formula changes |
