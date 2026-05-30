@@ -88,10 +88,13 @@ export {
 export {
   ensureUserMirror,
   getEmailsByUserIds,
+  getUserByEmail,
   getUserById,
   setStripeCustomerId,
+  setUserRole,
   userCanScan,
   userIsAdmin,
+  type AssignableRole,
   type UserRow,
 } from "./users";
 

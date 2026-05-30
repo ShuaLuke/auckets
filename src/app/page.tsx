@@ -46,6 +46,7 @@ import {
   getOfferByShowAndUser,
   listArtistsManageableByUser,
   listOpenShows,
+  userCanScan,
   userIsAdmin,
 } from "@/lib/db/repositories";
 import {
@@ -62,12 +63,14 @@ export default async function HomePage() {
 
   if (userId) {
     // Logged-in: personalized, role-aware home.
-    const [openShows, isAdmin, manageableArtists, user] = await Promise.all([
-      listOpenShows(db),
-      userIsAdmin(db, userId),
-      listArtistsManageableByUser(db, userId),
-      currentUser(),
-    ]);
+    const [openShows, isAdmin, manageableArtists, canScan, user] =
+      await Promise.all([
+        listOpenShows(db),
+        userIsAdmin(db, userId),
+        listArtistsManageableByUser(db, userId),
+        userCanScan(db, userId),
+        currentUser(),
+      ]);
 
     // listOpenShows is ordered by doorsAt asc, so [0] is the soonest.
     const now = new Date();
@@ -87,6 +90,7 @@ export default async function HomePage() {
         nextShow={nextShow}
         isAdmin={isAdmin}
         manageableArtists={manageableArtists}
+        canScan={canScan}
       />
     );
   }
@@ -118,11 +122,14 @@ function SignedInHome({
   nextShow,
   isAdmin,
   manageableArtists,
+  canScan,
 }: {
   greeting: string | null;
   nextShow: ShowSummaryView | null;
   isAdmin: boolean;
   manageableArtists: ReadonlyArray<{ id: string; name: string }>;
+  // True for AUCKETS_ADMIN or VENUE_STAFF — gates the door-scanner link.
+  canScan: boolean;
 }) {
   const linkProps = {
     className: "no-underline",
@@ -165,6 +172,13 @@ function SignedInHome({
                 <Button variant="secondary">Requests</Button>
               </Link>
             </>
+          )}
+          {/* Door scanner — AUCKETS_ADMIN or VENUE_STAFF only (userCanScan).
+              The /scan route enforces the same check server-side. */}
+          {canScan && (
+            <Link href="/scan" {...linkProps}>
+              <Button variant="secondary">Door scanner</Button>
+            </Link>
           )}
         </div>
 

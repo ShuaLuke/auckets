@@ -112,6 +112,39 @@ export async function userCanScan(db: Db, userId: string): Promise<boolean> {
   return rows.length > 0;
 }
 
+// The roles an admin may assign through the Staff control. Deliberately
+// excludes AUCKETS_ADMIN — admin is granted out-of-band, not via this UI, so
+// the staff tool can't be used to mint new admins.
+export type AssignableRole = "FAN" | "VENUE_STAFF";
+
+// Look up a single local user by email (the admin Staff control resolves a
+// person by the email they signed up with). Email is UNIQUE in the schema, so
+// at most one row. Returns null if no mirror row exists yet — a user who has
+// never taken a mirror-creating action (e.g. submitting an offer) won't be
+// found, which the caller surfaces as "ask them to sign in first".
+export async function getUserByEmail(
+  db: Db,
+  email: string,
+): Promise<User | null> {
+  const rows = await db
+    .select()
+    .from(users)
+    .where(eq(users.email, email))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+// Set a user's role. Scoped to the assignable (non-admin) roles — the route
+// re-checks that the target isn't already an admin before calling, so this
+// tool can neither create nor demote admins.
+export async function setUserRole(
+  db: Db,
+  userId: string,
+  role: AssignableRole,
+): Promise<void> {
+  await db.update(users).set({ role }).where(eq(users.id, userId));
+}
+
 // Batch email lookup keyed by Clerk user_id. Used by the admin inbox
 // presenter to resolve the executor's email without growing the inbox
 // query into a second users-self-join. Empty input short-circuits to
