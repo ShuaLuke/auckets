@@ -28,6 +28,7 @@ import {
   UserButton,
 } from "@clerk/nextjs";
 import { auth } from "@clerk/nextjs/server";
+import { Menu } from "lucide-react";
 import Link from "next/link";
 
 import { db } from "@/lib/db";
@@ -47,6 +48,22 @@ export async function SiteNav() {
     ? await listArtistsManageableByUser(db, userId)
     : [];
 
+  // Flat list of the signed-in role links, used by the mobile disclosure
+  // menu. The desktop row renders them inline (with the Admin pill style).
+  const roleLinks: { href: string; label: string }[] = [
+    { href: "/dashboard", label: "Dashboard" },
+    ...manageableArtists.map((artist) => ({
+      href: `/artists/${artist.id}`,
+      label: artist.name,
+    })),
+    ...(isAdmin
+      ? [
+          { href: "/admin/requests", label: "Requests" },
+          { href: "/admin", label: "Admin" },
+        ]
+      : []),
+  ];
+
   return (
     <header className="flex items-center justify-between border-b border-neutral-200 px-6 py-3">
       <Link href="/" className="font-semibold tracking-tight">
@@ -64,35 +81,62 @@ export async function SiteNav() {
           </SignUpButton>
         </SignedOut>
         <SignedIn>
-          <Link href="/dashboard" className={linkClass}>
-            Dashboard
-          </Link>
+          {/* Desktop: the role links inline. */}
+          <div className="hidden items-center gap-3 md:flex">
+            <Link href="/dashboard" className={linkClass}>
+              Dashboard
+            </Link>
 
-          {manageableArtists.map((artist) => (
-            <Link
-              key={artist.id}
-              href={`/artists/${artist.id}`}
-              className={linkClass}
+            {manageableArtists.map((artist) => (
+              <Link
+                key={artist.id}
+                href={`/artists/${artist.id}`}
+                className={linkClass}
+              >
+                {artist.name}
+              </Link>
+            ))}
+
+            {isAdmin && (
+              <Link href="/admin/requests" className={linkClass}>
+                Requests
+              </Link>
+            )}
+
+            {isAdmin && (
+              <Link
+                href="/admin"
+                className="rounded-full bg-neutral-900 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-white no-underline hover:bg-neutral-700"
+                title="AUCKETS ops command center"
+              >
+                Admin
+              </Link>
+            )}
+          </div>
+
+          {/* Mobile: the same links collapse into a disclosure menu so a
+              multi-artist or admin user's nav never overflows the row.
+              Pure-CSS <details> — no client JS, so SiteNav stays a Server
+              Component. */}
+          <details className="relative md:hidden">
+            <summary
+              className="flex cursor-pointer list-none items-center rounded-full p-1.5 text-neutral-700 hover:bg-neutral-100 [&::-webkit-details-marker]:hidden"
+              aria-label="Open menu"
             >
-              {artist.name}
-            </Link>
-          ))}
-
-          {isAdmin && (
-            <Link href="/admin/requests" className={linkClass}>
-              Requests
-            </Link>
-          )}
-
-          {isAdmin && (
-            <Link
-              href="/admin"
-              className="rounded-full bg-neutral-900 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-white no-underline hover:bg-neutral-700"
-              title="AUCKETS ops command center"
-            >
-              Admin
-            </Link>
-          )}
+              <Menu size={20} strokeWidth={1.75} aria-hidden />
+            </summary>
+            <div className="absolute right-0 z-20 mt-2 flex w-44 flex-col gap-1 rounded-lg border border-neutral-200 bg-white p-2 shadow-lg">
+              {roleLinks.map((l) => (
+                <Link
+                  key={l.href}
+                  href={l.href}
+                  className="rounded-md px-3 py-2 text-sm text-neutral-700 no-underline hover:bg-neutral-100"
+                >
+                  {l.label}
+                </Link>
+              ))}
+            </div>
+          </details>
 
           <UserButton afterSignOutUrl="/" />
         </SignedIn>

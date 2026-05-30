@@ -134,7 +134,7 @@ function SignedInHome({
       className="min-h-[calc(100vh-57px)]"
       style={{ background: "var(--paper)" }}
     >
-      <div className="mx-auto max-w-[960px] px-8 py-12">
+      <div className="mx-auto max-w-[960px] px-4 py-12 md:px-8">
         {/* Welcome band */}
         <div className="mb-7">
           <Eyebrow className="mb-2">Welcome back</Eyebrow>
@@ -203,8 +203,11 @@ function SignedInHome({
 
 function Hero({ heroShow }: { heroShow: ShowSummaryView | null }) {
   return (
-    <section className="mx-auto px-8" style={{ maxWidth: 1080, padding: "88px 32px 56px" }}>
-      <div className="flex items-end gap-16">
+    <section
+      className="mx-auto px-5 pt-14 pb-12 md:px-8 md:pt-[88px] md:pb-14"
+      style={{ maxWidth: 1080 }}
+    >
+      <div className="flex flex-col gap-10 md:flex-row md:items-end md:gap-16">
         <div style={{ flex: 1.4 }}>
           <Eyebrow className="mb-5">A fairer way to seat a room</Eyebrow>
           <h1
@@ -379,12 +382,12 @@ function HowItWorks() {
         borderBottom: "1px solid var(--border)",
       }}
     >
-      <div className="mx-auto" style={{ maxWidth: 1080, padding: "64px 32px" }}>
+      <div className="mx-auto px-5 py-16 md:px-8" style={{ maxWidth: 1080 }}>
         <Eyebrow className="mb-3">How it works</Eyebrow>
         <h2 className="mb-10" style={{ maxWidth: 600 }}>
           One offer. One ranked allocation. One announced checkpoint.
         </h2>
-        <div className="grid grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
           {HOW_IT_WORKS_STEPS.map((step) => (
             <div key={step.n} className="flex flex-col gap-2.5">
               <span
@@ -435,8 +438,8 @@ const THIS_INSTEAD = [
 
 function ComparisonBand() {
   return (
-    <section className="mx-auto" style={{ maxWidth: 1080, padding: "72px 32px" }}>
-      <div className="grid grid-cols-2 gap-6">
+    <section className="mx-auto px-5 py-[72px] md:px-8" style={{ maxWidth: 1080 }}>
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         <Card style={{ padding: 28 }}>
           <Eyebrow className="mb-2.5">Not this</Eyebrow>
           <h3 className="mb-3.5">An auction.</h3>
@@ -498,15 +501,15 @@ function ComparisonBand() {
 function ForArtists() {
   return (
     <section style={{ background: "var(--ink-900)", color: "var(--paper)" }}>
-      <div className="mx-auto" style={{ maxWidth: 1080, padding: "72px 32px" }}>
-        <div className="grid items-center gap-14" style={{ gridTemplateColumns: "1.2fr 1fr" }}>
+      <div className="mx-auto px-5 py-[72px] md:px-8" style={{ maxWidth: 1080 }}>
+        <div className="grid grid-cols-1 items-center gap-10 md:grid-cols-[1.2fr_1fr] md:gap-14">
           <div>
             <Eyebrow className="mb-4" style={{ color: "var(--marquee-500)" }}>
               For artists
             </Eyebrow>
             <h2
-              className="mb-5"
-              style={{ fontSize: 44, color: "var(--paper)" }}
+              className="mb-5 text-3xl md:text-[44px]"
+              style={{ color: "var(--paper)" }}
             >
               Run a fair room. Earn what the room is worth.
             </h2>
@@ -639,7 +642,7 @@ const FAQ_ITEMS: ReadonlyArray<[string, string]> = [
 function Faq() {
   return (
     <section style={{ background: "var(--paper)" }}>
-      <div className="mx-auto" style={{ maxWidth: 760, padding: "72px 32px" }}>
+      <div className="mx-auto px-5 py-[72px] md:px-8" style={{ maxWidth: 760 }}>
         <Eyebrow className="mb-4">Common questions</Eyebrow>
         <h2 className="mb-7" style={{ fontSize: 36 }}>
           Things people ask before their first offer.
@@ -707,8 +710,8 @@ function Footer() {
       }}
     >
       <div
-        className="mx-auto flex flex-wrap items-center justify-between gap-4"
-        style={{ maxWidth: 1080, padding: "40px 32px" }}
+        className="mx-auto flex flex-wrap items-center justify-between gap-4 px-5 py-10 md:px-8"
+        style={{ maxWidth: 1080 }}
       >
         <span
           className="wordmark"

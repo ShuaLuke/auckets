@@ -119,7 +119,7 @@ export function RequestActionButton({ showId }: Props) {
             onClick={(e) => e.stopPropagation()}
             className="rounded-2xl p-7"
             style={{
-              width: 540,
+              width: "min(540px, calc(100vw - 32px))",
               background: "var(--page)",
               boxShadow:
                 "0 24px 48px rgba(14,15,12,0.20), 0 0 0 1px var(--border)",

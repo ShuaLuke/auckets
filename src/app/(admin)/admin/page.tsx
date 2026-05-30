@@ -90,7 +90,7 @@ export default async function AdminHomePage() {
       className="min-h-[calc(100vh-57px)]"
       style={{ background: "var(--paper)" }}
     >
-      <div className="mx-auto max-w-[1100px] px-8 py-12">
+      <div className="mx-auto max-w-[1100px] px-4 py-12 md:px-8">
         <div className="mb-7">
           <Eyebrow className="mb-2">Auckets ops</Eyebrow>
           <h1 className="text-4xl">Command center</h1>

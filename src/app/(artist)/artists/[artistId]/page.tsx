@@ -142,7 +142,7 @@ export default async function ArtistDashboardPage({ params }: Props) {
       className="min-h-[calc(100vh-57px)]"
       style={{ background: "var(--paper)" }}
     >
-      <div className="mx-auto max-w-[1100px] px-8 py-12">
+      <div className="mx-auto max-w-[1100px] px-4 py-12 md:px-8">
         <div className="mb-7 flex items-end justify-between">
           <div>
             <Eyebrow className="mb-2">Artist</Eyebrow>
