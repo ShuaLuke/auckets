@@ -35,7 +35,7 @@ The gap to **beta** is the back half of the fan journey plus payment hardening, 
 | **CardFailure.jsx** | ✅ Built | `src/components/show/CardFailureRecovery.tsx` on the fan Show page | done (banner + Elements modal → POST recover; backend + 4h window in place). Remaining: the "your card failed" fan/ops notification. |
 | **ArtistDashboard.jsx** | ✅ Close to fidelity | `src/app/(artist)/artists/[artistId]/page.tsx` | small (omitted "New show" button — depends on ShowCreate) |
 | **ShowAdmin.jsx** | ✅ Tabbed shell + Run-binding button (#54, #65) | `src/app/(artist)/artists/[artistId]/shows/[showId]/page.tsx` | small–medium (Fans · data export tab pending) |
-| **ShowCreate.jsx** | ❌ UI not built — 🟡 **soft gap** (`POST /api/shows` exists) | — | medium (form on top of existing route) |
+| **ShowCreate.jsx** | ✅ Built — full row/tier control | `src/app/(artist)/artists/[artistId]/shows/new/page.tsx` + `ShowCreateForm` + `POST /api/shows` | done (form + POST handler + `createShow` repo all landed this slice; earlier "POST exists" note was wrong — only GET existed) |
 | **VenueBuilder.jsx** | ❌ Not built (post-beta) | — | large (rows, capacity, parity, lean, tier, holds builder) |
 | **Allocation.jsx** | ❌ Not built (post-beta polish) | — | small–medium ("you're in the room" confirmation page after submit) |
 | **AllocationFinal.jsx** | ❌ Not built — 🟡 **soft gap** | — | medium (fan "placed / not placed" result page after binding) |

@@ -10,11 +10,13 @@
 // contained and easy to read.
 
 import { auth } from "@clerk/nextjs/server";
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
 
 import { ArtistShowRow } from "@/components/artist/ArtistShowRow";
 import { SnapshotStats } from "@/components/artist/SnapshotStats";
+import { Button } from "@/components/ui/Button";
 import { Eyebrow } from "@/components/ui/Eyebrow";
 import { db } from "@/lib/db";
 import {
@@ -155,9 +157,13 @@ export default async function ArtistDashboardPage({ params }: Props) {
               {pluralOffers} for {data.snapshot.ticketsInPool} {pluralTickets}
             </p>
           </div>
-          {/* Prototype has a "New show" button here. Show-creation flow
-              doesn't exist yet — omitted until that slice lands rather
-              than rendering a button that does nothing. */}
+          <Link
+            href={`/artists/${parsed.data.artistId}/shows/new`}
+            className="no-underline"
+            style={{ borderBottom: "none" }}
+          >
+            <Button variant="brand">New show</Button>
+          </Link>
         </div>
 
         <div className="mb-6">

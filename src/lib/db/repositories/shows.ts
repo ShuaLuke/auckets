@@ -196,3 +196,48 @@ export async function listAllShows(db: Db): Promise<ShowSummary[]> {
     .orderBy(shows.doorsAt);
   return rows.map(narrowSummary);
 }
+
+// The editable inputs ShowCreate collects. The rest of the shows row is
+// either auto-generated (id, createdAt), defaulted (status='draft',
+// bleacher*, showHolds), or out of scope for first creation (pausedAt,
+// emailCustomization). tierFloorsCents keys must match the chosen
+// architecture's row tiers; activeRowIds must be a subset of its row ids —
+// both validated at the route boundary, not here.
+export type NewShowInput = {
+  artistId: string;
+  venueId: string;
+  venueArchitectureId: string;
+  doorsAt: Date;
+  offerWindowOpensAt: Date;
+  bindingAllocationAt: Date;
+  tierFloorsCents: Record<string, number>;
+  activeRowIds: string[];
+  maxGroupSize: number;
+};
+
+// Inserts a new show in 'draft' status and returns the created row. A show
+// is born a draft: created here, then announced (→ 'open') as a separate
+// deliberate step, so creating one never accidentally opens an offer window.
+export async function createShow(
+  db: Db,
+  input: NewShowInput,
+): Promise<Show> {
+  const rows = await db
+    .insert(shows)
+    .values({
+      artistId: input.artistId,
+      venueId: input.venueId,
+      venueArchitectureId: input.venueArchitectureId,
+      doorsAt: input.doorsAt,
+      offerWindowOpensAt: input.offerWindowOpensAt,
+      bindingAllocationAt: input.bindingAllocationAt,
+      status: "draft",
+      tierFloorsCents: input.tierFloorsCents,
+      activeRowIds: input.activeRowIds,
+      maxGroupSize: input.maxGroupSize,
+    })
+    .returning();
+  // .returning() always yields the inserted row; the non-null assertion is
+  // safe because a single-row insert returns exactly one row.
+  return rows[0]!;
+}
