@@ -63,7 +63,9 @@ export function ShowHeader({ show }: Props) {
         </div>
 
         <div className="flex flex-col items-end gap-1.5">
-          <Badge tone={tone}>{show.statusLabel}</Badge>
+          <Badge tone={tone} pulse={tone === "open"}>
+            {show.statusLabel}
+          </Badge>
           <span
             className="font-mono text-xs"
             style={{ color: "var(--ink-500)" }}
