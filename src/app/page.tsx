@@ -1,34 +1,105 @@
-// Landing page. Prototype-fidelity port of
-// design/ui_kits/auckets/screens/Landing.jsx — 6 sections: hero with
-// HeroTicketCard mock, "How it works" 3-up, comparison band, "For
-// artists" black section with allocation_log JSON preview, FAQ, and
-// footer.
+// Home page (`/`). Auth- and role-aware:
 //
-// All static marketing content; no backend reads. The two pieces of
-// interactivity are (a) Clerk's <SignUpButton> wrapping the primary
-// CTAs and (b) the FAQ accordions which are plain <details>/<summary>
-// (no JS). Authenticated users see "Go to dashboard" CTAs in place of
-// "Create an account".
+//   - Logged out  → the marketing landing (prototype-fidelity port of
+//     design/ui_kits/auckets/screens/Landing.jsx): hero, "How it works",
+//     comparison band, "For artists", FAQ, footer. The hero ticket card
+//     is driven by the real soonest open show (evergreen fallback when
+//     none is open).
+//   - Logged in   → a personalized home: welcome + role-aware quick links
+//     (Dashboard / My bids for everyone; per-artist management for artist
+//     members; Admin + Requests for AUCKETS_ADMIN) + the fan's next open
+//     show, with a light "How it works" refresher kept below.
 //
-// FAQ copy is preserved verbatim from Landing.jsx — these are
-// canonical AUCKETS-voice answers and several describe behavior gated
-// on ADR-0003 (Stripe SetupIntent hold-window). Forward-looking but
-// accurate to the intended design; flag for Julia's review on the PR.
+// Why server-branch on auth() rather than Clerk's <SignedIn>/<SignedOut>:
+// the two states render materially different trees and read different
+// data, so a server branch is cleaner than a client toggle. Clerk's modal
+// sign-in already redirects to /dashboard (signInFallbackRedirectUrl), so
+// "/" never needs to react to a client-side sign-in in place.
+//
+// Data exposure note: the logged-out hero surfaces poster-level show
+// metadata (artist / venue / city / date / status) to anonymous visitors.
+// That's intentional and safe — it reads server-side via Drizzle (no anon
+// key / PostgREST), reuses listOpenShows (already status="open", so drafts
+// and unannounced shows are excluded) + presentShowSummary (which carries
+// no offer counts, fill %, or rank — i.e. no demand signals). If a show
+// can ever be status="open" before it's meant to be public, add an
+// explicit visibility flag rather than overloading "open".
+//
+// Marketing copy below is preserved verbatim from the prototype. A
+// dedicated copy review is a separate workstream (see
+// docs/LANDING_PAGE_PLAN.md) — several FAQ claims describe behavior gated
+// on the still-unconfirmed ADR-0003.
 
-import { SignedIn, SignedOut, SignUpButton } from "@clerk/nextjs";
+import { SignInButton, SignUpButton } from "@clerk/nextjs";
+import { auth, currentUser } from "@clerk/nextjs/server";
 import { ArrowRight, Check, Plus, X } from "lucide-react";
 import Link from "next/link";
 
-import { Badge } from "@/components/ui/Badge";
+import { ShowRow } from "@/components/dashboard/ShowRow";
+import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Eyebrow } from "@/components/ui/Eyebrow";
 import { MarqueeButton } from "@/components/ui/MarqueeButton";
+import { db } from "@/lib/db";
+import {
+  getOfferByShowAndUser,
+  listArtistsManageableByUser,
+  listOpenShows,
+  userIsAdmin,
+} from "@/lib/db/repositories";
+import {
+  DEFAULT_TZ,
+  presentShowSummary,
+  type ShowSummaryView,
+} from "@/lib/presenters";
 
-export default function HomePage() {
+// Reads auth + the open-shows list on every request.
+export const dynamic = "force-dynamic";
+
+export default async function HomePage() {
+  const { userId } = await auth();
+
+  if (userId) {
+    // Logged-in: personalized, role-aware home.
+    const [openShows, isAdmin, manageableArtists, user] = await Promise.all([
+      listOpenShows(db),
+      userIsAdmin(db, userId),
+      listArtistsManageableByUser(db, userId),
+      currentUser(),
+    ]);
+
+    // listOpenShows is ordered by doorsAt asc, so [0] is the soonest.
+    const now = new Date();
+    const soonest = openShows[0] ?? null;
+    let nextShow: ShowSummaryView | null = null;
+    if (soonest) {
+      const offer = await getOfferByShowAndUser(db, soonest.id, userId);
+      nextShow = presentShowSummary(soonest, now, DEFAULT_TZ, offer);
+    }
+
+    const greeting =
+      user?.firstName ?? user?.primaryEmailAddress?.emailAddress ?? null;
+
+    return (
+      <SignedInHome
+        greeting={greeting}
+        nextShow={nextShow}
+        isAdmin={isAdmin}
+        manageableArtists={manageableArtists}
+      />
+    );
+  }
+
+  // Logged-out: marketing landing with the real soonest-show hero.
+  const openShows = await listOpenShows(db);
+  const heroShow = openShows[0]
+    ? presentShowSummary(openShows[0], new Date(), DEFAULT_TZ)
+    : null;
+
   return (
     <main style={{ background: "var(--paper)" }}>
-      <Hero />
+      <Hero heroShow={heroShow} />
       <HowItWorks />
       <ComparisonBand />
       <ForArtists />
@@ -39,10 +110,98 @@ export default function HomePage() {
 }
 
 // =========================================================================
+// Signed-in personalized home
+// =========================================================================
+
+function SignedInHome({
+  greeting,
+  nextShow,
+  isAdmin,
+  manageableArtists,
+}: {
+  greeting: string | null;
+  nextShow: ShowSummaryView | null;
+  isAdmin: boolean;
+  manageableArtists: ReadonlyArray<{ id: string; name: string }>;
+}) {
+  const linkProps = {
+    className: "no-underline",
+    style: { borderBottom: "none" } as const,
+  };
+
+  return (
+    <main
+      className="min-h-[calc(100vh-57px)]"
+      style={{ background: "var(--paper)" }}
+    >
+      <div className="mx-auto max-w-[960px] px-8 py-12">
+        {/* Welcome band */}
+        <div className="mb-7">
+          <Eyebrow className="mb-2">Welcome back</Eyebrow>
+          <h1 className="text-4xl">
+            {greeting ? `Hi, ${greeting}` : "Your shows"}
+          </h1>
+        </div>
+
+        {/* Role-aware quick links */}
+        <div className="mb-9 flex flex-wrap items-center gap-3">
+          <Link href="/dashboard" {...linkProps}>
+            <Button>Go to dashboard</Button>
+          </Link>
+          <Link href="/my-bids" {...linkProps}>
+            <Button variant="secondary">View bid history</Button>
+          </Link>
+          {manageableArtists.map((artist) => (
+            <Link key={artist.id} href={`/artists/${artist.id}`} {...linkProps}>
+              <Button variant="secondary">Manage {artist.name}</Button>
+            </Link>
+          ))}
+          {isAdmin && (
+            <>
+              <Link href="/admin" {...linkProps}>
+                <Button variant="secondary">Admin</Button>
+              </Link>
+              <Link href="/admin/requests" {...linkProps}>
+                <Button variant="secondary">Requests</Button>
+              </Link>
+            </>
+          )}
+        </div>
+
+        {/* Next show */}
+        <Eyebrow className="mb-3">
+          {nextShow ? "Your next show" : "Upcoming"}
+        </Eyebrow>
+        {nextShow ? (
+          <ShowRow show={nextShow} />
+        ) : (
+          <div
+            className="rounded-xl p-5 font-sans text-[13px]"
+            style={{
+              background: "var(--paper-2)",
+              color: "var(--fg-muted)",
+              lineHeight: 1.55,
+            }}
+          >
+            No open shows right now. Check back closer to the next announced
+            date.
+          </div>
+        )}
+      </div>
+
+      {/* A light marketing refresher — how allocation works — kept for
+          returning users without the first-timer FAQ / comparison band. */}
+      <HowItWorks />
+      <Footer />
+    </main>
+  );
+}
+
+// =========================================================================
 // Hero — design Landing.jsx lines 9-39
 // =========================================================================
 
-function Hero() {
+function Hero({ heroShow }: { heroShow: ShowSummaryView | null }) {
   return (
     <section className="mx-auto px-8" style={{ maxWidth: 1080, padding: "88px 32px 56px" }}>
       <div className="flex items-end gap-16">
@@ -73,37 +232,42 @@ function Hero() {
             places groups intelligently, keeping you together.
           </p>
           <div className="flex items-center gap-3">
-            <SignedOut>
-              <SignUpButton mode="modal">
-                <MarqueeButton iconAfter={<ArrowRight size={18} strokeWidth={1.75} aria-hidden />}>
-                  Create an account
-                </MarqueeButton>
-              </SignUpButton>
-            </SignedOut>
-            <SignedIn>
-              <Link href="/dashboard" className="no-underline" style={{ borderBottom: "none" }}>
-                <MarqueeButton iconAfter={<ArrowRight size={18} strokeWidth={1.75} aria-hidden />}>
-                  Go to dashboard
-                </MarqueeButton>
-              </Link>
-            </SignedIn>
-            <Link href="/dashboard" className="no-underline" style={{ borderBottom: "none" }}>
+            <SignUpButton mode="modal">
+              <MarqueeButton iconAfter={<ArrowRight size={18} strokeWidth={1.75} aria-hidden />}>
+                Create an account
+              </MarqueeButton>
+            </SignUpButton>
+            {/* Shows are sign-in gated — there's no public show page — so
+                this prompts sign-in rather than dead-ending at /dashboard,
+                which would just bounce an anonymous visitor to /sign-in. */}
+            <SignInButton mode="modal">
               <Button variant="ghost">See an upcoming show →</Button>
-            </Link>
+            </SignInButton>
           </div>
         </div>
         <div style={{ flex: 1 }}>
-          <HeroTicketCard />
+          <HeroTicketCard show={heroShow} />
         </div>
       </div>
     </section>
   );
 }
 
-// HeroTicketCard — design Landing.jsx lines 210-241. Inline because it's
-// only used here and is decorative; extracting to its own file would add
-// indirection without saving complexity.
-function HeroTicketCard() {
+// HeroTicketCard — design Landing.jsx lines 210-241. Driven by the real
+// soonest open show; falls back to an evergreen illustrative example when
+// no show is open so it never renders a stale/past date. Poster-level
+// fields only — no fabricated price or seat assignment.
+function HeroTicketCard({ show }: { show: ShowSummaryView | null }) {
+  const artist = show?.artist ?? "Your favorite artist";
+  const venue = show?.venue ?? "The Venue";
+  const subline = show
+    ? [show.city, show.dateLong].filter(Boolean).join(" · ")
+    : "A stage near you";
+  const statusLabel = show?.statusLabel ?? "Offers open";
+  // Map status → badge tone; default to the "open" look for the fallback.
+  const tone: BadgeTone =
+    show && show.status !== "open" ? "upcoming" : "open";
+
   return (
     <div
       className="relative rounded-xl border"
@@ -137,23 +301,23 @@ function HeroTicketCard() {
           borderColor: "var(--ink-900)",
         }}
       />
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between gap-3">
         <div>
-          <Eyebrow className="mb-1.5">Citizen Cope</Eyebrow>
+          <Eyebrow className="mb-1.5">{artist}</Eyebrow>
           <div
             className="font-display font-bold"
             style={{ fontSize: 28, lineHeight: 1.05, letterSpacing: "-0.025em" }}
           >
-            Lincoln Theatre
+            {venue}
           </div>
           <div
             className="font-sans"
             style={{ fontSize: 13, color: "var(--ink-500)", marginTop: 4 }}
           >
-            Washington, DC · Sat May 25 · 8pm
+            {subline}
           </div>
         </div>
-        <Badge tone="open">Offers open</Badge>
+        <Badge tone={tone}>{statusLabel}</Badge>
       </div>
       <div
         style={{
@@ -161,16 +325,12 @@ function HeroTicketCard() {
           margin: "20px 0",
         }}
       />
-      <div className="flex items-baseline gap-4">
-        <span
-          className="font-mono tabular-nums"
-          style={{ fontSize: 32, letterSpacing: "-0.01em" }}
-        >
-          $42.00
-        </span>
-        <span className="font-sans" style={{ fontSize: 13, color: "var(--ink-500)" }}>
-          × 4 tickets
-        </span>
+      <div
+        className="font-sans"
+        style={{ fontSize: 14, lineHeight: 1.5, color: "var(--ink-700)" }}
+      >
+        Submit one offer — your price, your group size. The Greenwood
+        Allocation Engine seats you.
       </div>
       <div
         className="mt-3.5 rounded font-mono"
@@ -181,7 +341,7 @@ function HeroTicketCard() {
           color: "var(--greenwood-700)",
         }}
       >
-        Preview: Orchestra · Row AA · seats 7–10
+        No countdowns · one ranked allocation
       </div>
     </div>
   );
@@ -212,6 +372,7 @@ const HOW_IT_WORKS_STEPS = [
 function HowItWorks() {
   return (
     <section
+      id="how-it-works"
       style={{
         background: "var(--page)",
         borderTop: "1px solid var(--border)",
@@ -374,34 +535,18 @@ function ForArtists() {
               Every allocation is logged in full. Every override is logged
               with a reason. Your fans see exactly the same thing you do.
             </p>
-            <SignedOut>
-              <SignUpButton mode="modal">
-                <MarqueeButton
-                  iconAfter={<ArrowRight size={18} strokeWidth={1.75} aria-hidden />}
-                  style={{
-                    background: "var(--paper)",
-                    color: "var(--ink-900)",
-                    boxShadow: "4px 4px 0 0 var(--marquee-500)",
-                  }}
-                >
-                  Pitch your venue
-                </MarqueeButton>
-              </SignUpButton>
-            </SignedOut>
-            <SignedIn>
-              <Link href="/dashboard" className="no-underline" style={{ borderBottom: "none" }}>
-                <MarqueeButton
-                  iconAfter={<ArrowRight size={18} strokeWidth={1.75} aria-hidden />}
-                  style={{
-                    background: "var(--paper)",
-                    color: "var(--ink-900)",
-                    boxShadow: "4px 4px 0 0 var(--marquee-500)",
-                  }}
-                >
-                  Pitch your venue
-                </MarqueeButton>
-              </Link>
-            </SignedIn>
+            <SignUpButton mode="modal">
+              <MarqueeButton
+                iconAfter={<ArrowRight size={18} strokeWidth={1.75} aria-hidden />}
+                style={{
+                  background: "var(--paper)",
+                  color: "var(--ink-900)",
+                  boxShadow: "4px 4px 0 0 var(--marquee-500)",
+                }}
+              >
+                Pitch your venue
+              </MarqueeButton>
+            </SignUpButton>
           </div>
           {/* allocation_log JSON preview — reinforces the "every decision
               logged" point textually. Colors map to the design's hex
