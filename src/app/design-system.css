@@ -216,6 +216,18 @@ body {
   letter-spacing: var(--tr-tight);
 }
 
+/* iOS Safari auto-zooms the page when a focused input renders under 16px
+   and never zooms back out — it reads as broken. Force ≥16px on form
+   controls at phone widths only; desktop keeps the design's smaller
+   control type. */
+@media (max-width: 767px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
 /* =============================================================
    Semantic typography classes
    Use these or the equivalent custom property combos.
@@ -242,7 +254,9 @@ body {
 h1, .h1 {
   font-family: var(--font-display);
   font-weight: 600;
-  font-size: var(--text-4xl);
+  /* Scales down on narrow viewports; the upper bound is --text-4xl (48px),
+     so any viewport wide enough hits the cap → desktop is unchanged. */
+  font-size: clamp(2rem, 6vw, var(--text-4xl));
   line-height: var(--lh-tight);
   letter-spacing: var(--tr-tighter);
   font-variation-settings: "opsz" 48;
@@ -252,7 +266,8 @@ h1, .h1 {
 h2, .h2 {
   font-family: var(--font-display);
   font-weight: 600;
-  font-size: var(--text-3xl);
+  /* Upper bound is --text-3xl (36px) → identical on desktop. */
+  font-size: clamp(1.6rem, 5vw, var(--text-3xl));
   line-height: var(--lh-snug);
   letter-spacing: var(--tr-tighter);
   font-variation-settings: "opsz" 32;
