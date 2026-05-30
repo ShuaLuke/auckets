@@ -84,6 +84,29 @@ function emptyTier(): TierDraft {
   return { name: "", rowCount: 1, seatsPerRow: 10, isGa: false, floorDollars: "" };
 }
 
+// Captioned wrapper for a tier control — the bare Stepper/TextInput render no
+// visible label (Stepper's `label` only feeds the buttons' aria-label), so a
+// caption above each makes "1" / "10" / "$" self-explanatory.
+function TierControl({
+  caption,
+  children,
+}: {
+  caption: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span
+        className="font-sans text-[11px] uppercase"
+        style={{ color: "var(--fg-subtle)", letterSpacing: "0.04em" }}
+      >
+        {caption}
+      </span>
+      {children}
+    </div>
+  );
+}
+
 // dollars → positive cents, or null if blank/invalid.
 function floorToCents(raw: string): number | null {
   if (raw.trim() === "") return null;
@@ -451,32 +474,38 @@ export function ShowCreateForm({ artistId, venues, architectures }: Props) {
                       )}
                     </div>
                     <div className="flex flex-wrap items-end gap-3">
-                      <Stepper
-                        label="Rows"
-                        value={tier.rowCount}
-                        onChange={(v) => updateTier(i, { rowCount: v })}
-                        min={1}
-                        max={100}
-                      />
-                      <Stepper
-                        label="Seats/row"
-                        value={tier.seatsPerRow}
-                        onChange={(v) => updateTier(i, { seatsPerRow: v })}
-                        min={1}
-                        max={500}
-                      />
-                      <div style={{ width: 110 }}>
-                        <TextInput
-                          prefix="$"
-                          mono
-                          inputMode="decimal"
-                          placeholder="floor"
-                          value={tier.floorDollars}
-                          onChange={(e) =>
-                            updateTier(i, { floorDollars: e.target.value })
-                          }
+                      <TierControl caption="Rows">
+                        <Stepper
+                          label="rows"
+                          value={tier.rowCount}
+                          onChange={(v) => updateTier(i, { rowCount: v })}
+                          min={1}
+                          max={100}
                         />
-                      </div>
+                      </TierControl>
+                      <TierControl caption="Seats per row">
+                        <Stepper
+                          label="seats per row"
+                          value={tier.seatsPerRow}
+                          onChange={(v) => updateTier(i, { seatsPerRow: v })}
+                          min={1}
+                          max={500}
+                        />
+                      </TierControl>
+                      <TierControl caption="Floor / ticket">
+                        <div style={{ width: 110 }}>
+                          <TextInput
+                            prefix="$"
+                            mono
+                            inputMode="decimal"
+                            placeholder="0.00"
+                            value={tier.floorDollars}
+                            onChange={(e) =>
+                              updateTier(i, { floorDollars: e.target.value })
+                            }
+                          />
+                        </div>
+                      </TierControl>
                     </div>
                     <label
                       className="flex cursor-pointer items-center gap-2 font-sans text-[12px]"
