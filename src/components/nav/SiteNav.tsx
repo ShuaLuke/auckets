@@ -34,6 +34,7 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import {
   listArtistsManageableByUser,
+  userCanScan,
   userIsAdmin,
 } from "@/lib/db/repositories";
 
@@ -47,6 +48,9 @@ export async function SiteNav() {
   const manageableArtists = userId
     ? await listArtistsManageableByUser(db, userId)
     : [];
+  // Door scanner: AUCKETS_ADMIN or VENUE_STAFF (ADR-0012). /scan + /api/scan
+  // enforce the same check server-side — this just reveals the destination.
+  const canScan = userId ? await userCanScan(db, userId) : false;
 
   // Flat list of the signed-in role links, used by the mobile disclosure
   // menu. The desktop row renders them inline (with the Admin pill style).
@@ -62,6 +66,7 @@ export async function SiteNav() {
           { href: "/admin", label: "Admin" },
         ]
       : []),
+    ...(canScan ? [{ href: "/scan", label: "Scanner" }] : []),
   ];
 
   return (
@@ -96,6 +101,12 @@ export async function SiteNav() {
                 {artist.name}
               </Link>
             ))}
+
+            {canScan && (
+              <Link href="/scan" className={linkClass}>
+                Scanner
+              </Link>
+            )}
 
             {isAdmin && (
               <Link href="/admin/requests" className={linkClass}>

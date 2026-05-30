@@ -123,6 +123,17 @@ export default async function AdminHomePage() {
           >
             Requests
           </Link>
+          <Link
+            href="/admin/staff"
+            className="rounded-full px-3 py-1.5 font-sans text-[13px]"
+            style={{
+              background: "transparent",
+              color: "var(--fg-muted)",
+              border: "1px solid var(--border)",
+            }}
+          >
+            Staff
+          </Link>
         </div>
 
         {showCount === 0 ? (
