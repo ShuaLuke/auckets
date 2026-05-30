@@ -96,12 +96,14 @@ export {
 } from "./users";
 
 export {
+  createShow,
   getShowById,
   listAllShows,
   listOpenShows,
   listShowIdsDueForBinding,
   listShowIdsDueForTicketIssuance,
   listShowsForArtist,
+  type NewShowInput,
   type ShowSummary,
   type ShowWithRelations,
   type VenueArchitecture as ShowVenueArchitecture,
@@ -111,6 +113,8 @@ export {
   getVenueArchitectureById,
   getVenueArchitecturesByIds,
   getVenueById,
+  listVenueArchitectures,
+  listVenues,
   type VenueArchitecture,
 } from "./venues";
 

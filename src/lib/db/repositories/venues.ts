@@ -17,6 +17,28 @@ export type VenueArchitecture = Omit<VenueArchitectureRow, "rows"> & {
   rows: VenueRow[];
 };
 
+// Every venue, name-ordered — the venue picker on ShowCreate. Few rows
+// (one building per partner), so no pagination.
+export async function listVenues(db: Db): Promise<Venue[]> {
+  return db.select().from(venues).orderBy(venues.name);
+}
+
+// Every architecture across all venues, with its rows narrowed to
+// VenueRow[]. ShowCreate filters these by the chosen venue client-side and
+// reads each architecture's rows to render the per-row activation toggles
+// and derive the tier list. Beta has a handful of architectures, so loading
+// all of them (rows included) is cheaper than a venue-scoped round-trip per
+// selection change.
+export async function listVenueArchitectures(
+  db: Db,
+): Promise<VenueArchitecture[]> {
+  const rows = await db
+    .select()
+    .from(venueArchitectures)
+    .orderBy(venueArchitectures.venueId, venueArchitectures.version);
+  return rows.map((row) => ({ ...row, rows: row.rows as VenueRow[] }));
+}
+
 export async function getVenueById(
   db: Db,
   venueId: string,
