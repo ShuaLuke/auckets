@@ -1,5 +1,12 @@
 import Stripe from "stripe";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// The webhook module now pulls in the fan-notification dispatch (card-failure
+// email), which transitively imports the email client + env. Mock it so this
+// signature-verification test doesn't eagerly evaluate that chain.
+vi.mock("@/lib/notifications/fan", () => ({
+  notifyCardFailure: vi.fn(),
+}));
 
 import { verifyAndParseEvent } from "./webhook";
 
