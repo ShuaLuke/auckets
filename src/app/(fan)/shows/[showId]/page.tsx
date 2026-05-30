@@ -190,7 +190,7 @@ export default async function ShowPage({ params }: Props) {
       style={{ background: "var(--paper)" }}
     >
       <div
-        className="mx-auto px-8 pb-16 pt-8"
+        className="mx-auto px-4 pb-16 pt-8 md:px-8"
         style={{ maxWidth: 1100 }}
       >
         <ShowHeader show={data.show} />
@@ -199,10 +199,9 @@ export default async function ShowPage({ params }: Props) {
           <CardFailureRecovery view={data.cardFailureRecovery} />
         )}
 
-        <div
-          className="grid items-start gap-6"
-          style={{ gridTemplateColumns: "380px 1fr" }}
-        >
+        {/* Single column on phones/tablets; the composer | right-rail
+            two-column kicks in at lg (380px composer needs the room). */}
+        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[380px_1fr]">
           <OfferComposer
             show={data.show}
             existingOffer={data.show.yourOffer ?? null}
