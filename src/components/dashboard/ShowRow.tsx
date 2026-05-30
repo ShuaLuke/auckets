@@ -63,7 +63,7 @@ export function ShowRow({ show }: Props) {
   return (
     <Link
       href={href}
-      className="flex items-center gap-5 rounded-xl border bg-[var(--page)] px-5 py-[18px] no-underline transition-shadow hover:shadow-[0_4px_12px_rgba(14,15,12,0.06)]"
+      className="flex items-center gap-3 rounded-xl border bg-[var(--page)] px-4 py-[18px] no-underline transition-shadow hover:shadow-[0_4px_12px_rgba(14,15,12,0.06)] md:gap-5 md:px-5"
       style={{ borderColor: "var(--border)" }}
     >
       {/* Date stub */}

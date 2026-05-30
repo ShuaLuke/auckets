@@ -54,7 +54,7 @@ export function BidCard({ bid, history }: Props) {
     >
       <Link
         href={`/shows/${bid.showId}`}
-        className="flex items-center gap-5 px-5 py-[18px] no-underline transition-shadow hover:shadow-[0_4px_12px_rgba(14,15,12,0.06)]"
+        className="flex items-center gap-3 px-4 py-[18px] no-underline transition-shadow hover:shadow-[0_4px_12px_rgba(14,15,12,0.06)] md:gap-5 md:px-5"
       >
         {/* Date stub */}
         <div
