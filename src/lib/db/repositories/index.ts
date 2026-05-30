@@ -110,11 +110,14 @@ export {
 } from "./shows";
 
 export {
+  createVenue,
+  createVenueArchitecture,
   getVenueArchitectureById,
   getVenueArchitecturesByIds,
   getVenueById,
   listVenueArchitectures,
   listVenues,
+  type NewVenueInput,
   type VenueArchitecture,
 } from "./venues";
 
