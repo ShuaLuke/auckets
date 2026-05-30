@@ -382,6 +382,30 @@ export async function getOfferStatsForShow(
   };
 }
 
+// The "marginal price to get in" for a show: the lowest price-per-ticket
+// among offers that currently hold a provisional seat. We read it off the
+// seat_assignments → offers join rather than offers.status because seat
+// assignments are the GAE's authoritative "this offer is placed" signal
+// (a non-binding preview run writes assignments without necessarily
+// transitioning offer status). Returns null when nothing is placed yet —
+// the presenter falls back to the tier floor in that case.
+export async function getMarginalPlacedPriceForShow(
+  db: Db,
+  showId: string,
+): Promise<number | null> {
+  const rows = await db
+    .select({
+      minCents: sql<number | null>`MIN(${offers.pricePerTicketCents})`,
+    })
+    .from(seatAssignments)
+    .innerJoin(offers, eq(offers.id, seatAssignments.offerId))
+    .where(eq(seatAssignments.showId, showId));
+
+  const raw = rows[0]?.minCents;
+  if (raw === null || raw === undefined) return null;
+  return Math.floor(Number(raw));
+}
+
 export async function getOfferStatsByShowIds(
   db: Db,
   showIds: string[],

@@ -61,6 +61,7 @@ export {
 export {
   getOfferById,
   getOfferByPaymentIntentId,
+  getMarginalPlacedPriceForShow,
   getOfferByShowAndUser,
   getOfferStatsByShowIds,
   getOfferStatsByTierForShow,
