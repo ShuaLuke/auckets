@@ -39,6 +39,54 @@ export async function listVenueArchitectures(
   return rows.map((row) => ({ ...row, rows: row.rows as VenueRow[] }));
 }
 
+// The editable inputs the inline "create venue" path collects. Geo is
+// optional — a venue without coordinates can't drive the ticket geo-gate, so
+// it should be filled before doors, but it isn't required to create the row.
+export type NewVenueInput = {
+  name: string;
+  city: string | null;
+  geoLat: number | null;
+  geoLon: number | null;
+  geoRadiusM: number;
+};
+
+// Inserts a venue and returns the row. geoLat/geoLon are NUMERIC columns;
+// Drizzle takes/returns them as strings, so we stringify on the way in.
+export async function createVenue(
+  db: Db,
+  input: NewVenueInput,
+): Promise<Venue> {
+  const rows = await db
+    .insert(venues)
+    .values({
+      name: input.name,
+      city: input.city,
+      geoLat: input.geoLat === null ? null : input.geoLat.toString(),
+      geoLon: input.geoLon === null ? null : input.geoLon.toString(),
+      geoRadiusM: input.geoRadiusM,
+    })
+    .returning();
+  return rows[0]!;
+}
+
+// Inserts an architecture (seat map) for a venue and returns it with rows
+// narrowed to VenueRow[]. The first architecture of a new venue is version 1.
+export async function createVenueArchitecture(
+  db: Db,
+  input: { venueId: string; version: number; rows: VenueRow[] },
+): Promise<VenueArchitecture> {
+  const inserted = await db
+    .insert(venueArchitectures)
+    .values({
+      venueId: input.venueId,
+      version: input.version,
+      rows: input.rows,
+    })
+    .returning();
+  const row = inserted[0]!;
+  return { ...row, rows: row.rows as VenueRow[] };
+}
+
 export async function getVenueById(
   db: Db,
   venueId: string,
