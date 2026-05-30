@@ -73,7 +73,7 @@ export function SnapshotStats({ stats, showCount }: Props) {
   const showWord = showCount === 1 ? "show" : "shows";
   const ticketsWord = stats.ticketsInPool === 1 ? "ticket" : "tickets";
   return (
-    <div className="grid grid-cols-4 gap-3">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
       <Cell
         label="Offers in pool"
         value={String(stats.offersInPool)}

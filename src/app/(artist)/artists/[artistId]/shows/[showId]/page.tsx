@@ -277,7 +277,7 @@ export default async function ArtistShowAdminPage({ params }: Props) {
       className="min-h-[calc(100vh-57px)]"
       style={{ background: "var(--paper)" }}
     >
-      <div className="mx-auto max-w-[1200px] px-8 pb-16 pt-8">
+      <div className="mx-auto max-w-[1200px] px-4 pb-16 pt-8 md:px-8">
         <ShowAdminHeader
           artistId={parsed.data.artistId}
           show={data.show}

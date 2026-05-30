@@ -146,7 +146,7 @@ export function AddHoldButton({ showId, rows }: Props) {
             onClick={(e) => e.stopPropagation()}
             className="rounded-2xl p-7"
             style={{
-              width: 560,
+              width: "min(560px, calc(100vw - 32px))",
               maxHeight: "calc(100vh - 48px)",
               overflowY: "auto",
               background: "var(--page)",
