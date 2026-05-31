@@ -17,6 +17,7 @@ import { AnnounceShowButton } from "./AnnounceShowButton";
 import { BindingAllocationButton } from "./BindingAllocationButton";
 import { PreviewAllocationButton } from "./PreviewAllocationButton";
 import { RequestActionButton } from "./RequestActionButton";
+import { ShowLifecycleButtons } from "./ShowLifecycleButtons";
 
 type Props = {
   artistId: string;
@@ -29,6 +30,11 @@ type Props = {
   // admin-only gate; kept as its own prop so the call site is explicit
   // that the money-moving action is being exposed.
   canRunBinding: boolean;
+  // Whether to render the direct ops lifecycle controls (Pause / Resume /
+  // End early). Admin-only per ADR-0013 — even artists file a Request
+  // action rather than halting/ending a show directly, and resume is
+  // ops-only. POST /api/shows/[id]/transition re-checks server-side.
+  canManageLifecycle: boolean;
 };
 
 function badgeToneFor(show: ArtistShowSummaryView): BadgeTone {
@@ -41,6 +47,7 @@ export function ShowAdminHeader({
   show,
   canRunPreview,
   canRunBinding,
+  canManageLifecycle,
 }: Props) {
   const tone = badgeToneFor(show);
   const offerWord = show.offers === 1 ? "offer" : "offers";
@@ -82,6 +89,12 @@ export function ShowAdminHeader({
               needed beyond the draft-status gate. Once open, the button is
               gone and Preview/Binding take over. */}
           {show.status === "draft" && <AnnounceShowButton showId={show.id} />}
+          {/* Direct ops Pause / Resume / End-early. The component renders
+              nothing outside the open/paused running states, so the admin
+              gate is the only condition needed here. */}
+          {canManageLifecycle && (
+            <ShowLifecycleButtons showId={show.id} status={show.status} />
+          )}
           <RequestActionButton showId={show.id} />
           {canRunPreview && <PreviewAllocationButton showId={show.id} />}
           {canRunBinding && <BindingAllocationButton showId={show.id} />}
