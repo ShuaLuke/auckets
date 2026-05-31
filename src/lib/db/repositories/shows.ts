@@ -265,3 +265,45 @@ export async function createShow(
   // safe because a single-row insert returns exactly one row.
   return rows[0]!;
 }
+
+// The outcome of an announce attempt. A draft show transitions to 'open' and
+// becomes visible to fans (listOpenShows) and bindable on schedule. The
+// transition is the one deliberate step that opens an offer window — see
+// createShow's note.
+export type AnnounceShowResult =
+  | { ok: true; show: Show }
+  // The conditional UPDATE matched no row. Either the show doesn't exist, or
+  // it isn't a draft (already open / paused / closed / allocated / complete).
+  // The caller distinguishes the two with a follow-up read so it can answer
+  // 404 vs 409 correctly.
+  | { ok: false; reason: "not_found" }
+  | { ok: false; reason: "not_draft"; status: string };
+
+// Announces a draft show: status 'draft' → 'open'. The status='draft' guard in
+// the WHERE clause is the concurrency lock — two operators clicking Announce
+// at the same moment can't both win, and a show that's already past draft is
+// never silently re-opened (which would, e.g., re-open a closed window). On a
+// no-op UPDATE we read the row back to tell "missing" from "wrong status".
+export async function announceShow(
+  db: Db,
+  showId: string,
+): Promise<AnnounceShowResult> {
+  const rows = await db
+    .update(shows)
+    .set({ status: "open" })
+    .where(and(eq(shows.id, showId), eq(shows.status, "draft")))
+    .returning();
+
+  const updated = rows[0];
+  if (updated) return { ok: true, show: updated };
+
+  // No row updated — figure out why so the route can pick the right status.
+  const existing = await db
+    .select({ status: shows.status })
+    .from(shows)
+    .where(eq(shows.id, showId))
+    .limit(1);
+  const current = existing[0];
+  if (!current) return { ok: false, reason: "not_found" };
+  return { ok: false, reason: "not_draft", status: current.status };
+}

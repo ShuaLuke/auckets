@@ -1,6 +1,7 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 
 import {
+  announceShow,
   getShowById,
   listAllShows,
   listOpenShows,
@@ -8,7 +9,7 @@ import {
   type ShowSummary,
   type ShowWithRelations,
 } from "./shows";
-import { makeMockDb } from "./_mock-db";
+import { makeMockDb, makeQueuedMockDb } from "./_mock-db";
 
 function fakeJoinedShowRow(): {
   shows: ShowWithRelations;
@@ -196,5 +197,35 @@ describe("listShowsForArtist", () => {
       ShowSummary[]
     >();
     expectTypeOf(listShowsForArtist).parameter(1).toEqualTypeOf<string>();
+  });
+});
+
+describe("announceShow", () => {
+  it("returns ok with the updated row when the draft → open UPDATE hits", async () => {
+    // The guarded UPDATE matched the draft row; only the one query runs and
+    // the follow-up existence SELECT is never reached.
+    const opened = { id: "show-1", status: "open" };
+    const db = makeQueuedMockDb<typeof opened>([[opened]]);
+    const result = await announceShow(db, "show-1");
+    expect(result).toEqual({ ok: true, show: opened });
+  });
+
+  it("returns not_found when the UPDATE misses and no row exists", async () => {
+    // Batch 0: UPDATE returning [] (no draft matched). Batch 1: the
+    // follow-up existence SELECT also empty → the show doesn't exist.
+    const db = makeQueuedMockDb<Record<string, unknown>>([[], []]);
+    const result = await announceShow(db, "missing");
+    expect(result).toEqual({ ok: false, reason: "not_found" });
+  });
+
+  it("returns not_draft with the current status when the show isn't a draft", async () => {
+    // Batch 0: UPDATE returning [] (status guard failed). Batch 1: the
+    // existence SELECT finds the row in a non-draft status.
+    const db = makeQueuedMockDb<Record<string, unknown>>([
+      [],
+      [{ status: "open" }],
+    ]);
+    const result = await announceShow(db, "show-1");
+    expect(result).toEqual({ ok: false, reason: "not_draft", status: "open" });
   });
 });
