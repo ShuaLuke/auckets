@@ -283,6 +283,7 @@ export default async function ArtistShowAdminPage({ params }: Props) {
           show={data.show}
           canRunPreview={isAdmin}
           canRunBinding={isAdmin}
+          canManageLifecycle={isAdmin}
         />
 
         <FiledRequestsPanel requests={data.requests} />
