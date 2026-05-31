@@ -5,7 +5,7 @@ desktop prototype with no responsive design — of ~45 page/component
 files, none use breakpoints. This is the cross-walk of what breaks and
 how we fix it.
 
-Written 2026-05-29. Not yet started. Pair with [`CONVENTIONS.md`](CONVENTIONS.md).
+Written 2026-05-29. **✅ COMPLETED — all four slices shipped in #85 (mobile-responsive pass, Slices 1–4).** This doc is now historical: global viewport + iOS input-zoom fix + clamp() type, the responsive landing page, the fan core flow (show/dashboard/ticket grids), and the artist/admin pages + nav disclosure menu + modal widths all landed. Kept for the cross-walk reasoning. Pair with [`CONVENTIONS.md`](CONVENTIONS.md).
 
 ---
 

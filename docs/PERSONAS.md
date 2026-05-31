@@ -2,7 +2,9 @@
 
 **Written 2026-05-28.** Lens: **friction an alpha user hits on the surfaces that exist today.** Not a future-journey design doc — where a step is simply unbuilt (TicketViewer, Scanner, AllocationFinal), that's a blocker tracked in [`REMAINING_WORK.md`](REMAINING_WORK.md), and it's only mentioned here where it leaves a *dead end in a journey that otherwise starts*. The goal is to fix the rough edges while alpha is still running.
 
-Three personas for MVP (ADR-0012): **FAN**, **ARTIST**, **AUCKETS_ADMIN**. (`VENUE_STAFF` arrives with the Scanner for Austin.)
+> **Update 2026-05-31:** much of this audit has been actioned. Items marked **✅ RESOLVED** inline below have shipped: the fan dead-end (TicketViewer #68, AllocationFinal #96), the silent submit (inline "You're in the pool" state), fan emails (#90, dormant until Resend verified), show creation (#86/#89), scheduled binding (#78), filed-request visibility (FiledRequestsPanel, #97), and the VENUE_STAFF onboarding path (#87). Still-open items (auto-bid UX, hardcoded tier, withdrawal, admin command-center sections, fan lookup) are unchanged.
+
+Three personas for MVP (ADR-0012): **FAN**, **ARTIST**, **AUCKETS_ADMIN**. (`VENUE_STAFF` shipped with the Scanner, #82/#87.)
 
 Severity key: **🔴 blocks the journey · 🟠 confuses or strands the user · 🟡 papercut.**
 
@@ -14,7 +16,7 @@ Severity key: **🔴 blocks the journey · 🟠 confuses or strands the user · 
 - The nav is role-aware: it only shows artist links for artists you can manage, and the **Requests** link + **Admin** pill for admins ([`SiteNav.tsx:71-95`](src/components/nav/SiteNav.tsx)).
 - **There is no self-serve path to become an artist or an admin.** Those grants are seeded by SQL. For a closed alpha that's acceptable, but it means onboarding Cope (or a test artist) is a manual DB step, not a flow.
 
-🟠 **Cross-cutting onboarding gap:** a brand-new artist or admin signs up, sees only the fan dashboard, and looks "stuck" until someone runs SQL to grant the role. Worth a runbook entry at minimum.
+🟠 **Cross-cutting onboarding gap:** a brand-new artist or admin signs up, sees only the fan dashboard, and looks "stuck" until someone runs SQL to grant the role. The grant procedure is now documented ([`runbooks/granting-roles.md`](runbooks/granting-roles.md)); a self-serve flow is still future work. VENUE_STAFF grants have a dedicated `/admin/staff` UI (#87).
 
 ---
 
@@ -26,7 +28,7 @@ What's genuinely good: the dashboard empty state and "Heads up" binding note are
 
 Friction:
 
-1. 🟠 **Submitting an offer ends in silence.** On success the composer does `router.push("/dashboard")` ([`OfferComposer.tsx:243`](src/components/show/OfferComposer.tsx)) — no confirmation, no "you're in the room" moment (Allocation.jsx is unbuilt). A first-time fan can't tell the submit worked except by spotting their offer chip back on the dashboard. This is the single highest-impact fan papercut and it's cheap to fix (a confirmation state or toast before/instead of the bare redirect).
+1. ✅ **RESOLVED — Submitting an offer ends in silence.** The composer now renders an inline success state ("You're in the pool") instead of the silent redirect ([`OfferComposer.tsx:158, 425`](src/components/show/OfferComposer.tsx)). A fan gets explicit confirmation that the submit worked.
 
 2. 🟠 **The auto-bid toggle doesn't do anything yet.** The composer collects "Auto-raise if I'm displaced" + a cap ([`OfferComposer.tsx:292-347`](src/components/show/OfferComposer.tsx)), but the allocation layer strips those fields — `translate.test.ts:140-141` asserts the ranked offer carries neither. There's no displacement detection (DisplacementToast deferred) and no raise mechanism. So we're showing fans a control that makes a promise the system doesn't keep. Options: hide it for alpha, or label it "coming soon." Leaving it live risks a fan setting a cap and being silently displaced anyway.
 
@@ -36,9 +38,9 @@ Friction:
 
 5. 🟠 **No way to withdraw an offer.** The composer only submits/revises, and the rule is "revise upward, never downward." A fan who changes their mind has no exit. May be an intentional commitment device — flag for product, don't assume.
 
-6. 🔴 **The journey dead-ends at "placed."** After a binding run a placed fan has nowhere to get a ticket (TicketViewer unbuilt) and no result page (AllocationFinal unbuilt). The dashboard only lists *open* shows ([`listOpenShows`](src/app/(fan)/dashboard/page.tsx:39)), so once a show closes it drops off the dashboard entirely — the fan's own result is only inferable from `/my-bids`. These are the hard/soft blockers; noted here because they're where the fan journey stops cold.
+6. ✅ **RESOLVED — The journey no longer dead-ends at "placed."** TicketViewer (#68) gives a placed fan a geo-gated rotating-QR ticket; AllocationFinal (#96, `/allocation/[showId]`) is the placed/not-placed result page. The public `/shows` index (#98) also means a closed show is still reachable. The fan journey now runs end-to-end through the door.
 
-7. 🟠 **The whole fan journey is silent — no email fires anywhere.** Only the `welcome` template exists and nothing triggers it; offer-received / placed / not-placed / allocation-imminent are unbuilt. An alpha fan must keep reloading the site to learn anything. (Soft blocker #6 in REMAINING_WORK.)
+7. ✅ **RESOLVED (code) — The fan journey is no longer silent.** offer-received / placed / not-placed / allocation-imminent / card-failure templates + senders shipped (#90, `src/lib/notifications/fan.ts`). **Dormant until ops verifies `auckets.com` in Resend + sets `RESEND_API_KEY`** — until then alpha fans still get no email, but no code work remains.
 
 ---
 
@@ -50,11 +52,11 @@ What's good: the ShowAdmin tabbed shell is dense and informative; the request-fi
 
 Friction:
 
-1. 🔴 **An artist can't create a show.** The "New show" button is deliberately omitted because ShowCreate is unbuilt ([`artists/[artistId]/page.tsx:158-160`](src/app/(artist)/artists/[artistId]/page.tsx)). Every new show is a Julia/SQL task. For alpha with one show, fine; it's the first thing Cope will reach for.
+1. ✅ **RESOLVED — An artist can't create a show.** ShowCreate shipped (#86) with an inline "create venue" path (#89): `ShowCreateForm` + `POST /api/shows` + `createShow`. Shows no longer need a SQL/Julia task. (Full VenueBuilder — editing an existing venue's architecture — is still post-beta.)
 
-2. 🟠 **The artist can't run a preview of their own show.** ShowAdmin passes `canRunPreview={isAdmin}` and `canRunBinding={isAdmin}` ([`shows/[showId]/page.tsx:231-232`](src/app/(artist)/artists/[artistId]/shows/[showId]/page.tsx)). So the provisional placement map an artist sees only updates when an *admin* runs preview. An artist who opens their show before ops has run anything sees an empty/stale placement and has no button to refresh it. Decide intentionally: is preview an ops-only lever, or should artists self-serve it?
+2. ✅ **RESOLVED (by decision) — The artist can't run a preview of their own show.** Decided intentionally (NEW-10): preview stays ops-only (`canRunPreview={isAdmin}`), but the show view now auto-runs an in-memory preview projection so an artist never sees a stale/empty placement map. The "no refresh button" concern is gone.
 
-3. 🟠 **Filed requests disappear from the artist's view.** Nothing on the artist side reads `artist_requests` (grep finds no reference in `(artist)/` or `components/artist/`). The artist files a pause/comp request and then has no in-app record that it exists or whether ops executed it — the only feedback path is the RequestActioned email, which is dormant until Resend is verified. So today: file → void. Surfacing request status on ShowAdmin is a small, high-value slice.
+3. ✅ **RESOLVED — Filed requests disappear from the artist's view.** ShowAdmin now surfaces filed-request status via `FiledRequestsPanel` ([`shows/[showId]/page.tsx`](src/app/(artist)/artists/[artistId]/shows/[showId]/page.tsx) + `components/artist/FiledRequestsPanel.tsx`). The file → void gap is closed; the artist sees their requests and their status in-app.
 
 4. 🟡 **No Fans tab.** The artist can't see who's coming or contact them (pending the privacy review, ADR-0017). Expected gap; listed so it's not a surprise.
 
@@ -70,7 +72,7 @@ Friction:
 
 1. 🟠 **The command center is two sections; everything else is SQL.** `/admin` is the shows list; `/admin/requests` is the inbox. The planned Offers / Tickets / Money / Allocations / People / Simulation sections are unbuilt ([initiative in REMAINING_WORK.md](docs/REMAINING_WORK.md)). To answer "is this fan's card actually authorized?", "what did the last allocation decide and why?", or "who's attending?" Julia drops to the database. For running even one real beta show, the **Money** view (held auths/captures) and **Allocations** view (the GAE log) are the most felt gaps.
 
-2. 🟠 **Binding is a button someone has to remember to press.** There's no scheduled job (`src/lib/jobs/functions/` is just `hello.ts`); binding runs only when an admin clicks "Run binding" on ShowAdmin. For a supervised alpha that's tolerable, but it's an operational trap — miss the checkpoint and the run doesn't happen. (Strong blocker #5.)
+2. ✅ **RESOLVED — Binding is a button someone has to remember to press.** Scheduled binding shipped (#78): the `scheduled-binding` Inngest cron sweeps shows past `binding_allocation_at` (`src/lib/jobs/functions/` now holds scheduled-binding, ticket-issuance, allocation-imminent, card-failure-expiry — not just `hello.ts`). The manual "Run binding" button remains as a supervised fallback; the missed-checkpoint trap is gone.
 
 3. 🟠 **No people/fan lookup.** A fan emails "where's my seat?" and there's no UI to find them or their offers across shows. Support is a SQL query today.
 
@@ -81,14 +83,14 @@ Friction:
 ## Triage — what to fix while alpha runs
 
 **Quick wins (small, no external dependency, high felt value):**
-- Offer-submit confirmation instead of a silent redirect (fan #1).
-- Decide + act on the auto-bid toggle: hide or "coming soon" until the engine exists (fan #2).
-- Surface filed-request status on the artist ShowAdmin (artist #3).
-- A runbook entry (or tiny admin action) for granting artist/admin roles (onboarding gap).
+- ~~Offer-submit confirmation instead of a silent redirect (fan #1).~~ ✅ shipped.
+- Decide + act on the auto-bid toggle (fan #2). — **still open.** Auto-bid now functions at allocation (#72/#73), but the composer UX/copy and the Cope-pending raise rule (NEW-13) still need a pass.
+- ~~Surface filed-request status on the artist ShowAdmin (artist #3).~~ ✅ shipped (#97).
+- ~~A runbook entry for granting artist/admin roles (onboarding gap).~~ ✅ shipped ([`runbooks/granting-roles.md`](runbooks/granting-roles.md)).
 
-**Needs a slice (already in the beta plan; this audit just confirms the priority):**
-- TicketViewer + AllocationFinal close the fan dead-end (fan #6) — hard/soft blockers.
-- Fan emails end the silence (fan #7) — soft blocker.
+**Needs a slice — now ✅ shipped (this audit confirmed the priority; the work landed):**
+- ~~TicketViewer + AllocationFinal close the fan dead-end (fan #6).~~ #68 / #96.
+- ~~Fan emails end the silence (fan #7).~~ #90 (dormant until Resend verified).
 - Admin **Money** + **Allocations** command-center sections (admin #1).
 - Scheduled binding (admin #2).
 - ShowCreate UI (artist #1).

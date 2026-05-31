@@ -2,7 +2,7 @@
 
 A snapshot of what's shipped vs what's not, organized by impact and blocker chain. Pair this with [`CONTEXT.md`](CONTEXT.md) ("Current state") and [`ROADMAP.md`](ROADMAP.md) (week-by-week plan).
 
-Updated 2026-05-30 after PRs #68–#94 merged (TicketViewer + T-48h issuance, door Scanner, Stripe webhook, card-failure recovery, scheduled binding, displacement alerts, mobile-responsive pass, role-aware home, ShowCreate + inline venue create, VENUE_STAFF roles, fan email notifications, min-to-get-in tracker). Prior update 2026-05-28 covered #51–#67.
+Updated 2026-05-31 after PRs #68–#98 merged (TicketViewer + T-48h issuance, door Scanner, Stripe webhook, card-failure recovery, scheduled binding, displacement alerts, mobile-responsive pass, role-aware home, ShowCreate + inline venue create, VENUE_STAFF roles, fan email notifications, min-to-get-in tracker, **AllocationFinal #96**, **venue-builder UX #97**, **public /shows index #98**). Prior update 2026-05-28 covered #51–#67.
 
 ---
 
@@ -10,11 +10,11 @@ Updated 2026-05-30 after PRs #68–#94 merged (TicketViewer + T-48h issuance, do
 
 **The read side, the full money path, and the full attend-path are shipped.** Real offer submission (Stripe manual-capture auth) → preview/binding allocation → capture-on-placement → ticket issuance → door scan all work end-to-end. We are **essentially beta-ready** — only soft gaps remain.
 
-The road to **beta** is now down to one bucket plus an ops task:
+The road to **beta** is now down to a single ops task (turn fan email on) plus one product decision (group cost-split):
 
 - 🔴 ~~**Hard blockers**~~ — **all shipped.** ~~TicketViewer~~ (front-end #68, signed rotating-token endpoint #69, T-48h issuance) and ~~Scanner~~ (VENUE_STAFF-gated `/scan` + `/api/scan` validating the rotating QR into the `ticket_scans` log). A beta fan can now get a ticket and through the door.
 - 🟠 ~~**Strong blockers**~~ — **all shipped.** ~~Stripe webhook handler~~ (signed + idempotent `/api/stripe/webhook`), ~~CardFailure recovery~~ (backend + UI + the fan/ops failure email, #90), ~~scheduled binding~~ (Inngest cron sweeps due checkpoints).
-- 🟡 **Soft gaps** — the only remaining beta work: **AllocationFinal** (fan result page, not built) and **turning fan email on** (the 4 templates shipped in #90 but don't send until `auckets.com` is verified in Resend + `RESEND_API_KEY` is set — an ops task, not code). **ShowCreate UI** (#86) and the **4 fan email templates** (#90) are now done.
+- 🟡 **Soft gaps** — **all fan-journey screens now shipped.** ~~AllocationFinal~~ shipped (#96, `/allocation/[showId]`). The only remaining beta task is **turning fan email on** (the templates shipped in #90 but don't send until `auckets.com` is verified in Resend + `RESEND_API_KEY` is set — an ops task, not code). **ShowCreate UI** (#86) and the **fan email templates** (#90) are done.
 
 **ADR-0003 (2026-05-27):** ≤6-day offer windows + auth-based hold is still a working assumption (Julia), **not yet Cope-confirmed**. The money path is built against it; if his research lands on windows >6 days, revisit the PaymentIntent path. See the 2026-05-27 note in [DECISIONS.md ADR-0003](DECISIONS.md#adr-0003--stripe-setupintent--charge-on-acceptance).
 
@@ -38,7 +38,7 @@ The road to **beta** is now down to one bucket plus an ops task:
 | **ShowCreate.jsx** | ✅ Built — full row/tier control | `src/app/(artist)/artists/[artistId]/shows/new/page.tsx` + `ShowCreateForm` + `POST /api/shows` | done (form + POST handler + `createShow` repo all landed this slice; earlier "POST exists" note was wrong — only GET existed) |
 | **VenueBuilder.jsx** | ❌ Not built (post-beta) | — | large (rows, capacity, parity, lean, tier, holds builder). Inline generator now does typeable sizes, GA→single total-capacity, per-tier unit types (Rows/Tables/Boxes/GA/Custom, **labels only**), and Duplicate — see post-beta item 12 below for the atomic-seating + bulk-paste follow-ups. |
 | **Allocation.jsx** | ❌ Not built (post-beta polish) | — | small–medium ("you're in the room" confirmation page after submit) |
-| **AllocationFinal.jsx** | ❌ Not built — 🟡 **soft gap (only fan-journey screen left)** | — | medium (fan "placed / not placed" result page after binding) |
+| **AllocationFinal.jsx** | ✅ Built (#96) | `/allocation/[showId]` + `src/lib/presenters/allocation-final.ts` | done (fan "placed / not placed" result page after binding) |
 | **Scanner.jsx** | ✅ Built | `/scan` + `src/components/scan/Scanner.tsx` | done (camera via BarcodeDetector + manual token fallback → `/api/scan`; VENUE_STAFF-gated). Geo-gating stays on the fan viewer. |
 
 ---
@@ -103,7 +103,7 @@ Comprehensive read-side coverage **plus the full real-money path**. From the pro
 - ✅ **Admin-only "Preview allocation" button** that runs the real GAE end-to-end and refreshes the page with new placements
 - ✅ **Artist request action** dialog and endpoint for pause/end-early/comp/override per ADR-0013 (admin-side execution is the next slice)
 - ✅ **GAE itself** — all five modules complete and tested (types, rank-key, launchpad, fit-resolver, placement, waterfall, allocate() entry point)
-- ✅ **17-table Drizzle schema** including `offer_revisions`, `holds`, `stripe_webhook_events`, `displacement_events`. RLS enabled deny-all on every public table.
+- ✅ **19-table Drizzle schema** including `offer_revisions`, `holds`, `stripe_webhook_events`, `displacement_events`, `offer_idempotency_keys`. RLS enabled deny-all on every public table.
 - ✅ **Full attend-path** (#68–#82): T-48h ticket issuance → geo-gated rotating-QR TicketViewer → VENUE_STAFF door Scanner. A beta fan can get in.
 - ✅ **Payment hardening** (#77–#80): signed/idempotent Stripe webhook + card-failure recovery (backend, UI banner/modal, 4h-window cron) + the card-failure fan email.
 - ✅ **Fan lifecycle emails** (#90): offer-received / placed / not-placed / allocation-imminent / card-failure templates + senders wired to the offer + binding events (dormant until Resend domain verified).
@@ -129,10 +129,10 @@ Beta = real fans, real money, real attendance. The money path is done; the chain
 4. ~~**CardFailure recovery**~~ — ✅ **shipped, including the notification.** Backend `recoverCardFailure` + `/api/offers/[id]/recover` + `card-failure-expiry` cron (4h window); fan-facing `CardFailureRecovery` banner + Stripe Elements modal on the Show page; and the "your card failed" fan email (#90) so a fan who isn't on the page learns to act within the window. **All three strong blockers are now done.**
 5. ~~**Scheduled binding**~~ — ✅ **shipped.** Inngest cron (`scheduled-binding`, every 5 min) sweeps shows past their `binding_allocation_at` and runs binding (`sweepDueBindings`); the manual admin button remains. Paused shows excluded (ADR-0013).
 
-### 🟡 Soft gaps — the only remaining beta work
+### 🟡 Soft gaps — every fan-journey screen now shipped; remaining is ops + polish
 
 6. ~~**Fan email templates**~~ — ✅ **shipped (#90).** All 4 (offer-received, placed, not-placed, allocation-imminent) + card-failure built and wired in `src/lib/notifications/fan.ts`. **Remaining is ops, not code:** verify `auckets.com` in Resend + set `RESEND_API_KEY` in the Vercel prod env so they actually send. Until then beta fans get no status emails.
-7. **AllocationFinal** — fan "placed / not placed" result page after a binding run. **The one fan-journey screen still not built.** Medium effort.
+7. ~~**AllocationFinal**~~ — ✅ **shipped (#96).** Fan "placed / not placed" result page at `/allocation/[showId]`, with `presentAllocationFinal`. **Every fan-journey screen is now built.**
 8. ~~**ShowCreate UI**~~ — ✅ **shipped (#86, #89).** Full row/tier control form + `POST /api/shows` + `createShow` repo; inline "create venue" path generates a venue + seat map without leaving the form.
 9. **Fans · data export tab** on ShowAdmin — per-fan rows + CSV + "Email all N". **Needs a privacy review first** per ADR-0017 (private offer fields are server-only). Manual export is the interim workaround.
 

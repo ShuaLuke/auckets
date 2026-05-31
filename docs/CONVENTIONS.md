@@ -165,13 +165,13 @@ Comments explain *why*, not *what*. The code already shows what it does. A comme
 
 ```typescript
 // Good:
-// Stripe SetupIntents must be confirmed within 24h of creation per their docs;
-// we cancel and recreate if the offer is still pending after 23h.
-const TOKEN_REFRESH_WINDOW = 23 * 60 * 60 * 1000;
+// Stripe card auths (manual-capture PaymentIntents) reliably hold for ~7 days;
+// we cap offer windows at 6 days (ADR-0003) to stay inside that with a margin.
+const MAX_OFFER_WINDOW_MS = 6 * 24 * 60 * 60 * 1000;
 
 // Bad:
-// Set the refresh window to 23 hours
-const TOKEN_REFRESH_WINDOW = 23 * 60 * 60 * 1000;
+// Set the max offer window to 6 days
+const MAX_OFFER_WINDOW_MS = 6 * 24 * 60 * 60 * 1000;
 ```
 
 `TODO` and `FIXME` comments must include a name and a reason. `// TODO: add waitlist support once we know if we want it (NEW-2)` is fine. `// TODO: fix this` is not.

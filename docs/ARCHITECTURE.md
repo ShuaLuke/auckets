@@ -46,11 +46,11 @@ Renders UI. Submits forms. Reads server state via server components or fetch fro
 
 - Validates inputs with Zod.
 - Checks auth (Clerk) and authorization (role checks).
-- Calls business logic in `src/server/` or pure modules in `src/lib/`.
+- Calls business logic in pure/orchestration modules under `src/lib/` (e.g. `src/lib/allocation/`, `src/lib/stripe/`, `src/lib/notifications/`).
 - Reads/writes via Drizzle.
 - Returns typed responses.
 
-API routes are thin. They do auth + validation + delegation. They do **not** contain business logic. Business logic lives in `src/server/` (orchestration) and `src/lib/` (pure logic).
+API routes are thin. They do auth + validation + delegation. They do **not** contain business logic. Business logic lives under `src/lib/` — orchestration in feature folders (`src/lib/allocation/`, `src/lib/stripe/`) and pure logic in `src/lib/gae/`. (`src/server/` was reserved for this in the original layout but went unused; the orchestration landed under `src/lib/` instead.)
 
 ### Database (Supabase Postgres)
 
@@ -81,7 +81,7 @@ function allocate(
 }
 ```
 
-The orchestration layer (`src/server/allocation.ts`) reads the offers and venue from the database, calls `allocate()`, and writes the result back. The GAE itself is ignorant of where its data came from or where the output is going. See `GAE_SPEC.md` for the full specification.
+The orchestration layer (`src/lib/allocation/` — `run-preview.ts`, `run-binding.ts`, `build-plan.ts`, `translate.ts`) reads the offers and venue from the database, calls `allocate()`, and writes the result back. The GAE itself is ignorant of where its data came from or where the output is going. See `GAE_SPEC.md` for the full specification.
 
 ### Background jobs (Inngest)
 
@@ -104,20 +104,20 @@ Inngest gives us durability, retries, observability, and scheduling without us b
 
 Clerk handles fan signup/login (email + Google + Apple at MVP), session management, and webhooks for syncing users to our database. We use a `users` table keyed by Clerk's user ID, with a webhook handler that creates/updates that record on Clerk events.
 
-Roles (artist, manager, staff, venue, admin) are stored in our database, not in Clerk. Clerk knows who you are; our app knows what you can do.
+Roles are stored in our database, not in Clerk — Clerk knows who you are; our app knows what you can do. MVP roles are `FAN`, `ARTIST`, `AUCKETS_ADMIN`, and `VENUE_STAFF` (ADR-0012); the design system's `MANAGER`/`STAFF` are deferred indefinitely.
 
 ### Payments (Stripe Connect)
 
 Artists are merchants. Each artist gets a Stripe Connect Express account. Charges are made on behalf of the artist; AUCKETS takes an application fee (configurable, defaulting to 0% until the business model is set).
 
-Payment flow:
+Payment flow (**as shipped**, per the ADR-0003 working assumption — ≤6-day windows + auth-based hold):
 
-1. Fan submits offer. We create a Stripe **SetupIntent** to tokenize their card (no charge, no hold).
-2. Offer sits ranked in the pool.
-3. Allocation runs. Accepted offers trigger a **PaymentIntent** with the saved payment method, confirmed immediately, with `transfer_data` directing funds to the artist's Connect account.
-4. ~2% will fail (card expired, insufficient funds, etc.). Fans whose charges fail are notified and given a grace window to update their card.
+1. Fan submits offer. We ensure a Stripe **Customer** and create a manual-capture **PaymentIntent** (`capture_method: "manual"`) that holds the card auth for the offer's full amount. Revising cancels the prior intent and recreates it.
+2. Offer sits ranked in the pool; the auth holds within Stripe's ~7-day reliable-auth window.
+3. Binding allocation runs. Placed offers get their PaymentIntent **captured**; unplaced offers get the auth **cancelled** (funds released).
+4. ~2% capture-failures (expired card, NSF). The signed/idempotent webhook (`/api/stripe/webhook`) flags `card_failure`; the fan gets a 4h recovery window (banner + Elements modal + email) to retry with a new card.
 
-This is the **SetupIntent + charge on acceptance** model, chosen because Stripe pre-auths only last 7 days and our offer windows may be longer. See `DECISIONS.md` ADR-0003.
+This is the **≤6-day pre-auth (manual-capture PaymentIntent)** model. The original **SetupIntent + charge on acceptance** design (see `DECISIONS.md` ADR-0003) is the documented fallback if Cope's research lands on windows >6 days. `transfer_data` to artist Connect accounts is wired where the business model dictates.
 
 ### Email (Resend + React Email)
 
@@ -130,6 +130,8 @@ Every uncaught error goes to Sentry. Every meaningful event (auth attempt, offer
 ## Data flow: the offer lifecycle
 
 The single most important sequence in the system. Walk through it slowly the first time you read this.
+
+> **Note (2026-05-31):** the sequence below was written against the original SetupIntent design and the PENDING/ACCEPTED/OUTBID/WAITLISTED status vocabulary. As shipped, step 2 creates a manual-capture **PaymentIntent** (not a SetupIntent), step 4 **captures placed / cancels unplaced** auths, statuses use the `placed`/`unplaced`/`card_failure` vocabulary, and `BOND_EVENT` is deferred to Phase 2 (`bond_events` not yet shipped). The shape is otherwise accurate. See the "Payments" section above and ADR-0003 for the real path.
 
 ```
 1. Fan visits show page.
@@ -209,7 +211,7 @@ See `GAE_SPEC.md` for the full spec, including edge cases, pathological inputs, 
 
 | Environment | Hosting | Database | Stripe | Use |
 |---|---|---|---|---|
-| Local | `localhost:3000` | Local Supabase or dedicated dev project | Stripe test keys | Day-to-day dev |
+| Local | `localhost:3001` | Local Supabase or dedicated dev project | Stripe test keys | Day-to-day dev |
 | Staging | Vercel preview or dedicated staging URL | Supabase staging project | Stripe test keys | Pre-prod testing, dress rehearsals |
 | Production | Vercel production | Supabase production project | Stripe live keys | Real shows |
 
