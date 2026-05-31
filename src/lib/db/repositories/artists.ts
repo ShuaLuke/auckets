@@ -79,11 +79,16 @@ export async function userCanManageArtist(
 //   - AUCKETS_ADMIN  → every artist (platform-wide grant)
 //   - everyone else  → only the artists they belong to via artist_members
 //
-// At MVP scale (one artist) the admin branch returning "all artists" is
-// fine; once the roster grows this should become a searchable index page
-// rather than a flat nav list. The nav is convenience only — every
-// artist/admin page re-checks authorization server-side, so this query
-// reveals destinations, it doesn't grant access.
+// NOTE: do not use this to render a per-artist nav tab — for an admin it
+// returns the entire roster, which floods the header once there's more than
+// one artist. The site nav drives its per-artist tabs off
+// listArtistMembershipsForUser (membership only) and gives admins a single
+// "Artists" index link (/admin/artists) instead. This function remains for
+// callers that genuinely want "every artist this user could open."
+//
+// The nav is convenience only — every artist/admin page re-checks
+// authorization server-side, so this query reveals destinations, it doesn't
+// grant access.
 export async function listArtistsManageableByUser(
   db: Db,
   userId: string,
@@ -101,10 +106,33 @@ export async function listArtistsManageableByUser(
       .orderBy(artists.name);
   }
 
+  return listArtistMembershipsForUser(db, userId);
+}
+
+// Membership-only version of the above: the artists a user belongs to via
+// artist_members, with NO admin-all branch. This is what the site nav uses
+// to render per-artist tabs, so an admin doesn't get one tab per artist in
+// the roster. A real artist member (e.g. Cope) sees a tab per act they're a
+// member of — usually one — and nothing else.
+export async function listArtistMembershipsForUser(
+  db: Db,
+  userId: string,
+): Promise<ManageableArtist[]> {
   return db
     .select({ id: artists.id, name: artists.name })
     .from(artists)
     .innerJoin(artistMembers, eq(artistMembers.artistId, artists.id))
     .where(eq(artistMembers.userId, userId))
+    .orderBy(artists.name);
+}
+
+// Every artist on the platform, ordered by name. Backs the admin-only
+// /admin/artists index — the searchable roster page that replaces the
+// flooded per-artist nav tabs for admins. Caller is responsible for the
+// admin gate (the page does notFound() on non-admins).
+export async function listAllArtists(db: Db): Promise<ManageableArtist[]> {
+  return db
+    .select({ id: artists.id, name: artists.name })
+    .from(artists)
     .orderBy(artists.name);
 }

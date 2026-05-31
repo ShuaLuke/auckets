@@ -7,6 +7,8 @@
 export {
   getArtistById,
   getArtistBySlug,
+  listAllArtists,
+  listArtistMembershipsForUser,
   listArtistsManageableByUser,
   userCanManageArtist,
   type ManageableArtist,

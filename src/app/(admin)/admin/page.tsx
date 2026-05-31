@@ -113,6 +113,17 @@ export default async function AdminHomePage() {
             Shows
           </span>
           <Link
+            href="/admin/artists"
+            className="rounded-full px-3 py-1.5 font-sans text-[13px]"
+            style={{
+              background: "transparent",
+              color: "var(--fg-muted)",
+              border: "1px solid var(--border)",
+            }}
+          >
+            Artists
+          </Link>
+          <Link
             href="/admin/requests"
             className="rounded-full px-3 py-1.5 font-sans text-[13px]"
             style={{

@@ -4,6 +4,8 @@ import { artists } from "../../../../drizzle/schema";
 import {
   getArtistById,
   getArtistBySlug,
+  listAllArtists,
+  listArtistMembershipsForUser,
   listArtistsManageableByUser,
   userCanManageArtist,
 } from "./artists";
@@ -121,5 +123,46 @@ describe("listArtistsManageableByUser", () => {
       { role: string } | { id: string; name: string }
     >([[], []]);
     expect(await listArtistsManageableByUser(db, userId)).toEqual([]);
+  });
+});
+
+// Membership-only variant the site nav uses. Crucially it does NOT have an
+// admin-all branch — so it issues a single SELECT (the membership join), not
+// the admin-role lookup + all-artists query listArtistsManageableByUser
+// does. The single-result queue below proves that: if the function tried a
+// second select, it would consume a slot that isn't there.
+describe("listArtistMembershipsForUser", () => {
+  const userId = "user_2abcdefghijklmnop";
+
+  it("returns the user's member artists from one select (no admin branch)", async () => {
+    const db = makeQueuedMockDb<{ id: string; name: string }>([
+      [{ id: COPE.id, name: COPE.name }],
+    ]);
+    expect(await listArtistMembershipsForUser(db, userId)).toEqual([
+      { id: COPE.id, name: COPE.name },
+    ]);
+  });
+
+  it("returns an empty list when the user belongs to no artists", async () => {
+    const db = makeQueuedMockDb<{ id: string; name: string }>([[]]);
+    expect(await listArtistMembershipsForUser(db, userId)).toEqual([]);
+  });
+});
+
+describe("listAllArtists", () => {
+  const OTHER = {
+    id: "99999999-9999-9999-9999-999999999999",
+    name: "Another Artist",
+  };
+
+  it("returns every artist", async () => {
+    const db = makeMockDb([
+      { id: COPE.id, name: COPE.name },
+      { id: OTHER.id, name: OTHER.name },
+    ]);
+    expect(await listAllArtists(db)).toEqual([
+      { id: COPE.id, name: COPE.name },
+      { id: OTHER.id, name: OTHER.name },
+    ]);
   });
 });
