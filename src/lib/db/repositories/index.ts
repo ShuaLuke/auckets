@@ -102,6 +102,7 @@ export {
 } from "./users";
 
 export {
+  announceShow,
   createShow,
   getShowById,
   listAllShows,
@@ -109,6 +110,7 @@ export {
   listShowIdsDueForBinding,
   listShowIdsDueForTicketIssuance,
   listShowsForArtist,
+  type AnnounceShowResult,
   type NewShowInput,
   type ShowSummary,
   type ShowWithRelations,

@@ -13,6 +13,7 @@ import { type ArtistShowSummaryView } from "@/lib/presenters";
 
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { Eyebrow } from "@/components/ui/Eyebrow";
+import { AnnounceShowButton } from "./AnnounceShowButton";
 import { BindingAllocationButton } from "./BindingAllocationButton";
 import { PreviewAllocationButton } from "./PreviewAllocationButton";
 import { RequestActionButton } from "./RequestActionButton";
@@ -74,6 +75,13 @@ export function ShowAdminHeader({
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {/* Announce is shown only while the show is a draft — it's the one
+              step that opens the offer window (draft → open). Any viewer of
+              this header already passed userCanManageArtist (artist member or
+              admin), and the API re-checks; so no extra capability prop is
+              needed beyond the draft-status gate. Once open, the button is
+              gone and Preview/Binding take over. */}
+          {show.status === "draft" && <AnnounceShowButton showId={show.id} />}
           <RequestActionButton showId={show.id} />
           {canRunPreview && <PreviewAllocationButton showId={show.id} />}
           {canRunBinding && <BindingAllocationButton showId={show.id} />}
