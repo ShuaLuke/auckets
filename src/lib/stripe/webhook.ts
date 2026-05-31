@@ -27,11 +27,14 @@ import type { Db } from "@/lib/db";
 import {
   WEBHOOK_TERMINAL_STATUSES,
   getOfferByPaymentIntentId,
+  getShowById,
+  getUserById,
   getWebhookEvent,
   markWebhookEvent,
   recordWebhookReceived,
 } from "@/lib/db/repositories";
 import { logger } from "@/lib/logger";
+import { notifyCardFailure } from "@/lib/notifications/fan";
 import { offers, seatAssignments } from "../../../drizzle/schema";
 
 export type VerifyResult =
@@ -174,6 +177,34 @@ async function handlePaymentFailed(
       .set({ cardFailureAt: new Date() })
       .where(eq(seatAssignments.offerId, offer.id));
   });
+
+  // Tell the fan to add a working card within the recovery window. Best-effort
+  // and fully isolated: a mail/lookup hiccup must not flip the webhook to an
+  // error status (which would make Stripe retry and re-process). sendEmail
+  // no-ops without RESEND_API_KEY.
+  try {
+    const [show, user] = await Promise.all([
+      getShowById(db, offer.showId),
+      getUserById(db, offer.userId),
+    ]);
+    if (show && user) {
+      await notifyCardFailure(
+        {
+          showId: show.id,
+          artistName: show.artist.name,
+          showName: show.venue.name,
+          doorsAt: show.doorsAt,
+        },
+        { to: user.email },
+      );
+    }
+  } catch (err) {
+    logger.error(
+      { event: "webhook.card_failure.notify_failed", offerId: offer.id, err },
+      "card_failure fan email failed (offer already flagged)",
+    );
+  }
+
   return "card_failure";
 }
 

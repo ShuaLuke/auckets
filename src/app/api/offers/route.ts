@@ -51,6 +51,7 @@ import {
 } from "@/lib/db/repositories";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
+import { notifyOfferReceived } from "@/lib/notifications/fan";
 import { stripe } from "@/lib/stripe/client";
 import { ensureStripeCustomer } from "@/lib/stripe/customers";
 import {
@@ -363,6 +364,25 @@ export async function POST(
       stripePaymentIntentId: piResult.paymentIntentId,
     });
 
+    // Confirmation email on first submission only (revisions aren't a new
+    // "offer received"). Best-effort: no-ops without RESEND_API_KEY, never
+    // throws, so it can't fail the submission.
+    if (!isRevision) {
+      await notifyOfferReceived(
+        {
+          showId: show.id,
+          artistName: show.artist.name,
+          showName: show.venue.name,
+          doorsAt: show.doorsAt,
+        },
+        {
+          to: email,
+          pricePerTicketCents: body.pricePerTicketCents,
+          groupSize: body.groupSize,
+        },
+      );
+    }
+
     return NextResponse.json(
       {
         ok: true,
@@ -390,6 +410,22 @@ export async function POST(
     privateThresholdCents: body.privateThresholdCents ?? null,
     ...stubStripeIds(userId),
   });
+
+  if (!isRevision) {
+    await notifyOfferReceived(
+      {
+        showId: show.id,
+        artistName: show.artist.name,
+        showName: show.venue.name,
+        doorsAt: show.doorsAt,
+      },
+      {
+        to: email,
+        pricePerTicketCents: body.pricePerTicketCents,
+        groupSize: body.groupSize,
+      },
+    );
+  }
 
   return NextResponse.json(
     {

@@ -47,6 +47,10 @@ import {
 } from "@/lib/stripe/payment-intents";
 import { logger } from "@/lib/logger";
 import {
+  notifyBindingOutcomes,
+  type BindingOutcomeOffer,
+} from "@/lib/notifications/fan";
+import {
   allocationLogs,
   displacementEvents,
   offerRevisions,
@@ -283,6 +287,9 @@ export async function runBindingAllocation(
   let captured = 0;
   let cardFailures = 0;
   let cancelled = 0;
+  // Collected for the post-run fan emails (placed / card-failure / not-placed).
+  const placedCharged: BindingOutcomeOffer[] = [];
+  const cardFailedFans: { userId: string }[] = [];
 
   // Source placed offers from the RESOLVED pool so the capture amount is the
   // auto-raised price (when raised) — always ≤ the cap we authorized.
@@ -338,8 +345,17 @@ export async function runBindingAllocation(
       }
     });
 
-    if (charged) captured++;
-    else cardFailures++;
+    if (charged) {
+      captured++;
+      placedCharged.push({
+        userId: offer.userId,
+        tier: row.tier,
+        chargedAmountCents: amountCents,
+      });
+    } else {
+      cardFailures++;
+      cardFailedFans.push({ userId: offer.userId });
+    }
   }
 
   // Release the auths on unplaced offers — the fan pays nothing.
@@ -366,6 +382,30 @@ export async function runBindingAllocation(
     .update(shows)
     .set({ status: "allocated" })
     .where(eq(shows.id, showId));
+
+  // ---- Post-run: fan emails (best-effort, never fails the run) ----
+  // Placed-and-charged → "you're in"; placed-but-card-failed → "add a card";
+  // unplaced → "not placed, nothing charged". sendEmail no-ops without
+  // RESEND_API_KEY, so this is safe in dev/CI. Wrapped so an email/DB hiccup
+  // can't undo a completed allocation.
+  try {
+    await notifyBindingOutcomes(db, {
+      ctx: {
+        showId,
+        artistName: show.artist.name,
+        showName: show.venue.name,
+        doorsAt: show.doorsAt,
+      },
+      placed: placedCharged,
+      cardFailed: cardFailedFans,
+      unplaced: unplacedOffers.map((o) => ({ userId: o.userId })),
+    });
+  } catch (err) {
+    logger.error(
+      { event: "binding.notify.failed", showId, err },
+      "Binding fan-notification dispatch failed (run already complete)",
+    );
+  }
 
   return {
     ok: true,

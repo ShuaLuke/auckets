@@ -7,7 +7,7 @@
 // design/ui_kits/auckets/screens/*.jsx are the presenter contract, not the
 // repository contract.
 
-import { and, eq, inArray, lte } from "drizzle-orm";
+import { and, eq, gte, inArray, lte } from "drizzle-orm";
 
 import type { Db } from "@/lib/db";
 import type { VenueRow } from "@/lib/gae/types";
@@ -165,6 +165,30 @@ export async function listShowIdsDueForTicketIssuance(
     .from(shows)
     .where(and(eq(shows.status, "allocated"), lte(shows.doorsAt, horizon)))
     .orderBy(shows.doorsAt);
+  return rows.map((r) => r.id);
+}
+
+// Shows still 'open' whose binding checkpoint falls in [from, to] — the work
+// list for the allocation-imminent reminder cron. Only 'open' shows qualify:
+// the reminder's whole point is "revise upward before it's too late," which is
+// only possible while offers are open. Returns ids; the sweep loads each via
+// getShowById + its pool offers. Backed by shows_binding_at_idx.
+export async function listShowIdsWithBindingBetween(
+  db: Db,
+  from: Date,
+  to: Date,
+): Promise<string[]> {
+  const rows = await db
+    .select({ id: shows.id })
+    .from(shows)
+    .where(
+      and(
+        eq(shows.status, "open"),
+        gte(shows.bindingAllocationAt, from),
+        lte(shows.bindingAllocationAt, to),
+      ),
+    )
+    .orderBy(shows.bindingAllocationAt);
   return rows.map((r) => r.id);
 }
 
