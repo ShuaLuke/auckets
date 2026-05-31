@@ -19,6 +19,39 @@ The long version: [`docs/CONTEXT.md`](docs/CONTEXT.md).
 3. **Tests with code.** Vitest for unit (co-located, `foo.test.ts` next to `foo.ts`). Playwright for e2e (in `tests/e2e/`). The GAE has stricter standards (see [`docs/GAE_SPEC.md`](docs/GAE_SPEC.md)).
 4. **Ask before assuming on product questions.** [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) catalogues what's not yet decided. Don't guess past a "working assumption" without flagging it.
 5. **Production is live** at `auckets-olive.vercel.app` (Vercel + Supabase). Beta is gated on ops (verify Resend domain, revoke HFC's Stripe access, separate prod Supabase project), not code. Treat anything you ship as potentially load-bearing.
+6. **One worktree per session — never share a checkout.** See "Parallel sessions" below. This is a hard operating rule, not a suggestion.
+
+---
+
+## Parallel sessions — one worktree each (don't share a checkout)
+
+**Rule: every concurrent Claude session (and any `/loop` or background agent) gets its own git worktree. Never run two sessions against `~/Desktop/aucket` at the same time.**
+
+Why this is a hard rule, not a nicety: git branches are global to the repo, but the working tree is *singular*. Two sessions on two branches in the same checkout corrupt each other — and it's silent until it isn't. What actually happened (2026-05-31):
+
+- An automated `pull -q origin main` + `git checkout` swapped the branch out from under an in-flight session mid-edit.
+- A finished commit landed on the **wrong branch** (`feat/announce-show` instead of the nav branch) because the checkout had moved between staging and `git commit`.
+- One session's uncommitted WIP floated on top of the other's branch, so a `git commit -a` would have mixed two unrelated features.
+- The shared `.next` cache corrupted after the branch swaps — the dev server started returning `500` with `Cannot find module './4894.js'` for every route until `.next` was cleared and the server restarted.
+
+Worktrees fix the whole class of problem: each has its own files **and its own `.next`**, so branch swaps, file collisions, and cache corruption simply can't cross between sessions. The shared git history (branches, commits, remotes) stays unified.
+
+How to work this way:
+
+```bash
+# Before starting: is another session already in this repo?
+git worktree list                 # more than the main checkout listed → branch into a new worktree
+
+# Start an isolated session for a slice (branch off the latest main)
+git fetch -q origin
+git worktree add ../auckets-<slug> -b feat/slice-N-... origin/main
+
+# ...edit, test, commit, push, open the PR — all from inside ../auckets-<slug> ...
+
+git worktree remove ../auckets-<slug>   # after the PR merges (the branch persists)
+```
+
+If you ever find another session's uncommitted changes in your working tree: **stop — do not commit them.** Stage only your own files by explicit path, or hand the checkout back (`git checkout <their-branch>`) and move your work into a fresh worktree. Never `git add -A` / `git commit -a` in a shared checkout.
 
 ---
 
