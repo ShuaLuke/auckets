@@ -84,6 +84,15 @@ export {
 
 export { presentRankBoard, type RankBoardView } from "./rank-board";
 
+export {
+  presentAllocationFinal,
+  type AllocationFinalShow,
+  type AllocationFinalView,
+  type AllocationFinalPlacedView,
+  type AllocationFinalCardFailureView,
+  type AllocationFinalUnplacedView,
+} from "./allocation-final";
+
 export { presentMinToGetIn, type MinToGetInView } from "./min-to-get-in";
 
 export {
