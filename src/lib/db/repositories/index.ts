@@ -103,6 +103,7 @@ export {
 
 export {
   announceShow,
+  closeShow,
   createShow,
   getShowById,
   listAllShows,
@@ -110,9 +111,12 @@ export {
   listShowIdsDueForBinding,
   listShowIdsDueForTicketIssuance,
   listShowsForArtist,
+  pauseShow,
+  resumeShow,
   type AnnounceShowResult,
   type NewShowInput,
   type ShowSummary,
+  type ShowTransitionResult,
   type ShowWithRelations,
   type VenueArchitecture as ShowVenueArchitecture,
 } from "./shows";

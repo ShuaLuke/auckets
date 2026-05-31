@@ -307,3 +307,90 @@ export async function announceShow(
   if (!current) return { ok: false, reason: "not_found" };
   return { ok: false, reason: "not_draft", status: current.status };
 }
+
+// The outcome of a guarded status transition (pause / close / resume). Same
+// shape family as AnnounceShowResult: ok with the new row, or a typed failure
+// the caller maps to 404 (missing) / 409 (wrong source status). `from` carries
+// the offending current status so a 409 can name it.
+export type ShowTransitionResult =
+  | { ok: true; show: Show }
+  | { ok: false; reason: "not_found" }
+  | { ok: false; reason: "wrong_status"; status: string };
+
+// Shared guarded-transition core. Issues an UPDATE that only fires when the
+// row is in one of `fromStatuses`, sets the new status (plus any extra columns
+// like pausedAt), and on a no-op reads the row back to distinguish missing
+// from wrong-status. This mirrors announceShow's concurrency posture — the
+// WHERE-clause status guard is the lock, so two operators can't both win and a
+// show can never skip an illegal transition.
+async function transitionShowStatus(
+  db: Db,
+  showId: string,
+  fromStatuses: readonly string[],
+  set: Partial<typeof shows.$inferInsert> & { status: string },
+): Promise<ShowTransitionResult> {
+  const rows = await db
+    .update(shows)
+    .set(set)
+    .where(and(eq(shows.id, showId), inArray(shows.status, [...fromStatuses])))
+    .returning();
+
+  const updated = rows[0];
+  if (updated) return { ok: true, show: updated };
+
+  const existing = await db
+    .select({ status: shows.status })
+    .from(shows)
+    .where(eq(shows.id, showId))
+    .limit(1);
+  const current = existing[0];
+  if (!current) return { ok: false, reason: "not_found" };
+  return { ok: false, reason: "wrong_status", status: current.status };
+}
+
+// Pauses an open show: 'open' → 'paused', stamping pausedAt. Only an open show
+// can be paused — a draft has no live window to halt, and a closed/allocated/
+// complete show is past the point a pause means anything. While paused, offer
+// submission already rejects (POST /api/offers is 'open'-only) and the
+// scheduled-binding sweep skips the show (ADR-0013: ops decides when a halted
+// show binds), so this single status flip is the whole mechanism.
+export async function pauseShow(
+  db: Db,
+  showId: string,
+  now: Date,
+): Promise<ShowTransitionResult> {
+  return transitionShowStatus(db, showId, ["open"], {
+    status: "paused",
+    pausedAt: now,
+  });
+}
+
+// Resumes a paused show: 'paused' → 'open', clearing pausedAt. The inverse of
+// pauseShow; only a paused show can resume. Reopens the offer window and lets
+// the binding scheduler pick the show up again.
+export async function resumeShow(
+  db: Db,
+  showId: string,
+): Promise<ShowTransitionResult> {
+  return transitionShowStatus(db, showId, ["paused"], {
+    status: "open",
+    pausedAt: null,
+  });
+}
+
+// Closes a show's offer window: 'open' or 'paused' → 'closed'. Stops new
+// offers (POST /api/offers is 'open'-only) while keeping the show
+// binding-eligible — BINDING_ELIGIBLE_STATUSES includes 'closed', so the
+// scheduled sweep (and the manual Run-binding button) still seat the room at
+// the checkpoint. This is the "end early" / manual window-close transition; it
+// deliberately does NOT capture cards — binding stays a separate, explicit
+// step. Allowed from 'paused' too so a halted show can be ended without first
+// resuming it.
+export async function closeShow(
+  db: Db,
+  showId: string,
+): Promise<ShowTransitionResult> {
+  return transitionShowStatus(db, showId, ["open", "paused"], {
+    status: "closed",
+  });
+}
