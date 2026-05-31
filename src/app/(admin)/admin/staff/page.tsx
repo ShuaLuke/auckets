@@ -56,6 +56,13 @@ export default async function AdminStaffPage() {
             Shows
           </Link>
           <Link
+            href="/admin/artists"
+            className="rounded-full px-3 py-1.5 font-sans text-[13px]"
+            style={navInactive}
+          >
+            Artists
+          </Link>
+          <Link
             href="/admin/requests"
             className="rounded-full px-3 py-1.5 font-sans text-[13px]"
             style={navInactive}

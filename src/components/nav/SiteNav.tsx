@@ -5,10 +5,13 @@
 //
 // What it adds, by grant:
 //   - any signed-in user → Dashboard
-//   - artist members / admins → a link per manageable artist (their
-//     ShowAdmin lives one click in, off the artist dashboard)
-//   - AUCKETS_ADMIN → the Requests inbox + an "Admin" pill that links to
-//     the ops command center (/admin)
+//   - artist members → a link per artist they belong to (their ShowAdmin
+//     lives one click in, off the artist dashboard). Membership only — an
+//     admin is NOT given a tab per artist, which would flood the header
+//     once the roster grows past one act.
+//   - AUCKETS_ADMIN → an "Artists" index link (/admin/artists), the
+//     Requests inbox, and an "Admin" pill that links to the ops command
+//     center (/admin)
 //
 // Authorization note: these links are convenience only. Every admin and
 // artist page re-checks authorization server-side (userIsAdmin /
@@ -33,7 +36,7 @@ import Link from "next/link";
 
 import { db } from "@/lib/db";
 import {
-  listArtistsManageableByUser,
+  listArtistMembershipsForUser,
   userCanScan,
   userIsAdmin,
 } from "@/lib/db/repositories";
@@ -45,8 +48,11 @@ export async function SiteNav() {
   // Skip the DB round-trips entirely for signed-out requests (e.g. the
   // landing page) — there's no role to resolve.
   const isAdmin = userId ? await userIsAdmin(db, userId) : false;
-  const manageableArtists = userId
-    ? await listArtistsManageableByUser(db, userId)
+  // Membership only — NOT listArtistsManageableByUser, whose admin branch
+  // returns the whole roster and would render one tab per artist. Admins
+  // reach individual artists through the "Artists" index link below.
+  const memberArtists = userId
+    ? await listArtistMembershipsForUser(db, userId)
     : [];
   // Door scanner: AUCKETS_ADMIN or VENUE_STAFF (ADR-0012). /scan + /api/scan
   // enforce the same check server-side — this just reveals the destination.
@@ -56,12 +62,13 @@ export async function SiteNav() {
   // menu. The desktop row renders them inline (with the Admin pill style).
   const roleLinks: { href: string; label: string }[] = [
     { href: "/dashboard", label: "Dashboard" },
-    ...manageableArtists.map((artist) => ({
+    ...memberArtists.map((artist) => ({
       href: `/artists/${artist.id}`,
       label: artist.name,
     })),
     ...(isAdmin
       ? [
+          { href: "/admin/artists", label: "Artists" },
           { href: "/admin/requests", label: "Requests" },
           { href: "/admin", label: "Admin" },
         ]
@@ -99,7 +106,7 @@ export async function SiteNav() {
               Dashboard
             </Link>
 
-            {manageableArtists.map((artist) => (
+            {memberArtists.map((artist) => (
               <Link
                 key={artist.id}
                 href={`/artists/${artist.id}`}
@@ -112,6 +119,12 @@ export async function SiteNav() {
             {canScan && (
               <Link href="/scan" className={linkClass}>
                 Scanner
+              </Link>
+            )}
+
+            {isAdmin && (
+              <Link href="/admin/artists" className={linkClass}>
+                Artists
               </Link>
             )}
 
