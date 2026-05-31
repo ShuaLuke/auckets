@@ -84,6 +84,8 @@ export {
 
 export { presentRankBoard, type RankBoardView } from "./rank-board";
 
+export { presentMinToGetIn, type MinToGetInView } from "./min-to-get-in";
+
 export {
   presentDisplacementEvents,
   type DisplacementAlertTone,

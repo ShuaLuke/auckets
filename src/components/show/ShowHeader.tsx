@@ -13,13 +13,17 @@ import { ArrowLeft } from "lucide-react";
 
 import { Badge } from "@/components/ui/Badge";
 import { Eyebrow } from "@/components/ui/Eyebrow";
-import { type ShowDetailView } from "@/lib/presenters";
+import { type MinToGetInView, type ShowDetailView } from "@/lib/presenters";
 
 type Props = {
   show: ShowDetailView;
+  // "Minimum bid to get in" tracker shown top-right while offers are open
+  // (QA 2026-05-29). Optional so other callers of ShowHeader don't have to
+  // compute it; the block is hidden unless the window is open.
+  minToGetIn?: MinToGetInView | undefined;
 };
 
-export function ShowHeader({ show }: Props) {
+export function ShowHeader({ show, minToGetIn }: Props) {
   // Status badge on the show page uses the show's own status, not an
   // offer-derived tone. The composer is where the fan's offer takes
   // shape; the badge here is "what state is the show in" — which is
@@ -62,10 +66,43 @@ export function ShowHeader({ show }: Props) {
           </div>
         </div>
 
-        <div className="flex flex-col items-end gap-1.5">
+        <div className="flex flex-col items-end gap-2">
           <Badge tone={tone} pulse={tone === "open"}>
             {show.statusLabel}
           </Badge>
+
+          {/* Minimum-bid-to-get-in tracker. Only while offers are open —
+              before/after the window there's no live "what it takes" number
+              to show. (QA 2026-05-29.) */}
+          {show.status === "open" && minToGetIn && (
+            <div className="flex flex-col items-end">
+              <span
+                className="font-sans text-[10px] uppercase tracking-[0.1em]"
+                style={{ color: "var(--fg-muted)" }}
+              >
+                Min bid to get in
+              </span>
+              <span
+                className="font-mono tabular-nums leading-none"
+                style={{
+                  fontSize: 22,
+                  letterSpacing: "-0.01em",
+                  color: minToGetIn.isCutoff
+                    ? "var(--greenwood-600)"
+                    : "var(--fg)",
+                }}
+              >
+                {minToGetIn.label}
+              </span>
+              <span
+                className="mt-0.5 font-sans text-[11px]"
+                style={{ color: "var(--ink-500)" }}
+              >
+                {minToGetIn.sub}
+              </span>
+            </div>
+          )}
+
           <span
             className="font-mono text-xs"
             style={{ color: "var(--ink-500)" }}

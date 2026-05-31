@@ -21,6 +21,7 @@ import { VenuePreview } from "@/components/show/VenuePreview";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import {
+  getMarginalPlacedPriceForShow,
   getOfferByShowAndUser,
   getOfferStatsForShow,
   getProvisionalFilledByShow,
@@ -37,11 +38,13 @@ import {
   presentCardFailureRecovery,
   presentDisplacementEvents,
   presentFanVenuePreview,
+  presentMinToGetIn,
   presentPreviewBanner,
   presentRankBoard,
   presentShowDetail,
   type CardFailureRecoveryView,
   type DisplacementAlertView,
+  type MinToGetInView,
   type PreviewBannerView,
   type RankBoardView,
   type ShowDetailView,
@@ -58,6 +61,7 @@ const ParamsSchema = z.object({
 type LoadedShowDetail = {
   show: ShowDetailView;
   rankBoard: RankBoardView;
+  minToGetIn: MinToGetInView;
   previewBanner: PreviewBannerView;
   venuePreview: VenuePreviewView;
   venueName: string;
@@ -81,6 +85,7 @@ async function loadShowDetail(
     userRank,
     allAssignments,
     unackedEvents,
+    marginalPlacedCents,
   ] = await Promise.all([
     getShowById(db, showId),
     getOfferByShowAndUser(db, showId, userId),
@@ -89,6 +94,7 @@ async function loadShowDetail(
     getUserRankInShowPool(db, showId, userId),
     listSeatAssignmentsForShow(db, showId),
     listUnacknowledgedDisplacementEventsForUser(db, userId),
+    getMarginalPlacedPriceForShow(db, showId),
   ]);
   if (!show) return null;
 
@@ -124,6 +130,13 @@ async function loadShowDetail(
   );
   const rankBoard = presentRankBoard(userRank, stats, provisionalFilled, capacity);
 
+  const minToGetIn = presentMinToGetIn(
+    marginalPlacedCents,
+    view.tierFloorsCents,
+    provisionalFilled,
+    capacity,
+  );
+
   const previewBanner = presentPreviewBanner(
     userOffer,
     userAssignment,
@@ -156,6 +169,7 @@ async function loadShowDetail(
   return {
     show: view,
     rankBoard,
+    minToGetIn,
     previewBanner,
     venuePreview,
     venueName: show.venue.name,
@@ -193,7 +207,7 @@ export default async function ShowPage({ params }: Props) {
         className="mx-auto px-4 pb-16 pt-8 md:px-8"
         style={{ maxWidth: 1100 }}
       >
-        <ShowHeader show={data.show} />
+        <ShowHeader show={data.show} minToGetIn={data.minToGetIn} />
 
         {data.cardFailureRecovery && (
           <CardFailureRecovery view={data.cardFailureRecovery} />
