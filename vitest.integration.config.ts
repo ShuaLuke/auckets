@@ -21,11 +21,13 @@ import { resolve } from "node:path";
 //     stray env var can't TRUNCATE the wrong database.
 export default defineConfig({
   // tsconfig sets jsx:"preserve" (Next transforms JSX itself), which would
-  // leave JSX untransformed under Vitest's esbuild. Force the automatic
-  // runtime — mirrors vitest.config.ts — so server modules that import .tsx
-  // email templates (run-binding + the Stripe webhook, via the notifications
-  // dispatch) transform in the integration suite too.
-  esbuild: { jsx: "automatic" },
+  // leave JSX untransformed under the test runner. Server modules that import
+  // .tsx email templates (run-binding + the Stripe webhook, via the
+  // notifications dispatch) must still transform here. Vitest 4 transforms
+  // with oxc, NOT esbuild — an `esbuild: { jsx }` option is silently ignored
+  // ("oxc options will be used and esbuild options will be ignored"), so the
+  // JSX runtime has to be set on `oxc`.
+  oxc: { jsx: { runtime: "automatic" } },
   test: {
     environment: "node",
     globals: true,
