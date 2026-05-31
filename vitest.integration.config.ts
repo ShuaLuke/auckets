@@ -20,6 +20,12 @@ import { resolve } from "node:path";
 //     points anywhere that looks like staging/prod — defense-in-depth so a
 //     stray env var can't TRUNCATE the wrong database.
 export default defineConfig({
+  // tsconfig sets jsx:"preserve" (Next transforms JSX itself), which would
+  // leave JSX untransformed under Vitest's esbuild. Force the automatic
+  // runtime — mirrors vitest.config.ts — so server modules that import .tsx
+  // email templates (run-binding + the Stripe webhook, via the notifications
+  // dispatch) transform in the integration suite too.
+  esbuild: { jsx: "automatic" },
   test: {
     environment: "node",
     globals: true,
