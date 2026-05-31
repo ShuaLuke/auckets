@@ -2,19 +2,19 @@
 
 A snapshot of what's shipped vs what's not, organized by impact and blocker chain. Pair this with [`CONTEXT.md`](CONTEXT.md) ("Current state") and [`ROADMAP.md`](ROADMAP.md) (week-by-week plan).
 
-Updated 2026-05-28 after PRs #51–#67 merged (real Stripe path, binding allocation, run-binding button, role nav, landing rebuild, ShowAdmin tabbed shell, admin shows list).
+Updated 2026-05-30 after PRs #68–#94 merged (TicketViewer + T-48h issuance, door Scanner, Stripe webhook, card-failure recovery, scheduled binding, displacement alerts, mobile-responsive pass, role-aware home, ShowCreate + inline venue create, VENUE_STAFF roles, fan email notifications, min-to-get-in tracker). Prior update 2026-05-28 covered #51–#67.
 
 ---
 
 ## TL;DR
 
-**The read side and the full money path are shipped.** Real offer submission (Stripe manual-capture auth) → preview/binding allocation → capture-on-placement all work. We are **past alpha**.
+**The read side, the full money path, and the full attend-path are shipped.** Real offer submission (Stripe manual-capture auth) → preview/binding allocation → capture-on-placement → ticket issuance → door scan all work end-to-end. We are **essentially beta-ready** — only soft gaps remain.
 
-The gap to **beta** is the back half of the fan journey plus payment hardening, in three buckets:
+The road to **beta** is now down to one bucket plus an ops task:
 
 - 🔴 ~~**Hard blockers**~~ — **all shipped.** ~~TicketViewer~~ (front-end #68, signed rotating-token endpoint #69, T-48h issuance) and ~~Scanner~~ (VENUE_STAFF-gated `/scan` + `/api/scan` validating the rotating QR into the `ticket_scans` log). A beta fan can now get a ticket and through the door.
-- 🟠 **Strong blockers** — money correctness/trust: ~~**Stripe webhook handler**~~ (✅ shipped — signed + idempotent `/api/stripe/webhook`), **CardFailure recovery**, ~~**scheduled binding**~~ (✅ shipped — Inngest cron sweeps due checkpoints).
-- 🟡 **Soft gaps** — beta-tolerable with manual workarounds: 4 fan email templates, **AllocationFinal**, **ShowCreate UI**.
+- 🟠 ~~**Strong blockers**~~ — **all shipped.** ~~Stripe webhook handler~~ (signed + idempotent `/api/stripe/webhook`), ~~CardFailure recovery~~ (backend + UI + the fan/ops failure email, #90), ~~scheduled binding~~ (Inngest cron sweeps due checkpoints).
+- 🟡 **Soft gaps** — the only remaining beta work: **AllocationFinal** (fan result page, not built) and **turning fan email on** (the 4 templates shipped in #90 but don't send until `auckets.com` is verified in Resend + `RESEND_API_KEY` is set — an ops task, not code). **ShowCreate UI** (#86) and the **4 fan email templates** (#90) are now done.
 
 **ADR-0003 (2026-05-27):** ≤6-day offer windows + auth-based hold is still a working assumption (Julia), **not yet Cope-confirmed**. The money path is built against it; if his research lands on windows >6 days, revisit the PaymentIntent path. See the 2026-05-27 note in [DECISIONS.md ADR-0003](DECISIONS.md#adr-0003--stripe-setupintent--charge-on-acceptance).
 
@@ -32,13 +32,13 @@ The gap to **beta** is the back half of the fan journey plus payment hardening, 
 | **Show.jsx** (fan show detail) | ✅ Real Stripe submit + RankBoard + PreviewBanner/VenuePreview (#55, #56, #59–#61) | `src/app/(fan)/shows/[showId]/page.tsx` | small (DisplacementToast needs polling/push — follow-up) |
 | **TicketViewer.jsx** | ✅ Built | `src/components/ticket/TicketViewer.tsx` + `/api/tickets/[id]/token` | done (geo-gated rotating QR #68; server-signed token #69; tickets now issued T-48h). Live once a show is bound + within 48h of doors. |
 | **ResaleFlow.jsx** | ❌ Not built (post-beta) | — | large (ADR-0014 anti-scalping mechanics) |
-| **CardFailure.jsx** | ✅ Built | `src/components/show/CardFailureRecovery.tsx` on the fan Show page | done (banner + Elements modal → POST recover; backend + 4h window in place). Remaining: the "your card failed" fan/ops notification. |
+| **CardFailure.jsx** | ✅ Built | `src/components/show/CardFailureRecovery.tsx` on the fan Show page | done (banner + Elements modal → POST recover; backend + 4h window; "your card failed" fan email shipped #90) |
 | **ArtistDashboard.jsx** | ✅ Close to fidelity | `src/app/(artist)/artists/[artistId]/page.tsx` | small (omitted "New show" button — depends on ShowCreate) |
 | **ShowAdmin.jsx** | ✅ Tabbed shell + Run-binding button (#54, #65) | `src/app/(artist)/artists/[artistId]/shows/[showId]/page.tsx` | small–medium (Fans · data export tab pending) |
 | **ShowCreate.jsx** | ✅ Built — full row/tier control | `src/app/(artist)/artists/[artistId]/shows/new/page.tsx` + `ShowCreateForm` + `POST /api/shows` | done (form + POST handler + `createShow` repo all landed this slice; earlier "POST exists" note was wrong — only GET existed) |
 | **VenueBuilder.jsx** | ❌ Not built (post-beta) | — | large (rows, capacity, parity, lean, tier, holds builder) |
 | **Allocation.jsx** | ❌ Not built (post-beta polish) | — | small–medium ("you're in the room" confirmation page after submit) |
-| **AllocationFinal.jsx** | ❌ Not built — 🟡 **soft gap** | — | medium (fan "placed / not placed" result page after binding) |
+| **AllocationFinal.jsx** | ❌ Not built — 🟡 **soft gap (only fan-journey screen left)** | — | medium (fan "placed / not placed" result page after binding) |
 | **Scanner.jsx** | ✅ Built | `/scan` + `src/components/scan/Scanner.tsx` | done (camera via BarcodeDetector + manual token fallback → `/api/scan`; VENUE_STAFF-gated). Geo-gating stays on the fan viewer. |
 
 ---
@@ -60,19 +60,18 @@ Located at `src/components/ui/`. Most are ported; two notable gaps:
 
 ---
 
-## Email templates (5 designed)
+## Email templates (5 designed + card-failure)
 
 | Template | Built in `src/lib/email/templates/`? | Wired to send? |
 |---|---|---|
 | `welcome.html` | ✅ welcome.tsx | ❌ no trigger |
-| `offer-received.html` | ❌ | ❌ |
-| `placed.html` | ❌ | ❌ |
-| `not-placed.html` | ❌ | ❌ |
-| `allocation-imminent.html` | ❌ | ❌ |
+| `offer-received.html` | ✅ OfferReceived.tsx (#90) | ✅ `POST /api/offers`, first submission |
+| `placed.html` | ✅ OfferPlaced.tsx (#90) | ✅ `runBindingAllocation` |
+| `not-placed.html` | ✅ OfferNotPlaced.tsx (#90) | ✅ `runBindingAllocation` |
+| `allocation-imminent.html` | ✅ AllocationImminent.tsx (#90) | ✅ `allocation-imminent` job |
+| _card-failure_ | ✅ CardFailure.tsx (#90) | ✅ `runBindingAllocation` (card-failure branch) |
 
-`sendEmail()` exists in `src/lib/email/client.ts` but stays dormant without `RESEND_API_KEY`. No Inngest job or route handler currently calls it for any user-facing event.
-
-**Effort:** medium — 4 React Email components + 4 trigger points + verify auckets.com domain in Resend.
+`sendEmail()` (`src/lib/email/client.ts`) no-ops without `RESEND_API_KEY`, so the lifecycle senders in `src/lib/notifications/fan.ts` are wired but **dormant until the key is set**. **Remaining is an ops task, not code:** verify `auckets.com` in Resend + set `RESEND_API_KEY` in the Vercel prod env. Until then, beta fans get no status emails.
 
 ---
 
@@ -81,10 +80,10 @@ Located at `src/components/ui/`. Most are ported; two notable gaps:
 | System | Status | Notes |
 |---|---|---|
 | **Stripe / payments** | ✅ Live (real path) | Stripe SDK + `src/lib/stripe/` (client, `customers.ts`, `payment-intents.ts`, `webhook.ts`, `card-failure-recovery.ts`). `POST /api/offers` ensures a Customer and creates a manual-capture `PaymentIntent` to hold the auth (≤6-day window, ADR-0003). Elements card collection wired. Revision cancels prior intent + recreates. **Signed, idempotent webhook** at `/api/stripe/webhook` (receipts in `stripe_webhook_events`): `payment_intent.payment_failed` → `card_failure`, `succeeded` → `charged` backstop, `canceled` recorded. **Card-failure recovery (backend):** `POST /api/offers/[id]/recover` charges a new card within the 4h window (`recoverCardFailure`); the `card-failure-expiry` cron releases lapsed seats. **Gaps:** the recovery *UI modal* + fan/ops failure notification, no app-level offer-idempotency-table writes, dev stub remains as fallback only. |
-| **Notifications — Resend (email)** | ⚠️ Client + ops scaffold wired | `welcome` + `RequestActioned` templates exist; ops (Slack/Resend) notification on request actions fires (#50). 4 fan-facing templates still missing; `auckets.com` not yet verified in Resend. |
+| **Notifications — Resend (email)** | ⚠️ Wired, dormant until domain verified | `welcome` + `RequestActioned` + all 4 fan-lifecycle templates + card-failure now built and wired (#90, `src/lib/notifications/fan.ts`). Senders are best-effort (each catches its own errors). **Blocked only on ops:** `auckets.com` not yet verified in Resend + `RESEND_API_KEY` not set in prod, so nothing actually sends yet. |
 | **Notifications — Slack** | ⚠️ Scaffold wired (#50) | Ops alerts on request actions go out; broader coverage (card-failure, allocation-run) not wired. |
 | **Notifications — Twilio / SMS** | ❌ Not built (post-beta) | ADR-0016 moved SMS to MVP. No Twilio SDK, no 10DLC registration. **Long pole** — 1–2 week carrier turnaround; can start registration anytime. |
-| **Tickets** | ✅ Issuance + viewer live | `tickets` table + repo; **T-48h issuance** (`issueTicketsForDueShows`, `ticket-issuance` cron) mints a ticket + server-only `totp_secret` per paid seat of a bound show; the signed rotating-QR endpoint (#69) + geo-gated TicketViewer (#68) consume it. **Remaining:** the Scanner that validates the QR at the door (`ticketScans` still write-unused). |
+| **Tickets** | ✅ Issuance + viewer + scanner live | `tickets` table + repo; **T-48h issuance** (`issueTicketsForDueShows`, `ticket-issuance` cron) mints a ticket + server-only `totp_secret` per paid seat of a bound show; the signed rotating-QR endpoint (#69) + geo-gated TicketViewer (#68) consume it; the door **Scanner** (#82) validates and admits it (`ticketScans` now written on every scan). Attend-path complete end-to-end. |
 | **Scanner** | ✅ Live | `/scan` (VENUE_STAFF / AUCKETS_ADMIN gated via `userCanScan`) → `POST /api/scan` → `processTicketScan` verifies the rotating QR (`verifyTicketToken`), admits the ticket (status → `scanned`), and appends every scan to `ticketScans` (ok / replay / expired_token / invalid). Camera (BarcodeDetector) + manual fallback. |
 | **Resales** | ❌ Not built (post-beta) | `resales` table exists; no refund logic, no artist-uplift routing, no Miracle Tickets gift flow. |
 | **Binding allocation** | ✅ Live (#62) | `mode=binding` on the allocate route (`src/lib/allocation/run-binding.ts`) captures placed offers' PaymentIntents, cancels unplaced auths, transitions statuses. Triggered by an admin "Run binding" button (#65) **and** an Inngest cron (`scheduled-binding`, every 5 min) that sweeps shows whose `binding_allocation_at` has passed (`sweepDueBindings`). Paused shows are excluded — ops decides. |
@@ -104,8 +103,14 @@ Comprehensive read-side coverage **plus the full real-money path**. From the pro
 - ✅ **Admin-only "Preview allocation" button** that runs the real GAE end-to-end and refreshes the page with new placements
 - ✅ **Artist request action** dialog and endpoint for pause/end-early/comp/override per ADR-0013 (admin-side execution is the next slice)
 - ✅ **GAE itself** — all five modules complete and tested (types, rank-key, launchpad, fit-resolver, placement, waterfall, allocate() entry point)
-- ✅ **17-table Drizzle schema** including the newly added `offer_revisions` and `holds`. RLS enabled deny-all on every public table.
-- ✅ **CI gates:** typecheck + lint + ~392 unit tests + build on every PR, plus a parallel `integration` job that runs the real-Postgres suite (`tests/integration/`, currently covering `upsertOfferForUser` + the artist-request concurrency guard)
+- ✅ **17-table Drizzle schema** including `offer_revisions`, `holds`, `stripe_webhook_events`, `displacement_events`. RLS enabled deny-all on every public table.
+- ✅ **Full attend-path** (#68–#82): T-48h ticket issuance → geo-gated rotating-QR TicketViewer → VENUE_STAFF door Scanner. A beta fan can get in.
+- ✅ **Payment hardening** (#77–#80): signed/idempotent Stripe webhook + card-failure recovery (backend, UI banner/modal, 4h-window cron) + the card-failure fan email.
+- ✅ **Fan lifecycle emails** (#90): offer-received / placed / not-placed / allocation-imminent / card-failure templates + senders wired to the offer + binding events (dormant until Resend domain verified).
+- ✅ **Scheduled binding** (#78): Inngest cron sweeps shows past `binding_allocation_at` and runs binding automatically (paused shows excluded).
+- ✅ **Displacement alerts** (#72–#76, ADR-0018): per-fan transitions persisted each preview/binding run + fan-facing alerts on the Show page.
+- ✅ **Mobile-responsive pass** (#85), **role-aware home page** (#83), **ShowCreate form + inline venue create** (#86, #89), **VENUE_STAFF role management** (#87), **"minimum bid to get in" tracker** (#91).
+- ✅ **CI gates:** typecheck + lint + ~518 unit tests + build on every PR, plus a parallel `integration` job that runs the real-Postgres suite (`tests/integration/`, 11 suites). Note: Vitest 4 transforms with **oxc**, so JSX runtime is set via `oxc: { jsx: { runtime: "automatic" } }` in both vitest configs (not `esbuild`) — see #94.
 
 ---
 
@@ -121,15 +126,15 @@ Beta = real fans, real money, real attendance. The money path is done; the chain
 ### 🟠 Strong blockers — money correctness/trust before real-money beta
 
 3. ~~**Stripe webhook handler**~~ — ✅ **shipped.** Signed (`STRIPE_WEBHOOK_SECRET`) + idempotent (`stripe_webhook_events` receipts) handler at `/api/stripe/webhook`, acting on `payment_intent.payment_failed` / `succeeded` / `canceled`. Satisfies prime-directive #6.
-4. **CardFailure recovery** — ✅ **shipped** (backend `recoverCardFailure` + `/api/offers/[id]/recover` + `card-failure-expiry` cron, 4h window; fan-facing `CardFailureRecovery` banner + Stripe Elements modal on the Show page). **Remaining:** the fan/ops "your card failed" notification (email/SMS) so a fan who isn't on the page learns to act within the window.
+4. ~~**CardFailure recovery**~~ — ✅ **shipped, including the notification.** Backend `recoverCardFailure` + `/api/offers/[id]/recover` + `card-failure-expiry` cron (4h window); fan-facing `CardFailureRecovery` banner + Stripe Elements modal on the Show page; and the "your card failed" fan email (#90) so a fan who isn't on the page learns to act within the window. **All three strong blockers are now done.**
 5. ~~**Scheduled binding**~~ — ✅ **shipped.** Inngest cron (`scheduled-binding`, every 5 min) sweeps shows past their `binding_allocation_at` and runs binding (`sweepDueBindings`); the manual admin button remains. Paused shows excluded (ADR-0013).
 
-### 🟡 Soft gaps — beta-tolerable with a manual workaround
+### 🟡 Soft gaps — the only remaining beta work
 
-6. **Fan email templates** — 4 missing (offer-received, placed, not-placed, allocation-imminent) + verify `auckets.com` in Resend. Without these, beta fans get no "you're placed" email. (`welcome` + `RequestActioned` exist; ops Slack/Resend scaffold fires on request actions.)
-7. **AllocationFinal** — fan "placed / not placed" result page after a binding run.
-8. **ShowCreate UI** — `POST /api/shows` exists; needs a form so shows aren't seeded by SQL. Fine to seed by hand for one beta show.
-9. **Fans · data export tab** on ShowAdmin — per-fan rows + CSV + "Email all N". **Needs a privacy review first** per ADR-0017 (private offer fields are server-only).
+6. ~~**Fan email templates**~~ — ✅ **shipped (#90).** All 4 (offer-received, placed, not-placed, allocation-imminent) + card-failure built and wired in `src/lib/notifications/fan.ts`. **Remaining is ops, not code:** verify `auckets.com` in Resend + set `RESEND_API_KEY` in the Vercel prod env so they actually send. Until then beta fans get no status emails.
+7. **AllocationFinal** — fan "placed / not placed" result page after a binding run. **The one fan-journey screen still not built.** Medium effort.
+8. ~~**ShowCreate UI**~~ — ✅ **shipped (#86, #89).** Full row/tier control form + `POST /api/shows` + `createShow` repo; inline "create venue" path generates a venue + seat map without leaving the form.
+9. **Fans · data export tab** on ShowAdmin — per-fan rows + CSV + "Email all N". **Needs a privacy review first** per ADR-0017 (private offer fields are server-only). Manual export is the interim workaround.
 
 ### 🆕 New scope — group cost-split (needs product decision first)
 
