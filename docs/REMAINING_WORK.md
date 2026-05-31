@@ -36,7 +36,7 @@ The road to **beta** is now down to one bucket plus an ops task:
 | **ArtistDashboard.jsx** | ✅ Close to fidelity | `src/app/(artist)/artists/[artistId]/page.tsx` | small (omitted "New show" button — depends on ShowCreate) |
 | **ShowAdmin.jsx** | ✅ Tabbed shell + Run-binding button (#54, #65) | `src/app/(artist)/artists/[artistId]/shows/[showId]/page.tsx` | small–medium (Fans · data export tab pending) |
 | **ShowCreate.jsx** | ✅ Built — full row/tier control | `src/app/(artist)/artists/[artistId]/shows/new/page.tsx` + `ShowCreateForm` + `POST /api/shows` | done (form + POST handler + `createShow` repo all landed this slice; earlier "POST exists" note was wrong — only GET existed) |
-| **VenueBuilder.jsx** | ❌ Not built (post-beta) | — | large (rows, capacity, parity, lean, tier, holds builder) |
+| **VenueBuilder.jsx** | ❌ Not built (post-beta) | — | large (rows, capacity, parity, lean, tier, holds builder). Inline generator now does typeable sizes, GA→single total-capacity, per-tier unit types (Rows/Tables/Boxes/GA/Custom, **labels only**), and Duplicate — see post-beta item 12 below for the atomic-seating + bulk-paste follow-ups. |
 | **Allocation.jsx** | ❌ Not built (post-beta polish) | — | small–medium ("you're in the room" confirmation page after submit) |
 | **AllocationFinal.jsx** | ❌ Not built — 🟡 **soft gap (only fan-journey screen left)** | — | medium (fan "placed / not placed" result page after binding) |
 | **Scanner.jsx** | ✅ Built | `/scan` + `src/components/scan/Scanner.tsx` | done (camera via BarcodeDetector + manual token fallback → `/api/scan`; VENUE_STAFF-gated). Geo-gating stays on the fan viewer. |
@@ -143,7 +143,9 @@ Beta = real fans, real money, real attendance. The money path is done; the chain
 ### 🔵 Post-beta — don't block on these
 
 11. **Resale flow** — refund seller at original, route uplift to artist (ADR-0014). Miracle Tickets (gift) builds on this.
-12. **VenueBuilder** — edit venue architecture (rows, capacity, parity, lean, tier). Needed before any *new* venue (Austin).
+12. **VenueBuilder** — edit venue architecture (rows, capacity, parity, lean, tier). Needed before any *new* venue (Austin). The inline generator now also does typeable sizes, GA→single total-capacity, and per-tier **unit types** (Rows/Tables/Boxes/GA/Custom) + Duplicate — but two follow-ups remain:
+    - **Atomic seating units (tables / boxes) in the GAE.** Unit types are **labels only** today — the GAE fills every unit seat-by-seat like a row, so a group of 4 at an 8-top leaves 4 seats for strangers and a group of 6 can split across a table boundary. True atomic behavior (one group per unit, no co-seating, over-capacity groups bump not split) is **blocked on a product decision** — see [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md) NEW-14 (protect empty seats vs. co-seat to fill). Touches `launchpad.ts` + `placement.ts`; needs new property tests ([GAE_SPEC.md](GAE_SPEC.md)).
+    - **Bulk paste-and-parse tiers** from a spreadsheet (name, count, size, floor). Per-tier Duplicate shipped; bulk paste needs a column-format decision + parse-error handling.
 13. **Twilio + SMS** — long pole (10DLC registration 1–2 weeks); start registration anytime.
 14. **Allocation confirmation page** ("You're in the room" after submit) + **DisplacementToast** (needs polling/push).
 15. **Header/nav** design-system polish, **Icon** system consolidation, **Sentry** DSN, **Stripe Connect Express** confirmation.

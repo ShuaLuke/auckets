@@ -31,6 +31,12 @@ const TierSpecSchema = z.object({
   rowCount: z.int().min(1).max(100),
   seatsPerRow: z.int().min(1).max(500),
   isGa: z.boolean().default(false),
+  // Seating-unit kind, drives generated labels (see generate-architecture).
+  // Optional for back-compat; the generator infers "ga"/"rows" from isGa
+  // when absent.
+  unitType: z.enum(["rows", "tables", "boxes", "ga", "custom"]).optional(),
+  // Singular label for unitType "custom" (e.g. "Lawn"). Required only then.
+  customLabel: z.string().min(1).max(40).optional(),
 });
 
 const CreateVenueSchema = z
@@ -60,6 +66,15 @@ const CreateVenueSchema = z
         message: "geoLat and geoLon must be provided together",
       });
     }
+    d.tiers.forEach((t, i) => {
+      if (t.unitType === "custom" && !t.customLabel?.trim()) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["tiers", i, "customLabel"],
+          message: "a custom unit type needs a label",
+        });
+      }
+    });
   });
 
 type CreatedRow = {

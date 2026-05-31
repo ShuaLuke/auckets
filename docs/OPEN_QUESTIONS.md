@@ -16,7 +16,7 @@ referenced inline below.
 | Status              | Count |
 |---|---|
 | Open blocker        | 4     |
-| Open high-priority  | 9     |
+| Open high-priority  | 10    |
 | Phase 2 (deferred)  | 7     |
 | Resolved in v2      | 24    |
 
@@ -109,6 +109,13 @@ functional-auto-bid/alerts requests. NEW-10 decided (ops-only + auto-run).
 - **Raise rule — DECIDED (Julia, 2026-05-28): $5 above the minimum to hold the preferred section.** When displaced from their preferred section, raise to $5 over the minimum price that keeps them in it, bounded by cap. Reconciles Cope (percentage) and Julia (whole number) as a need-based whole-number raise. **⚠️ Diverges from Cope's percentage preference — Cope to confirm before it ships.** Composer copy updated to the section-defense framing.
 - **Alert delivery:** in-app (DisplacementToast) ships without external services; email needs Resend verified; SMS needs Twilio (unbuilt). Custom alerts = fan-set thresholds ("tell me if I drop below section X" / "if I'm outbid entirely").
 **Status:** Design decided (ADR-0018, working). **Raise rule pending Cope's confirmation** since it diverges from his percentage preference. Build is a multi-slice effort; relates to Q38 (status emails) and the "real-time projected allocation" concept below.
+
+### NEW-14 — Atomic seating units (tables / boxes): protect or co-seat?
+**Source:** Julia, 2026-05-31 (venue-builder UX pass — added per-tier unit types).
+**Affects:** GAE (`launchpad.ts` run construction + `placement.ts`), the venue generator, new property tests.
+**Context:** The inline venue builder now lets an operator tag a tier's unit type as Rows / Tables / Boxes / GA / Custom. Today that's **labels only** — the GAE fills every unit seat-by-seat like a row, so a group of 4 at an 8-top leaves 4 seats open for strangers and a group of 6 can be split across a table boundary.
+**The question:** for a true atomic unit (table/box), at a partially-filled unit do we **protect** the remaining seats (a unit holds one group only — worse fill rate, better experience) or **co-seat** strangers to fill it (better economics, worse experience)? And how do over-capacity groups behave — **bump** to the next unit or **split** across units (note NEW-6 already bars seat-splitting for assigned seats)?
+**Status:** Open. Blocks the atomic-seating GAE work tracked in [REMAINING_WORK.md](REMAINING_WORK.md) post-beta item 12 (VenueBuilder). Labels shipped 2026-05-31; behavior waits on this answer (Cope/Julia).
 
 ---
 

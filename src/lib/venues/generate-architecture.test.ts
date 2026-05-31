@@ -76,4 +76,59 @@ describe("generateArchitectureRows", () => {
   it("returns an empty array for no tiers", () => {
     expect(generateArchitectureRows([])).toEqual([]);
   });
+
+  describe("unit types", () => {
+    it("labels table units 'Table N' with a 'tables' area, seats 1..N", () => {
+      const rows = generateArchitectureRows([
+        { name: "floor", rowCount: 3, seatsPerRow: 4, isGa: false, unitType: "tables" },
+      ]);
+      expect(rows.map((r) => r.rowName)).toEqual(["Table 1", "Table 2", "Table 3"]);
+      expect(rows.every((r) => r.area === "tables" && r.section === "tables")).toBe(true);
+      expect(rows[0]!.seatNumbers).toEqual(["1", "2", "3", "4"]);
+      // Labels-only for now: a table still fills seat-by-seat (CENTER, not GA).
+      expect(rows.every((r) => r.lean === "CENTER" && r.isGa === false)).toBe(true);
+    });
+
+    it("labels box units 'Box N' with a 'boxes' area", () => {
+      const rows = generateArchitectureRows([
+        { name: "boxes", rowCount: 2, seatsPerRow: 6, isGa: false, unitType: "boxes" },
+      ]);
+      expect(rows.map((r) => r.rowName)).toEqual(["Box 1", "Box 2"]);
+      expect(rows.every((r) => r.area === "boxes")).toBe(true);
+    });
+
+    it("labels custom units '<label> N' and slugifies the area", () => {
+      const rows = generateArchitectureRows([
+        {
+          name: "lawn",
+          rowCount: 2,
+          seatsPerRow: 50,
+          isGa: false,
+          unitType: "custom",
+          customLabel: "VIP Lawn",
+        },
+      ]);
+      expect(rows.map((r) => r.rowName)).toEqual(["VIP Lawn 1", "VIP Lawn 2"]);
+      expect(rows.every((r) => r.area === "vip_lawn")).toBe(true);
+    });
+
+    it("treats unitType 'ga' the same as the isGa flag", () => {
+      const viaUnit = generateArchitectureRows([
+        { name: "ga", rowCount: 1, seatsPerRow: 20, isGa: false, unitType: "ga" },
+      ]);
+      expect(viaUnit[0]!.isGa).toBe(true);
+      expect(viaUnit[0]!.rowName).toBe("GA");
+      expect(viaUnit[0]!.lean).toBe("LEFT");
+      expect(viaUnit[0]!.seatNumbers[0]).toBe("GA-1-1");
+    });
+
+    it("only the 'rows' unit consumes the A/B/C sequence (tables don't shift it)", () => {
+      const rows = generateArchitectureRows([
+        { name: "tables", rowCount: 2, seatsPerRow: 4, isGa: false, unitType: "tables" },
+        { name: "seated", rowCount: 2, seatsPerRow: 10, isGa: false, unitType: "rows" },
+      ]);
+      const seated = rows.filter((r) => r.area === "orchestra");
+      expect(seated.map((r) => r.rowName)).toEqual(["A", "B"]);
+    });
+  });
 });
