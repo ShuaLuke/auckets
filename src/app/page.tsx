@@ -30,7 +30,7 @@
 // docs/LANDING_PAGE_PLAN.md) — several FAQ claims describe behavior gated
 // on the still-unconfirmed ADR-0003.
 
-import { SignInButton, SignUpButton } from "@clerk/nextjs";
+import { SignUpButton } from "@clerk/nextjs";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { ArrowRight, Check, Plus, X } from "lucide-react";
 import Link from "next/link";
@@ -254,12 +254,11 @@ function Hero({ heroShow }: { heroShow: ShowSummaryView | null }) {
                 Create an account
               </MarqueeButton>
             </SignUpButton>
-            {/* Shows are sign-in gated — there's no public show page — so
-                this prompts sign-in rather than dead-ending at /dashboard,
-                which would just bounce an anonymous visitor to /sign-in. */}
-            <SignInButton mode="modal">
-              <Button variant="ghost">See an upcoming show →</Button>
-            </SignInButton>
+            {/* The public lineup (/shows) — anyone can browse without an
+                account; making an offer still prompts sign-in one click in. */}
+            <Link href="/shows">
+              <Button variant="ghost">See the lineup →</Button>
+            </Link>
           </div>
         </div>
         <div style={{ flex: 1 }}>
