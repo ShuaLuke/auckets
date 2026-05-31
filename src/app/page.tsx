@@ -1,20 +1,18 @@
-// Home page (`/`). Auth- and role-aware:
+// Home page (`/`). Auth-aware:
 //
+//   - Logged in   → redirect to /dashboard, the single logged-in home. The
+//     dashboard already greets the user and lists their shows + offers, so
+//     "/" carries no separate personalized surface.
 //   - Logged out  → the marketing landing (prototype-fidelity port of
 //     design/ui_kits/auckets/screens/Landing.jsx): hero, "How it works",
 //     comparison band, "For artists", FAQ, footer. The hero ticket card
 //     is driven by the real soonest open show (evergreen fallback when
 //     none is open).
-//   - Logged in   → a personalized home: welcome + role-aware quick links
-//     (Dashboard / My bids for everyone; per-artist management for artist
-//     members; Admin + Requests for AUCKETS_ADMIN) + the fan's next open
-//     show, with a light "How it works" refresher kept below.
 //
 // Why server-branch on auth() rather than Clerk's <SignedIn>/<SignedOut>:
-// the two states render materially different trees and read different
-// data, so a server branch is cleaner than a client toggle. Clerk's modal
-// sign-in already redirects to /dashboard (signInFallbackRedirectUrl), so
-// "/" never needs to react to a client-side sign-in in place.
+// the logged-in path is a redirect and the logged-out path reads data, so
+// a server branch is cleaner than a client toggle. Clerk's modal sign-in
+// already redirects to /dashboard (signInFallbackRedirectUrl).
 //
 // Data exposure note: the logged-out hero surfaces poster-level show
 // metadata (artist / venue / city / date / status) to anonymous visitors.
@@ -31,24 +29,18 @@
 // on the still-unconfirmed ADR-0003.
 
 import { SignUpButton } from "@clerk/nextjs";
-import { auth, currentUser } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 import { ArrowRight, Check, Plus, X } from "lucide-react";
+import { redirect } from "next/navigation";
 import Link from "next/link";
 
-import { ShowRow } from "@/components/dashboard/ShowRow";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Eyebrow } from "@/components/ui/Eyebrow";
 import { MarqueeButton } from "@/components/ui/MarqueeButton";
 import { db } from "@/lib/db";
-import {
-  getOfferByShowAndUser,
-  listArtistsManageableByUser,
-  listOpenShows,
-  userCanScan,
-  userIsAdmin,
-} from "@/lib/db/repositories";
+import { listOpenShows } from "@/lib/db/repositories";
 import {
   DEFAULT_TZ,
   presentShowSummary,
@@ -61,39 +53,9 @@ export const dynamic = "force-dynamic";
 export default async function HomePage() {
   const { userId } = await auth();
 
-  if (userId) {
-    // Logged-in: personalized, role-aware home.
-    const [openShows, isAdmin, manageableArtists, canScan, user] =
-      await Promise.all([
-        listOpenShows(db),
-        userIsAdmin(db, userId),
-        listArtistsManageableByUser(db, userId),
-        userCanScan(db, userId),
-        currentUser(),
-      ]);
-
-    // listOpenShows is ordered by doorsAt asc, so [0] is the soonest.
-    const now = new Date();
-    const soonest = openShows[0] ?? null;
-    let nextShow: ShowSummaryView | null = null;
-    if (soonest) {
-      const offer = await getOfferByShowAndUser(db, soonest.id, userId);
-      nextShow = presentShowSummary(soonest, now, DEFAULT_TZ, offer);
-    }
-
-    const greeting =
-      user?.firstName ?? user?.primaryEmailAddress?.emailAddress ?? null;
-
-    return (
-      <SignedInHome
-        greeting={greeting}
-        nextShow={nextShow}
-        isAdmin={isAdmin}
-        manageableArtists={manageableArtists}
-        canScan={canScan}
-      />
-    );
-  }
+  // Logged-in: the dashboard is the single home. Redirect there rather than
+  // duplicating the greeting + show list here.
+  if (userId) redirect("/dashboard");
 
   // Logged-out: marketing landing with the real soonest-show hero.
   const openShows = await listOpenShows(db);
@@ -108,104 +70,6 @@ export default async function HomePage() {
       <ComparisonBand />
       <ForArtists />
       <Faq />
-      <Footer />
-    </main>
-  );
-}
-
-// =========================================================================
-// Signed-in personalized home
-// =========================================================================
-
-function SignedInHome({
-  greeting,
-  nextShow,
-  isAdmin,
-  manageableArtists,
-  canScan,
-}: {
-  greeting: string | null;
-  nextShow: ShowSummaryView | null;
-  isAdmin: boolean;
-  manageableArtists: ReadonlyArray<{ id: string; name: string }>;
-  // True for AUCKETS_ADMIN or VENUE_STAFF — gates the door-scanner link.
-  canScan: boolean;
-}) {
-  const linkProps = {
-    className: "no-underline",
-    style: { borderBottom: "none" } as const,
-  };
-
-  return (
-    <main
-      className="min-h-[calc(100vh-57px)]"
-      style={{ background: "var(--paper)" }}
-    >
-      <div className="mx-auto max-w-[960px] px-4 py-12 md:px-8">
-        {/* Welcome band */}
-        <div className="mb-7">
-          <Eyebrow className="mb-2">Welcome back</Eyebrow>
-          <h1 className="text-4xl">
-            {greeting ? `Hi, ${greeting}` : "Your shows"}
-          </h1>
-        </div>
-
-        {/* Role-aware quick links */}
-        <div className="mb-9 flex flex-wrap items-center gap-3">
-          <Link href="/dashboard" {...linkProps}>
-            <Button>Go to dashboard</Button>
-          </Link>
-          <Link href="/my-bids" {...linkProps}>
-            <Button variant="secondary">View bid history</Button>
-          </Link>
-          {manageableArtists.map((artist) => (
-            <Link key={artist.id} href={`/artists/${artist.id}`} {...linkProps}>
-              <Button variant="secondary">Manage {artist.name}</Button>
-            </Link>
-          ))}
-          {isAdmin && (
-            <>
-              <Link href="/admin" {...linkProps}>
-                <Button variant="secondary">Admin</Button>
-              </Link>
-              <Link href="/admin/requests" {...linkProps}>
-                <Button variant="secondary">Requests</Button>
-              </Link>
-            </>
-          )}
-          {/* Door scanner — AUCKETS_ADMIN or VENUE_STAFF only (userCanScan).
-              The /scan route enforces the same check server-side. */}
-          {canScan && (
-            <Link href="/scan" {...linkProps}>
-              <Button variant="secondary">Door scanner</Button>
-            </Link>
-          )}
-        </div>
-
-        {/* Next show */}
-        <Eyebrow className="mb-3">
-          {nextShow ? "Your next show" : "Upcoming"}
-        </Eyebrow>
-        {nextShow ? (
-          <ShowRow show={nextShow} />
-        ) : (
-          <div
-            className="rounded-xl p-5 font-sans text-[13px]"
-            style={{
-              background: "var(--paper-2)",
-              color: "var(--fg-muted)",
-              lineHeight: 1.55,
-            }}
-          >
-            No open shows right now. Check back closer to the next announced
-            date.
-          </div>
-        )}
-      </div>
-
-      {/* A light marketing refresher — how allocation works — kept for
-          returning users without the first-timer FAQ / comparison band. */}
-      <HowItWorks />
       <Footer />
     </main>
   );

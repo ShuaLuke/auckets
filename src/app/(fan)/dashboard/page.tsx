@@ -96,6 +96,9 @@ export default async function DashboardPage() {
 
   const user = await currentUser();
   const email = user?.primaryEmailAddress?.emailAddress ?? "unknown";
+  // Greet by first name when Clerk has it; fall back to the plain "Shows"
+  // heading the prototype shipped with.
+  const firstName = user?.firstName ?? null;
   const shows = await loadDashboardData(userId);
 
   return (
@@ -107,7 +110,7 @@ export default async function DashboardPage() {
         <div className="mb-7 flex items-baseline justify-between">
           <div>
             <Eyebrow className="mb-2">Welcome back</Eyebrow>
-            <h1 className="text-4xl">Shows</h1>
+            <h1 className="text-4xl">{firstName ? `Hi, ${firstName}` : "Shows"}</h1>
           </div>
           <span className="font-sans text-[13px]" style={{ color: "var(--fg-muted)" }}>
             Signed in as{" "}
