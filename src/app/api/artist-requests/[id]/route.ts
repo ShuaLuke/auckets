@@ -19,11 +19,13 @@ import { z } from "zod";
 
 import { db } from "@/lib/db";
 import {
+  closeShow,
   denyArtistRequest,
   ensureUserMirror,
   executeArtistRequest,
   getEmailsByUserIds,
   getShowById,
+  pauseShow,
   userIsAdmin,
 } from "@/lib/db/repositories";
 import {
@@ -57,6 +59,10 @@ type Success = {
   id: string;
   status: "executed" | "denied";
   executedAt: string;
+  // Present only when the request was executed but its show-side transition
+  // (pause / close) couldn't apply — e.g. the show already bound. The request
+  // close is still authoritative; this tells ops the show didn't change.
+  showWarning?: string;
 };
 type ErrorBody = { error: string };
 
@@ -142,6 +148,41 @@ export async function PATCH(
     );
   }
 
+  // Apply the show-side effect of executing a pause / end_early request
+  // (ADR-0013: executing the request is what actually halts/ends the show —
+  // before this, executing only closed out the request row and the show kept
+  // taking offers). Only on execute, never on deny. 'comp' / 'override' carry
+  // no automatic status change — those are manual ops actions recorded via the
+  // request notes.
+  //
+  // The transition is best-effort relative to the request close: the request
+  // is already 'executed' at this point, so a transition that no-ops because
+  // the show isn't in a pausable/closable state (e.g. it already bound) is not
+  // an error — we log via the response note path is overkill here; instead we
+  // surface a soft warning field so the inbox can show "request executed, but
+  // show was already <status>". This keeps the executed request authoritative
+  // while not silently dropping a failed transition.
+  let showWarning: string | null = null;
+  if (parsedBody.data.action === "execute") {
+    if (row.kind === "pause") {
+      const result = await pauseShow(db, row.showId, new Date());
+      if (!result.ok) {
+        showWarning =
+          result.reason === "not_found"
+            ? "show not found"
+            : `show could not be paused (status=${result.status})`;
+      }
+    } else if (row.kind === "end_early") {
+      const result = await closeShow(db, row.showId);
+      if (!result.ok) {
+        showWarning =
+          result.reason === "not_found"
+            ? "show not found"
+            : `show could not be closed (status=${result.status})`;
+      }
+    }
+  }
+
   // Fire ops notifications (Slack + email) before responding. Both
   // channels are best-effort and errors are caught inside
   // notifyRequestActioned, so this never throws. We load show context
@@ -167,5 +208,6 @@ export async function PATCH(
     id: row.id,
     status: row.status as "executed" | "denied",
     executedAt: row.executedAt.toISOString(),
+    ...(showWarning ? { showWarning } : {}),
   });
 }

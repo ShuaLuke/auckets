@@ -2,10 +2,13 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 
 import {
   announceShow,
+  closeShow,
   getShowById,
   listAllShows,
   listOpenShows,
   listShowsForArtist,
+  pauseShow,
+  resumeShow,
   type ShowSummary,
   type ShowWithRelations,
 } from "./shows";
@@ -227,5 +230,92 @@ describe("announceShow", () => {
     ]);
     const result = await announceShow(db, "show-1");
     expect(result).toEqual({ ok: false, reason: "not_draft", status: "open" });
+  });
+});
+
+// Guarded status transitions (pause / resume / close) share one core, so the
+// cases below exercise its three outcomes through each public fn: ok (UPDATE
+// hit), not_found (no row), wrong_status (row in an ineligible state). The mock
+// db can't evaluate the WHERE guard, so "ok" cases assert the row is threaded
+// through; the not-ok cases assert the follow-up SELECT drives the right typed
+// failure.
+describe("pauseShow", () => {
+  const now = new Date("2026-05-31T12:00:00Z");
+
+  it("returns ok with the updated row when the open → paused UPDATE hits", async () => {
+    const paused = { id: "show-1", status: "paused" };
+    const db = makeQueuedMockDb<typeof paused>([[paused]]);
+    expect(await pauseShow(db, "show-1", now)).toEqual({
+      ok: true,
+      show: paused,
+    });
+  });
+
+  it("returns not_found when the UPDATE misses and no row exists", async () => {
+    const db = makeQueuedMockDb<Record<string, unknown>>([[], []]);
+    expect(await pauseShow(db, "missing", now)).toEqual({
+      ok: false,
+      reason: "not_found",
+    });
+  });
+
+  it("returns wrong_status with the current status when the show isn't open", async () => {
+    const db = makeQueuedMockDb<Record<string, unknown>>([
+      [],
+      [{ status: "closed" }],
+    ]);
+    expect(await pauseShow(db, "show-1", now)).toEqual({
+      ok: false,
+      reason: "wrong_status",
+      status: "closed",
+    });
+  });
+});
+
+describe("resumeShow", () => {
+  it("returns ok with the updated row when the paused → open UPDATE hits", async () => {
+    const opened = { id: "show-1", status: "open" };
+    const db = makeQueuedMockDb<typeof opened>([[opened]]);
+    expect(await resumeShow(db, "show-1")).toEqual({ ok: true, show: opened });
+  });
+
+  it("returns wrong_status when the show isn't paused", async () => {
+    const db = makeQueuedMockDb<Record<string, unknown>>([
+      [],
+      [{ status: "open" }],
+    ]);
+    expect(await resumeShow(db, "show-1")).toEqual({
+      ok: false,
+      reason: "wrong_status",
+      status: "open",
+    });
+  });
+});
+
+describe("closeShow", () => {
+  it("returns ok with the updated row when the → closed UPDATE hits", async () => {
+    const closed = { id: "show-1", status: "closed" };
+    const db = makeQueuedMockDb<typeof closed>([[closed]]);
+    expect(await closeShow(db, "show-1")).toEqual({ ok: true, show: closed });
+  });
+
+  it("returns not_found when the show doesn't exist", async () => {
+    const db = makeQueuedMockDb<Record<string, unknown>>([[], []]);
+    expect(await closeShow(db, "missing")).toEqual({
+      ok: false,
+      reason: "not_found",
+    });
+  });
+
+  it("returns wrong_status when the show is already allocated", async () => {
+    const db = makeQueuedMockDb<Record<string, unknown>>([
+      [],
+      [{ status: "allocated" }],
+    ]);
+    expect(await closeShow(db, "show-1")).toEqual({
+      ok: false,
+      reason: "wrong_status",
+      status: "allocated",
+    });
   });
 });
