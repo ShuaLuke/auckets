@@ -5,7 +5,7 @@ Two problems: the content is aimed only at first-time prospects, and
 logged-in users get the same first-timer pitch instead of a returning-user
 home. Companion to [`MOBILE_RESPONSIVE_PLAN.md`](MOBILE_RESPONSIVE_PLAN.md).
 
-Written 2026-05-29. Not yet started.
+Written 2026-05-29. **✅ COMPLETED — shipped via #83 (auth-/role-aware home with real-show hero) and #98 (public `/shows` lineup + nav link + landing CTA).** This doc is now historical: the logged-out real-soonest-show hero, the role-aware signed-in home, the `listOpenShows` server-side data path (no anon key), and the no-demand-signal safeguards all landed. Kept for the design reasoning.
 
 ---
 

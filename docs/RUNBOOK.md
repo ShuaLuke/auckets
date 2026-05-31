@@ -8,7 +8,7 @@ Operational procedures for AUCKETS. This document is lighter at MVP and grows ov
 
 | Environment | URL | Database | Stripe | Clerk |
 |---|---|---|---|---|
-| Local | `http://localhost:3000` | Local Supabase (or shared dev project) | Test keys | Dev instance |
+| Local | `http://localhost:3001` | Local Supabase (or shared dev project) | Test keys | Dev instance |
 | Staging | `https://staging.auckets.com` (TBD) | Staging Supabase project | Test keys | Staging instance |
 | Production | `https://auckets.com` (TBD) | Production Supabase project | Live keys | Production instance |
 
@@ -24,7 +24,7 @@ cp .env.example .env.local
 # Fill in .env.local with your dev credentials (Clerk dev, Supabase dev, Stripe test, etc.)
 npm run db:migrate            # Apply migrations to your dev DB
 npm run db:seed               # Seed test data
-npm run dev                   # Start at localhost:3000
+npm run dev                   # Start at localhost:3001
 ```
 
 If something fails at this stage, fix the doc — the next person should hit the same wall.
@@ -40,8 +40,10 @@ npm run test:e2e              # Playwright e2e tests
 npm run db:migrate            # Apply migrations
 npm run db:generate           # Generate a new migration from schema changes
 npm run db:studio             # Drizzle Studio — visual DB browser
-npm run gae:run <venue> <offers>  # Run GAE against test fixtures
+npm run test:integration      # Real-Postgres repository suites (needs local PG on :5433 — see runbooks/local-dev.md)
 ```
+
+(The planned `npm run gae:run <venue> <offers>` CLI from Week 2 was never built — the admin "Preview allocation" button serves the same debugging purpose against real-DB data.)
 
 ## Deploying
 
@@ -139,7 +141,7 @@ If our `users` table is out of sync with Clerk (Clerk has a user we don't):
 
 ## Show-day runbook
 
-For any show with more than ~20 attendees. See `docs/runbooks/show-day.md` for the detailed checklist; the summary:
+For any show with more than ~20 attendees. A dedicated `docs/runbooks/show-day.md` is not yet written (Week 7 item — see ROADMAP); the summary checklist below is the interim:
 
 ### T minus 7 days
 

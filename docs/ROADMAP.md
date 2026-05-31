@@ -74,23 +74,23 @@ A small private beta show (~50 attendees, Cope's place or a similar untraditiona
 
 ---
 
-## Week 4 — Offer submission flow ⚠️ DEV STUB ONLY
+## Week 4 — Offer submission flow ✅ DONE (real Stripe path)
 
 **Goal: fans can submit offers and have them stored, tokenized, and ranked.**
 
-- [ ] **Stripe SetupIntent integration.** — blocked on ADR-0003 (Cope's hold-window research)
-- [x] `POST /api/offers` route (dev stub): auth, validate, create offer with placeholder Stripe IDs. Gated by `ALLOW_DEV_OFFER_STUB` env var; refused on Vercel production.
+- [x] **Stripe integration (real path).** Per ADR-0003 working assumption: manual-capture `PaymentIntent` auth-hold on submit (not SetupIntent), captured on placement at binding. Shipped #58–#61.
+- [x] `POST /api/offers` route — real Stripe-backed path; dev stub (`ALLOW_DEV_OFFER_STUB`) remains only as a no-Stripe fallback, refused on Vercel production.
 - [x] Fan-facing offer submission form — full prototype-fidelity port (stepper, price, tier radios, auto-bid toggle, rank-key preview).
 - [x] Auto-bid fields on the form (ADR-0017): `auto_bid_enabled`, `auto_bid_cap_cents`, `auto_bid_increment_cents`.
 - [x] Private-threshold field on the offer schema (ADR-0017) — server-only; UI surfacing pending.
 - [x] Show page reads aggregate offer stats (offers count, tickets count, median, top, tier breakdown, distribution histogram).
 - [ ] `BOND_EVENT` appended on offer submission. — `bond_events` table not yet shipped; comes with Phase 2.
-- [ ] Email confirmation on offer received. — template not built; Resend wired but dormant.
+- [x] Email confirmation on offer received. — `offer-received` template + sender wired (#90); dormant until Resend domain verified (ops task).
 - [ ] **SMS confirmation when fan has provided phone** (ADR-0016). — Twilio not installed.
 - [ ] Webhook handler for Clerk user creation/update. — using lazy `ensureUserMirror` on POST routes for now.
 - [ ] E2E test: sign up → land on show page → submit offer → see confirmation. — Playwright smoke covers sign-in only.
 
-**Status:** A fan CAN sign up, see Cope's place, submit an offer through the dev stub on preview deploys, and land back on /dashboard with the yourOffer chip. The /my-bids page shows the full revision history of every offer via `offer_revisions`. Real Stripe-backed submission and notifications wait on ADR-0003 + Twilio + Resend domain verification.
+**Status:** A fan can sign up, see Cope's place, submit an offer through the **real Stripe path** (manual-capture PaymentIntent + Elements card collection), and land back on /dashboard with the yourOffer chip. The /my-bids page shows the full revision history of every offer via `offer_revisions`. Fan emails are wired but dormant until the Resend domain is verified; SMS waits on Twilio.
 
 **Confirmed by v2 (was blocked, now decided — see ADRs):**
 - Q12 → fans can revise upward; auto-bid + private offers are first-class (ADR-0017).
@@ -105,22 +105,22 @@ A small private beta show (~50 attendees, Cope's place or a similar untraditiona
 
 ---
 
-## Week 5 — Allocation API and binding flow ⚠️ PREVIEW ONLY
+## Week 5 — Allocation API and binding flow ✅ DONE
 
 **Goal: allocation can be triggered, runs binding, captures payments, notifies fans.**
 
-- [ ] Inngest job: `allocation.run` triggered by API call or schedule. — manual button only today; Inngest has placeholder `hello-world` function only.
+- [x] Inngest job: binding triggered by API call **and** schedule. `scheduled-binding` cron sweeps shows past `binding_allocation_at` (#78); `jobs/functions/` now holds real handlers (scheduled-binding, ticket-issuance, allocation-imminent, card-failure-expiry).
 - [x] `POST /api/shows/[id]/allocate?mode=preview` — admin-only, runs GAE, writes seat_assignments + allocation_logs.
-- [ ] **`mode=binding` path** — endpoint returns 501; blocked on ADR-0003.
-- [ ] Stripe PaymentIntent creation. — blocked on ADR-0003.
-- [ ] Payment failure handling (`PAYMENT_FAILED` status, retry window, fan notification). — schema column exists; flow not built.
-- [ ] Outbid email template. — not built.
-- [ ] Accepted email template with ticket details. — not built.
-- [ ] Preview allocation job on a schedule. — manual-trigger only via the ShowAdmin "Preview allocation" button. Continuous compute is a future slice.
-- [x] Fan can see their projected rank via the show page. — yourOffer chip on /dashboard, rank-key preview on show page.
-- [x] Manual trigger endpoint for binding allocation (admin only). — preview path shipped; binding path is the same endpoint with `mode=binding`, currently 501.
+- [x] **`mode=binding` path** — captures placed offers' PaymentIntents, releases unplaced auths, transitions statuses (#62).
+- [x] Stripe PaymentIntent creation + capture at binding.
+- [x] Payment failure handling — `card_failure` status + 4h recovery window + fan notification + recovery UI (#79, #80).
+- [x] Not-placed / placed email templates (#90). — replaces the old "outbid/accepted" framing.
+- [x] Accepted (placed) email template (#90). — ticket details follow at T-48h issuance.
+- [ ] Preview allocation job on a schedule. — manual-trigger only via the ShowAdmin "Preview allocation" button; live in-memory preview projection on the show page (NEW-10). Continuous background compute is a future slice.
+- [x] Fan can see their projected rank via the show page. — yourOffer chip on /dashboard, rank-key preview + live preview projection on show page.
+- [x] Manual trigger endpoint for binding allocation (admin only). — "Run binding" button on ShowAdmin (#65), plus the scheduled cron.
 
-**Status:** The GAE runs from the UI today. Admins click "Preview allocation" → seats get placed → the ShowAdmin page refreshes with new BigStats, capacity bar, recent activity, and seat map. Binding allocation (which charges cards and issues tickets) is the next big slice but waits on ADR-0003.
+**Status:** Binding allocation is live end-to-end. Admins can click "Run binding" or let the `scheduled-binding` cron sweep due shows; placed offers are charged, unplaced auths released, tickets issued at T-48h, fans emailed.
 
 **Blocked on (or proceed with default):**
 - NEW-2 (rolling vs batch) — default: hybrid (continuous preview + binding checkpoints).
@@ -128,12 +128,12 @@ A small private beta show (~50 attendees, Cope's place or a similar untraditiona
 
 ---
 
-## Week 6 — Artist dashboard ✅ DONE (read side) ⚠️ partial (write side)
+## Week 6 — Artist dashboard ✅ DONE (read side + show creation) ⚠️ partial (holds write-path)
 
 **Goal: Cope can create a show, configure pricing, see what's happening, and request operational changes.**
 
-- [x] Artist login (Clerk; `ARTIST` and `AUCKETS_ADMIN` roles supported per ADR-0012).
-- [ ] **Show creation form**: venue, date, sections, pricing, offer window. — NOT BUILT. Shows are seeded by SQL today.
+- [x] Artist login (Clerk; `ARTIST`, `AUCKETS_ADMIN`, and `VENUE_STAFF` roles supported per ADR-0012).
+- [x] **Show creation form**: venue, date, rows/tiers, pricing, offer window. — shipped #86 (`ShowCreateForm` + `POST /api/shows` + `createShow` repo) with an inline "create venue" path #89. Shows no longer need SQL seeding.
 - [ ] **Per-section floor price configuration** (pending Q19 confirmation). — NOT BUILT.
 - [x] Aggregate offer stats display — totals + averages per section. ArtistDashboard + ShowAdmin both show comprehensive aggregates.
 - [x] Active section selector (partial-venue activation per NEW-4). — `activeRowIds` plumbed through repos + presenters + UI.
@@ -141,7 +141,7 @@ A small private beta show (~50 attendees, Cope's place or a similar untraditiona
 - [x] **Request workflow** for pause / end-early / comp / override (ADR-0013). — POST /api/artist-requests + RequestActionButton dialog shipped. Admin inbox UI for execution is the next slice (in progress at handoff time).
 - [x] Post-allocation view: ShowAdmin shows BigStats (placed/unplaced/orphans/fill rate), seat map, activity feed including PLACED/SKIPPED/ORPHAN_DETECTED events.
 
-**Status:** Cope can sign in, see his shows, drill into Cope's place, see live aggregates / seat map / activity / tier breakdown / distribution histogram / holds. He can file Request actions for pause/end-early/comp/override. He CANNOT yet create new shows or build new venues without engineering help.
+**Status:** Cope can sign in, see his shows, drill into Cope's place, see live aggregates / seat map / activity / tier breakdown / distribution histogram / holds. He can file Request actions for pause/end-early/comp/override. He can now **create new shows and generate a venue + seat map inline** (#86/#89). Full VenueBuilder (editing an existing venue's architecture) is still post-beta.
 
 **Confirmed by v2:**
 - Q28 → Auckets controls pause/end-early; artist files a request (ADR-0013). ✅ shipped.
@@ -150,9 +150,10 @@ A small private beta show (~50 attendees, Cope's place or a similar untraditiona
 - Q31 → Three roles for MVP: `FAN` + `ARTIST` + `AUCKETS_ADMIN` (ADR-0012). `VENUE_STAFF` added Week 7 for Austin.
 
 **Follow-up slices remaining:**
-- AUCKETS admin inbox UI for executing artist requests — in progress at handoff time.
+- ~~AUCKETS admin inbox UI for executing artist requests~~ — ✅ shipped (`/admin/requests`, #66).
+- ~~ShowCreate for artist self-service~~ — ✅ shipped (#86/#89). Full VenueBuilder (edit existing architecture) still post-beta.
+- Holds management write-path (Add hold dialog + DELETE) — read-only HoldsCard ships; write-path parked.
 - Per-show email customization handoff workflow (Q37b, still open).
-- ShowCreate + VenueBuilder for artist self-service.
 
 ---
 
@@ -162,7 +163,7 @@ A small private beta show (~50 attendees, Cope's place or a similar untraditiona
 
 - [ ] RBAC enforced consistently across all routes.
 - [ ] Rate limiting on offer submission (per user, per show).
-- [ ] Stripe webhook handler complete and idempotent.
+- [x] Stripe webhook handler complete and idempotent. — shipped #77 (`/api/stripe/webhook`, signed + `stripe_webhook_events` receipts).
 - [ ] Observability dashboard: offer rate, allocation status, payment success, error count.
 - [ ] Sentry alerts on critical errors.
 - [ ] Database backups confirmed and one restore drill completed.
@@ -212,8 +213,8 @@ Time intentionally left undefined. Whatever the retro surfaces becomes the prior
 - [ ] Partial-venue activation tested at scale.
 - [ ] Multi-section pricing tested.
 - [ ] Performance: allocation runtime measured for ~500 offers across multiple sections.
-- [ ] **Rotating geo-gated QR ticket viewer** (ADR-0015) — TOTP rotation every 60s + geolocation gate.
-- [ ] Door scanner web app (simple `VENUE_STAFF` tablet UI). Adds the 4th role per ADR-0012.
+- [x] **Rotating geo-gated QR ticket viewer** (ADR-0015) — ✅ **shipped early (#68/#69/#81)**: 60s TOTP rotation + geo gate + T-48h issuance.
+- [x] Door scanner web app (simple `VENUE_STAFF` tablet UI). — ✅ **shipped early (#82/#87)**; VENUE_STAFF role added per ADR-0012.
 
 ---
 

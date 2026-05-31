@@ -109,17 +109,17 @@ auckets/
 
 ## Current state
 
-**Weeks 1–6 — complete and deployed.** PRs #1–#67 merged. Production lives at `auckets-olive.vercel.app`. The **real Stripe money path is now live** (manual-capture PaymentIntent on offer submit + binding allocation that captures placed / releases unplaced). The dev stub remains only as a no-Stripe fallback; production refuses it.
+**Weeks 1–6 complete and deployed; the full beta feature set is now shipped.** PRs #1–#98 merged. Production lives at `auckets-olive.vercel.app`. The **real Stripe money path is live** (manual-capture PaymentIntent on offer submit + binding allocation that captures placed / releases unplaced) and the **entire fan attend-path is live** end-to-end. The dev stub remains only as a no-Stripe fallback; production refuses it.
 
-**Where we stand (2026-05-28):** Past alpha. A fan can put a real card down, get ranked, and have funds captured when placed. The gap to **beta** is the back half of the fan journey — receiving a usable ticket and getting scanned in at the door — plus webhook/payment-correctness hardening. See [`REMAINING_WORK.md`](REMAINING_WORK.md) for the hard/strong/soft blocker breakdown.
+**Where we stand (2026-05-31):** Essentially **beta-ready**. A fan can put a real card down → get ranked → be seated by the GAE → have funds captured on placement → receive a geo-gated rotating-QR ticket → get scanned in at the door. Every hard and strong blocker is closed (attend-path #68–#82, payment hardening #77–#80, scheduled binding #78, displacement engine #72–#76, fan emails #90, ShowCreate + inline venue #86/#89, AllocationFinal #96). What's left for beta is **ops + one product decision**, not code — see [`REMAINING_WORK.md`](REMAINING_WORK.md).
 
 ### Shipped (read-side, bid flow, AND the real money path)
 
 **Foundation, schema, engine:**
 - Next 14, Drizzle, Clerk 6, Inngest, Sentry (dormant), Resend (dormant), Zod, pino, Tailwind, Vitest, Playwright
-- CI: typecheck + lint + ~392 unit tests + build on every PR. A separate `integration` job stands up a Postgres 17 service container and runs `npm run test:integration` against it for the repository-layer suites that need real SQL semantics.
+- CI: typecheck + lint + ~518 unit tests + build on every PR. A separate `integration` job stands up a Postgres 17 service container and runs `npm run test:integration` against it (~11 suites) for the repository-layer suites that need real SQL semantics.
 - `src/lib/env.ts` Zod-validated; `ALLOW_DEV_OFFER_STUB` refused on `VERCEL_ENV=production`
-- 17 Drizzle tables; migrations applied via Supabase MCP (incl. `offer_revisions`, `holds`, and the Stripe columns on `offers`)
+- 19 Drizzle tables; migrations applied via Supabase MCP (incl. `offer_revisions`, `holds`, `stripe_webhook_events`, `displacement_events`, `offer_idempotency_keys`, and the Stripe columns on `offers`)
 - RLS enabled deny-all on every public table; new tables enable RLS in their migration
 - **GAE is complete:** types, rank-key, launchpad, fit-resolver, placement, waterfall, `allocate()` entry point. All tested.
 
@@ -128,7 +128,7 @@ auckets/
 - `POST /api/offers` real path: ensures a Stripe Customer, creates a `PaymentIntent` with `capture_method:"manual"` to hold the card auth for the ≤6-day window (ADR-0003 working assumption). Stripe Elements card collection wired into OfferComposer.
 - Revision support: revising an offer cancels the prior PaymentIntent (releases old auth) and creates a new one for the revised amount.
 - **Binding allocation** (`src/lib/allocation/run-binding.ts`): `mode=binding` on the allocate route captures placed offers' PaymentIntents, cancels auths for unplaced offers, transitions statuses. Driven by an admin-only "Run binding" button on ShowAdmin.
-- **Still missing on the money path:** no Stripe webhook handler (signature verification + idempotent async events) — prime-directive #6 gap; no `payment_intent.payment_failed` / card-failure recovery; no app-level idempotency-table writes; no scheduled (Inngest) binding — it's manual-button-only.
+- **Money path hardening (shipped #77–#80):** signed, idempotent Stripe webhook at `/api/stripe/webhook` (`stripe_webhook_events` receipts); `payment_intent.payment_failed` → card-failure recovery (backend `recoverCardFailure` + fan banner/modal + 4h-window cron); scheduled binding (`scheduled-binding` Inngest cron sweeps shows past `binding_allocation_at`). The manual admin "Run binding" button remains as a fallback. **Remaining money-path gap:** no app-level offer-idempotency-table writes yet.
 
 **Fan UI (`/dashboard`, `/shows/[id]`, `/my-bids`):**
 - Dashboard: open shows with countdowns, status badges, your-offer chips
@@ -151,8 +151,19 @@ auckets/
 - `GET /api/artists/[id]/shows` + `/stats` — artist read APIs
 
 **Admin / nav:**
-- Role-aware site nav (fan / artist / admin)
+- Role-aware site nav (fan / artist / admin / venue-staff)
 - `/admin` command-center shows list (spine) + `/admin/requests` inbox
+- `/admin/staff` VENUE_STAFF role management (#87)
+
+**Attend-path, hardening, and notifications (shipped #68–#98):**
+- **Tickets:** T-48h issuance cron mints a ticket + server-only `totp_secret` per paid seat of a bound show; geo-gated 60s rotating-QR `TicketViewer` + server-signed `/api/tickets/[id]/token` endpoint (#68, #69, #81)
+- **Scanner:** `/scan` (VENUE_STAFF / admin-gated) → `POST /api/scan` validates the rotating QR, admits the ticket, logs every scan to `ticketScans` (#82)
+- **Payment hardening:** signed/idempotent Stripe webhook (#77), card-failure recovery backend + UI + 4h cron (#79, #80), scheduled binding cron (#78)
+- **Displacement engine:** auto-bid honored at preview + binding, per-fan displacement alerts on the Show page (#72–#76, ADR-0018)
+- **Fan lifecycle emails:** offer-received / placed / not-placed / allocation-imminent / card-failure templates + senders wired (#90) — dormant until Resend domain is verified (ops task)
+- **Show & venue creation:** ShowCreate form + `POST /api/shows` + inline venue creation (#86, #89), venue-builder UX polish (#97)
+- **Fan result page:** `AllocationFinal` placed/not-placed page at `/allocation/[showId]` (#96)
+- **Public surfaces:** role-aware home page (#83), public `/shows` lineup (#98), mobile-responsive pass (#85)
 
 ### External services
 
@@ -168,37 +179,28 @@ auckets/
 
 ### Big-picture state
 
-The **read side and the full money path are shipped**: real offer submission (Stripe manual-capture auth) → preview/binding allocation → capture-on-placement. What remains for **beta** clusters into three buckets (full breakdown in [`REMAINING_WORK.md`](REMAINING_WORK.md)):
+The **read side, the full money path, and the full attend-path are all shipped**: real offer submission (Stripe manual-capture auth) → preview/binding allocation → capture-on-placement → ticket issuance → geo-gated rotating-QR viewer → door scan. Every hard and strong blocker is closed. What remains for **beta** is no longer code (full breakdown in [`REMAINING_WORK.md`](REMAINING_WORK.md)):
 
-- **Hard blockers** (a beta fan cannot attend without these): **TicketViewer** (rotating-TOTP geo-gated QR, ADR-0015) and **Scanner** (door-staff app, VENUE_STAFF role). The `tickets`/`ticketScans` tables exist; the QR/geo/scan logic and both UIs do not.
-- **Strong blockers** (money correctness/trust): **Stripe webhook handler** (none exists — prime-directive #6 gap), **CardFailure recovery** (2% capture-failure case), **scheduled binding** (T-24h Inngest job vs. today's manual button).
-- **Soft gaps** (beta-tolerable with manual workarounds): 4 missing fan email templates + Resend domain verify, **AllocationFinal** result page, **ShowCreate UI**. Resale / SMS / Sentry are genuinely post-beta.
+- **Ops, not code:** verify `auckets.com` in Resend + set `RESEND_API_KEY` in prod so the (already-built) fan emails send; revoke HFC's Stripe access; stand up a separate prod Supabase project (Week 7).
+- **One open product decision:** group cost-split — needs an ADR before any build.
+- **Genuinely post-beta:** resale flow (ADR-0014), Twilio/SMS (10DLC is the long pole), full VenueBuilder, Sentry DSN.
 
 **ADR-0003 (2026-05-27):** ≤6-day offer windows + auth-based hold is still a working assumption (Julia), **pending Cope confirmation**. The money path is built against it; if Cope's research lands on windows >6 days, revisit the PaymentIntent path (see the 2026-05-27 note in `docs/DECISIONS.md` ADR-0003).
 
 ## Next session
 
-**Sequenced toward beta** (full breakdown in [`REMAINING_WORK.md`](REMAINING_WORK.md)). Current plan, agreed with Julia 2026-05-28:
+The hard / strong / soft beta blockers are **all shipped** (#68–#98). What's left is sequenced below (full breakdown in [`REMAINING_WORK.md`](REMAINING_WORK.md)):
 
-**0. Persona experience deep dive (in progress).** Walk all three personas (fan / artist / admin) end-to-end — how they navigate and where the journey breaks — and iron out UX gaps while alpha is still running. Do this before the blocker build-out so the blockers are scoped against a real journey.
+**1. Ops to turn beta on (no code):**
+- Verify `auckets.com` in Resend + set `RESEND_API_KEY` in the Vercel prod env so the built fan emails actually send.
+- Revoke HFC's Stripe access before any production cutover (SECURITY.md #37).
+- Stand up a separate production Supabase project (Week 7).
 
-**1. Hard blockers — a beta fan literally cannot attend without these:**
-- **TicketViewer** — rotating-TOTP (60s) geo-gated QR, fan-facing (ADR-0015). Tables exist; QR/geo/viewer do not.
-- **Scanner** — door-staff scan app, VENUE_STAFF role (ADR-0012). Paired with TicketViewer.
+**2. One product decision before build — group cost-split.** One person buys a group's tickets, then invites others to join the outing and split the cost. Touches the offer/payment model materially (single PaymentIntent + split-tracking vs. per-joiner auths) — **needs a product decision / ADR before build.** Capture as an OPEN_QUESTION first.
 
-**2. Strong blockers — money correctness/trust:**
-- **Stripe webhook handler** — none exists today; prime-directive #6 says webhooks verify signatures + every handler idempotent. Highest-priority correctness gap before real-money beta.
-- **CardFailure recovery** — the 2% capture-failure case (auth validated but capture later fails).
-- **Scheduled binding** — Inngest T-24h job instead of the manual admin button (a single supervised beta show can run manual).
+**3. Remaining soft polish (beta-tolerable):** Fans · data export tab on ShowAdmin (needs a privacy review first), DisplacementToast polling/push, ArtistDashboard provisional-payout cell.
 
-**3. Soft gaps — beta-tolerable with manual workarounds:**
-- 4 missing fan email templates (offer-received, placed, not-placed, allocation-imminent) + verify `auckets.com` in Resend.
-- **AllocationFinal** — fan "placed / not placed" result page.
-- **ShowCreate UI** — `POST /api/shows` exists; needs a form so shows aren't seeded by SQL.
-
-**New scope to slot in — group cost-split.** One person buys a group's tickets, then invites others to join the outing and split the cost. Touches the offer/payment model materially (single PaymentIntent + split-tracking vs. per-joiner auths) — **needs a product decision / ADR before build.** Capture as an OPEN_QUESTION first.
-
-**Post-beta (don't block on these):** Resale flow (ADR-0014), VenueBuilder, Twilio/SMS 10DLC (1–2 week carrier turnaround — can start registration anytime), Sentry DSN, Stripe Connect Express confirmation.
+**Post-beta (don't block on these):** Resale flow (ADR-0014), full VenueBuilder + atomic seating units, Twilio/SMS 10DLC (1–2 week carrier turnaround — can start registration anytime), Sentry DSN, Stripe Connect Express confirmation.
 
 ## Companion docs
 

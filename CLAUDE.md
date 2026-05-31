@@ -18,7 +18,7 @@ The long version: [`docs/CONTEXT.md`](docs/CONTEXT.md).
 2. **Commits explain *why*.** The diff shows *what*. Long-form commit messages are the norm here — they're how we communicate intent to the next reader, including future-us.
 3. **Tests with code.** Vitest for unit (co-located, `foo.test.ts` next to `foo.ts`). Playwright for e2e (in `tests/e2e/`). The GAE has stricter standards (see [`docs/GAE_SPEC.md`](docs/GAE_SPEC.md)).
 4. **Ask before assuming on product questions.** [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) catalogues what's not yet decided. Don't guess past a "working assumption" without flagging it.
-5. **No deploys yet.** No Vercel project exists. Production is Week 7+. Anything you build is non-load-bearing until then.
+5. **Production is live** at `auckets-olive.vercel.app` (Vercel + Supabase). Beta is gated on ops (verify Resend domain, revoke HFC's Stripe access, separate prod Supabase project), not code. Treat anything you ship as potentially load-bearing.
 
 ---
 
@@ -46,7 +46,7 @@ From [`docs/CONTEXT.md`](docs/CONTEXT.md#prime-directives--never-violate-these) 
 |---|---|---|
 | Framework | Next.js **14.2.35** (App Router) | Pinned to 14.x. Don't bump to 15 without an ADR — Clerk v7+ also requires it, so it's a coordinated swap. |
 | Language | TypeScript strict + `noUncheckedIndexedAccess` + `exactOptionalPropertyTypes` | The extra flags catch real bugs — don't disable per-file. |
-| DB | Postgres via Supabase (Drizzle ORM) | Schema in `drizzle/schema.ts` is currently a placeholder. Real schema lands in Week 3. |
+| DB | Postgres via Supabase (Drizzle ORM) | 19-table schema in `drizzle/schema.ts` is live; migrations applied to staging + production via Supabase MCP. |
 | Auth | Clerk `^6.39.4` | v7 needs Next 15. Sign-in/up at `/sign-in` and `/sign-up`. Protected at `/dashboard`. |
 | Background jobs | Inngest | Serve at `/api/inngest`. `npm run inngest:dev` for local. |
 | Email | Resend + React Email | Templates in `src/lib/email/templates/`. Client dormant without `RESEND_API_KEY`. |
@@ -63,7 +63,7 @@ From [`docs/CONTEXT.md`](docs/CONTEXT.md#prime-directives--never-violate-these) 
 - **The dev server can't render pages without real Clerk keys.** ClerkProvider tries to handshake with the Clerk Frontend API at startup; dummy keys point at `clerk.example.com` and Safari/Chrome can't resolve it. Real `pk_test_` and `sk_test_` from a real Clerk dev instance are required.
 - **`SKIP_ENV_VALIDATION=1` is refused when `NODE_ENV=production`.** Intentional safeguard so a stray env-var on Vercel can't defeat the validator.
 - **Inngest v4 collapsed the `createFunction` signature** — triggers now live inside the options object (`{ id, triggers: [...] }`), not as a second argument. Old docs and tutorials show the three-arg form.
-- **Drizzle migrations don't run yet** — no schema, no migrations. Coming in Week 3.
+- **Drizzle migrations are applied via the Supabase MCP**, not `drizzle-kit push` against prod. Generate the migration, then apply it through the MCP to staging + production. The 19-table schema is live.
 - **Branch off `main` AFTER the previous PR merges, not before.** Slice 8 was branched before Slice 7 merged, which produced a `.gitignore` conflict that had to be resolved. Wait for the merge.
 
 ---
@@ -73,7 +73,7 @@ From [`docs/CONTEXT.md`](docs/CONTEXT.md#prime-directives--never-violate-these) 
 These are decisions from the May 25 v2 round of Cope/Julia answers. Read `docs/OPEN_QUESTIONS.md` and the new ADRs in `docs/DECISIONS.md` for the full reasoning.
 
 - **Group cap is 10, not 8.** Working assumption changed; comment-only fix landed in `rankkey.ts`. ADR-0011.
-- **Roles for MVP are `FAN` + `ARTIST` + `AUCKETS_ADMIN`** (3, not 4). `VENUE_STAFF` added Week 7 for Austin. The design system's `MANAGER` / `STAFF` are deferred indefinitely. ADR-0012.
+- **Roles are `FAN` + `ARTIST` + `AUCKETS_ADMIN` + `VENUE_STAFF`** (4). VENUE_STAFF shipped with the door Scanner (#82/#87) and has a `/admin/staff` management UI. The design system's `MANAGER` / `STAFF` are deferred indefinitely. ADR-0012.
 - **Artists do NOT directly control pause / end-early.** They file a request via the dashboard; AUCKETS staff execute. Changes Week 6 dashboard scope. ADR-0013.
 - **Resales refund the seller at original price.** Any uplift goes to the artist, not the seller. This is structural anti-scalping. ADR-0014.
 - **Tickets are rotating QR (60s) + geo-gated.** No static printable tickets. ADR-0015.
