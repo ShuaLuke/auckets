@@ -75,6 +75,13 @@ export async function SiteNav() {
         AUCKETS
       </Link>
       <nav className="flex items-center gap-3">
+        {/* "Shows" — the public lineup. Rendered for everyone (signed in or
+            out, desktop and mobile) as the one consistent discovery entry
+            point in the nav. /shows is public; making an offer still needs
+            sign-in. */}
+        <Link href="/shows" className={linkClass}>
+          Shows
+        </Link>
         <SignedOut>
           <SignInButton mode="modal">
             <button className={linkClass}>Sign in</button>
