@@ -59,13 +59,39 @@ type Props = {
 // Sentinel value for the "+ Create a new venue" option in the venue select.
 const NEW_VENUE = "__new__";
 
+// Seating-unit kind for a tier — mirrors UnitType in generate-architecture.
+// Drives the generated labels (Row A / Table 1 / Box 1 / GA / custom) and,
+// for "ga", collapses the rows×seats inputs into a single total capacity.
+type UnitType = "rows" | "tables" | "boxes" | "ga" | "custom";
+
+const UNIT_OPTIONS: { value: UnitType; label: string }[] = [
+  { value: "rows", label: "Rows (seated)" },
+  { value: "tables", label: "Tables" },
+  { value: "boxes", label: "Boxes / suites" },
+  { value: "ga", label: "GA / standing" },
+  { value: "custom", label: "Custom…" },
+];
+
+// Per-unit captions so the count/size steppers read correctly for each kind
+// ("Rows" + "Seats per row" vs "Tables" + "Seats per table"). GA is handled
+// separately (single total-capacity field).
+const UNIT_CAPTIONS: Record<UnitType, { count: string; size: string }> = {
+  rows: { count: "Rows", size: "Seats per row" },
+  tables: { count: "Tables", size: "Seats per table" },
+  boxes: { count: "Boxes", size: "Seats per box" },
+  ga: { count: "Units", size: "Capacity" },
+  custom: { count: "Units", size: "Seats per unit" },
+};
+
 // One tier in the new-venue generator. Numbers are kept as numbers (Stepper
 // drives them); floor is the raw dollar string the operator typed.
 type TierDraft = {
   name: string;
   rowCount: number;
   seatsPerRow: number;
-  isGa: boolean;
+  unitType: UnitType;
+  // Singular label when unitType === "custom" (e.g. "Lawn"); empty otherwise.
+  customLabel: string;
   floorDollars: string;
 };
 
@@ -81,7 +107,14 @@ const selectStyle: React.CSSProperties = {
 };
 
 function emptyTier(): TierDraft {
-  return { name: "", rowCount: 1, seatsPerRow: 10, isGa: false, floorDollars: "" };
+  return {
+    name: "",
+    rowCount: 1,
+    seatsPerRow: 10,
+    unitType: "rows",
+    customLabel: "",
+    floorDollars: "",
+  };
 }
 
 // Captioned wrapper for a tier control — the bare Stepper/TextInput render no
@@ -114,6 +147,33 @@ function floorToCents(raw: string): number | null {
   if (cents === null || cents <= 0) return null;
   return cents;
 }
+
+// Turn an API error body into a readable message. The routes return
+// { error, details } where `details` is Zod's issue array ({ message, … })
+// for validation failures; surface those specific messages instead of the
+// generic top-level "invalid body" the user would otherwise see.
+function describeApiError(
+  body: { error?: string; details?: unknown },
+  status: number,
+): string {
+  const fallback = body.error ?? `Request failed (HTTP ${status})`;
+  if (Array.isArray(body.details)) {
+    const messages = body.details
+      .map((d) =>
+        d && typeof d === "object" && "message" in d
+          ? String((d as { message: unknown }).message)
+          : null,
+      )
+      .filter((m): m is string => m !== null && m !== "");
+    if (messages.length > 0) return messages.join("; ");
+  }
+  return fallback;
+}
+
+// ADR-0003 working assumption: the offer window (open → binding) must be
+// ≤6 days (manual-capture card auth lapses ~day 7). Mirrored client-side so
+// the operator sees the reason before submitting; the server re-checks.
+const MAX_OFFER_WINDOW_MS = 6 * 24 * 60 * 60 * 1000;
 
 export function ShowCreateForm({ artistId, venues, architectures }: Props) {
   const router = useRouter();
@@ -203,9 +263,34 @@ export function ShowCreateForm({ artistId, venues, architectures }: Props) {
     );
   }
 
+  // Clone a tier right below itself — same shape, but blank the name so the
+  // operator must give the copy a unique one (tier names must be unique).
+  function duplicateTier(index: number) {
+    setTiers((prev) => {
+      const src = prev[index];
+      if (!src) return prev;
+      const copy: TierDraft = { ...src, name: "" };
+      return [...prev.slice(0, index + 1), copy, ...prev.slice(index + 1)];
+    });
+  }
+
   // --- validation ---
   const datesPresent =
     offerWindowOpensAt !== "" && bindingAllocationAt !== "" && doorsAt !== "";
+
+  // Mirror the server's offer-window rules so the reason shows inline before
+  // submit (the POST re-validates regardless). null = no problem to report.
+  const windowError = useMemo(() => {
+    if (offerWindowOpensAt === "" || bindingAllocationAt === "") return null;
+    const open = new Date(offerWindowOpensAt).getTime();
+    const binding = new Date(bindingAllocationAt).getTime();
+    if (Number.isNaN(open) || Number.isNaN(binding)) return null;
+    if (binding <= open)
+      return "Binding checkpoint must be after the offer window opens.";
+    if (binding - open > MAX_OFFER_WINDOW_MS)
+      return "Offer window (open → binding) must be ≤6 days — the card-hold limit (ADR-0003).";
+    return null;
+  }, [offerWindowOpensAt, bindingAllocationAt]);
 
   const existingVenueValid =
     !creatingVenue &&
@@ -226,13 +311,17 @@ export function ShowCreateForm({ artistId, venues, architectures }: Props) {
       (t) =>
         t.rowCount >= 1 &&
         t.seatsPerRow >= 1 &&
+        (t.unitType !== "custom" || t.customLabel.trim() !== "") &&
         floorToCents(t.floorDollars) !== null,
     ) &&
     // geo lat+lon are all-or-nothing
     (geoLat.trim() === "") === (geoLon.trim() === "");
 
   const canSubmit =
-    datesPresent && !submitting && (existingVenueValid || newVenueValid);
+    datesPresent &&
+    !windowError &&
+    !submitting &&
+    (existingVenueValid || newVenueValid);
 
   // POST /api/shows for an already-chosen venue + architecture + tier floors.
   async function postShow(payload: Record<string, unknown>): Promise<boolean> {
@@ -250,8 +339,10 @@ export function ShowCreateForm({ artistId, venues, architectures }: Props) {
       );
       return true;
     }
-    const body: { error?: string } = await res.json().catch(() => ({}));
-    setError(body.error ?? `Create failed (HTTP ${res.status})`);
+    const body: { error?: string; details?: unknown } = await res
+      .json()
+      .catch(() => ({}));
+    setError(describeApiError(body, res.status));
     return false;
   }
 
@@ -275,9 +366,14 @@ export function ShowCreateForm({ artistId, venues, architectures }: Props) {
           geoRadiusM: Number(geoRadiusM) || 500,
           tiers: tiers.map((t) => ({
             name: t.name.trim(),
-            rowCount: t.rowCount,
+            // GA is always a single bucket; its capacity lives in seatsPerRow.
+            rowCount: t.unitType === "ga" ? 1 : t.rowCount,
             seatsPerRow: t.seatsPerRow,
-            isGa: t.isGa,
+            isGa: t.unitType === "ga",
+            unitType: t.unitType,
+            ...(t.unitType === "custom"
+              ? { customLabel: t.customLabel.trim() }
+              : {}),
           })),
         };
         if (venueCity.trim() !== "") venuePayload.city = venueCity.trim();
@@ -292,10 +388,10 @@ export function ShowCreateForm({ artistId, venues, architectures }: Props) {
           body: JSON.stringify(venuePayload),
         });
         if (!venueRes.ok) {
-          const body: { error?: string } = await venueRes
+          const body: { error?: string; details?: unknown } = await venueRes
             .json()
             .catch(() => ({}));
-          setError(body.error ?? `Venue create failed (HTTP ${venueRes.status})`);
+          setError(describeApiError(body, venueRes.status));
           return;
         }
         const venue: {
@@ -460,6 +556,14 @@ export function ShowCreateForm({ artistId, venues, architectures }: Props) {
                         onChange={(e) => updateTier(i, { name: e.target.value })}
                         wrapperStyle={{ flex: 1 }}
                       />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => duplicateTier(i)}
+                      >
+                        Duplicate
+                      </Button>
                       {tiers.length > 1 && (
                         <Button
                           type="button"
@@ -474,24 +578,69 @@ export function ShowCreateForm({ artistId, venues, architectures }: Props) {
                       )}
                     </div>
                     <div className="flex flex-wrap items-end gap-3">
-                      <TierControl caption="Rows">
-                        <Stepper
-                          label="rows"
-                          value={tier.rowCount}
-                          onChange={(v) => updateTier(i, { rowCount: v })}
-                          min={1}
-                          max={100}
-                        />
+                      <TierControl caption="Unit type">
+                        <select
+                          value={tier.unitType}
+                          onChange={(e) =>
+                            updateTier(i, { unitType: e.target.value as UnitType })
+                          }
+                          style={{ ...selectStyle, width: 150 }}
+                          aria-label="unit type"
+                        >
+                          {UNIT_OPTIONS.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </select>
                       </TierControl>
-                      <TierControl caption="Seats per row">
-                        <Stepper
-                          label="seats per row"
-                          value={tier.seatsPerRow}
-                          onChange={(v) => updateTier(i, { seatsPerRow: v })}
-                          min={1}
-                          max={500}
-                        />
-                      </TierControl>
+                      {tier.unitType === "custom" && (
+                        <TierControl caption="Unit label">
+                          <div style={{ width: 130 }}>
+                            <TextInput
+                              placeholder="e.g. Lawn"
+                              value={tier.customLabel}
+                              onChange={(e) =>
+                                updateTier(i, { customLabel: e.target.value })
+                              }
+                            />
+                          </div>
+                        </TierControl>
+                      )}
+                      {tier.unitType === "ga" ? (
+                        // GA is one open bucket — collapse rows×seats to a
+                        // single total capacity (no assigned-seat rows).
+                        <TierControl caption="Total capacity">
+                          <Stepper
+                            label="total capacity"
+                            value={tier.seatsPerRow}
+                            onChange={(v) => updateTier(i, { seatsPerRow: v })}
+                            min={1}
+                            max={500}
+                          />
+                        </TierControl>
+                      ) : (
+                        <>
+                          <TierControl caption={UNIT_CAPTIONS[tier.unitType].count}>
+                            <Stepper
+                              label={UNIT_CAPTIONS[tier.unitType].count.toLowerCase()}
+                              value={tier.rowCount}
+                              onChange={(v) => updateTier(i, { rowCount: v })}
+                              min={1}
+                              max={100}
+                            />
+                          </TierControl>
+                          <TierControl caption={UNIT_CAPTIONS[tier.unitType].size}>
+                            <Stepper
+                              label={UNIT_CAPTIONS[tier.unitType].size.toLowerCase()}
+                              value={tier.seatsPerRow}
+                              onChange={(v) => updateTier(i, { seatsPerRow: v })}
+                              min={1}
+                              max={500}
+                            />
+                          </TierControl>
+                        </>
+                      )}
                       <TierControl caption="Floor / ticket">
                         <div style={{ width: 110 }}>
                           <TextInput
@@ -507,18 +656,6 @@ export function ShowCreateForm({ artistId, venues, architectures }: Props) {
                         </div>
                       </TierControl>
                     </div>
-                    <label
-                      className="flex cursor-pointer items-center gap-2 font-sans text-[12px]"
-                      style={{ color: "var(--fg-muted)" }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={tier.isGa}
-                        onChange={(e) => updateTier(i, { isGa: e.target.checked })}
-                        style={{ accentColor: "var(--brand)" }}
-                      />
-                      General admission (no assigned seats)
-                    </label>
                   </div>
                 ))}
                 <Button
