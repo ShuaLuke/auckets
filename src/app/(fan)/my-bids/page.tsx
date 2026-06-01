@@ -62,17 +62,17 @@ export default async function MyBidsPage() {
       <div className="mx-auto max-w-[960px] px-4 py-12 md:px-8">
         <div className="mb-7 flex items-baseline justify-between">
           <div>
-            <Eyebrow className="mb-2">Bid history</Eyebrow>
-            <h1 className="text-4xl">Your bids</h1>
+            <Eyebrow className="mb-2">Offer history</Eyebrow>
+            <h1 className="text-4xl">Your offers</h1>
             <p
               className="mt-1 font-sans text-sm"
               style={{ color: "var(--fg-muted)" }}
             >
               {bids.length === 0
-                ? "Browse open shows to place your first bid."
+                ? "Browse open shows to make your first offer."
                 : bids.length === 1
-                  ? "1 bid · across 1 show"
-                  : `${bids.length} bids · across ${new Set(bids.map((b) => b.showId)).size} shows`}
+                  ? "1 offer · across 1 show"
+                  : `${bids.length} offers · across ${new Set(bids.map((b) => b.showId)).size} shows`}
             </p>
           </div>
           <Link
@@ -93,14 +93,16 @@ export default async function MyBidsPage() {
               lineHeight: 1.55,
             }}
           >
-            You haven&apos;t placed any bids yet.{" "}
+            You haven&apos;t made an offer yet. When you find a show you love,
+            tell us what the night&apos;s worth to you — we&apos;ll handle the
+            rest.{" "}
             <Link
               href="/dashboard"
               style={{ color: "var(--fg)", textDecoration: "underline" }}
             >
               Find an open show
-            </Link>{" "}
-            to get started.
+            </Link>
+            .
           </div>
         ) : (
           <div className="flex flex-col gap-3">

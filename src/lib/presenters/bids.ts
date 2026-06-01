@@ -60,8 +60,8 @@ const SHOW_STATUS_HINT: Record<ShowStatus, string | null> = {
   open: null,
   paused: "Offers paused",
   closed: "Offers closed",
-  allocating: "Allocation running",
-  allocated: "Allocation complete",
+  allocating: "Seating in progress",
+  allocated: "Seats confirmed",
   complete: "Show complete",
 };
 

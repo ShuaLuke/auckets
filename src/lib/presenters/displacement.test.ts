@@ -62,7 +62,7 @@ describe("presentDisplacementEvents", () => {
       makeEvent({ kind: "outbid_out", detail: { fromTier: "premium" } }),
     ]);
     expect(view?.tone).toBe("warning");
-    expect(view?.headline).toBe("You were outbid out");
+    expect(view?.headline).toBe("You're not in the projection right now");
     expect(view?.body).toContain("you were in Premium");
   });
 

@@ -60,5 +60,5 @@ export function presentMinToGetIn(
     };
   }
 
-  return { label: EMPTY, sub: "minimum bid", isCutoff: false };
+  return { label: EMPTY, sub: "minimum offer", isCutoff: false };
 }

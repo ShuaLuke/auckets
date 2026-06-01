@@ -70,7 +70,7 @@ function presentOne(event: DisplacementEvent): DisplacementAlertView {
       return {
         ...base,
         tone: "warning",
-        headline: "You were outbid out",
+        headline: "You're not in the projection right now",
         body: `You've dropped out of the projection (you were in ${from}). Raise your offer below to get back in.`,
       };
     }
@@ -78,8 +78,8 @@ function presentOne(event: DisplacementEvent): DisplacementAlertView {
       return {
         ...base,
         tone: "info",
-        headline: "Your placement changed",
-        body: "Your projected placement was updated.",
+        headline: "Where you'd land changed",
+        body: "Where you'd land was updated.",
       };
   }
 }

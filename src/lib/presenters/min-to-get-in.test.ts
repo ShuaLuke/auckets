@@ -41,7 +41,7 @@ describe("presentMinToGetIn", () => {
   it("degrades to em-dash when there is neither a placement nor any floor", () => {
     const v = presentMinToGetIn(null, {}, 0, 0);
     expect(v.label).toBe("—");
-    expect(v.sub).toBe("minimum bid");
+    expect(v.sub).toBe("minimum offer");
     expect(v.isCutoff).toBe(false);
   });
 });

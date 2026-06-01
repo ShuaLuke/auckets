@@ -35,12 +35,12 @@ export function OfferReceivedEmail({
       />
       <FanText>
         We&apos;ve received your offer of <strong>{offerLine}</strong>. There&apos;s
-        no auction and no countdown — when the offer window closes, the
-        Greenwood Allocation Engine ranks every offer and seats groups together.
+        no auction and no countdown — when the offer window closes, we rank
+        every offer and seat groups together, best section first.
       </FanText>
       <FanText>
-        You can revise your offer upward any time before allocation. We&apos;ll
-        email you the moment seats are decided.
+        You can raise your offer any time before seats are decided. We&apos;ll
+        email you the moment they are.
       </FanText>
       <FanCta href={showUrl} label="View your offer" />
     </FanEmailShell>
