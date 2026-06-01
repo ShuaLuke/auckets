@@ -360,3 +360,18 @@ a {
 a:hover { opacity: 0.6; }
 a.quiet { border-bottom-color: transparent; }
 a.quiet:hover { border-bottom-color: currentColor; opacity: 1; }
+
+/* Entrance reveal — staggered fade/rise on first paint (Change 02 §F).
+   CSS-only so it needs no client JS; the caller sets animation-delay inline
+   per index (capped). Calm by design: one slow rise, never a countdown.
+   Fully disabled under prefers-reduced-motion. */
+@keyframes auk-reveal {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+.auk-reveal {
+  animation: auk-reveal var(--dur-slow) var(--ease-out) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .auk-reveal { animation: none; }
+}

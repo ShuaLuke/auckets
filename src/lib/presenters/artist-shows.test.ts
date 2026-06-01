@@ -29,6 +29,7 @@ function makeSummary(overrides: Partial<ShowSummary> = {}): ShowSummary {
     bindingAllocationAt: new Date("2026-06-12T21:00:00-04:00"),
     pausedAt: null,
     activeRowIds: ["row_a", "row_b"],
+    tierFloorsCents: { premium: 6000, mid: 4000, rear: 2500 },
     artistName: "Citizen Cope",
     venueName: "Cope's place",
     venueCity: "Brooklyn, NY",

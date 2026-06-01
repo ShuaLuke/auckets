@@ -184,6 +184,7 @@ async function loadShowAdmin(
     bindingAllocationAt: showRow.bindingAllocationAt,
     pausedAt: showRow.pausedAt,
     activeRowIds: showRow.activeRowIds as string[],
+    tierFloorsCents: showRow.tierFloorsCents as Record<string, number>,
     artistName: showRow.artist.name,
     venueName: showRow.venue.name,
     venueCity: showRow.venue.city,
