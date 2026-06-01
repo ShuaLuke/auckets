@@ -31,7 +31,7 @@ export function OfferPlacedEmail({
 }: OfferPlacedEmailProps) {
   return (
     <FanEmailShell preview={`You're in — ${showName}`}>
-      <FanHeading>You&apos;re in. 🎟️</FanHeading>
+      <FanHeading>You&apos;re in.</FanHeading>
       <ShowSummaryLine
         artistName={artistName}
         showName={showName}

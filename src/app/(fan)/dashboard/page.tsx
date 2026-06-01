@@ -143,8 +143,8 @@ export default async function DashboardPage() {
           </div>
         )}
 
-        {/* Bid history link — small affordance below the show list.
-            Page lists every offer the user has placed across every
+        {/* Offer history link — small affordance below the show list.
+            Page lists every offer the user has made across every
             show (open + past). */}
         <div className="mt-6 text-right">
           <Link
@@ -152,7 +152,7 @@ export default async function DashboardPage() {
             className="font-sans text-[13px] no-underline"
             style={{ color: "var(--fg-muted)" }}
           >
-            View bid history →
+            Offer history →
           </Link>
         </div>
 
@@ -166,9 +166,9 @@ export default async function DashboardPage() {
           }}
         >
           <strong style={{ color: "var(--fg)" }}>Heads up.</strong>{" "}
-          Allocation is binding 24 hours before doors. Until then, your
-          placement is a non-binding preview — you can revise upward,
-          never downward.
+          Your seats are locked in 24 hours before doors. Until then it&apos;s a
+          non-binding preview — you can raise an offer, never lower it. Nothing
+          to refresh; we&apos;ll email you the moment anything changes.
         </div>
       </div>
     </main>

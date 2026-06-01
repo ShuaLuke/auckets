@@ -26,8 +26,8 @@ export function AllocationImminentEmail({
   showUrl,
 }: AllocationImminentEmailProps) {
   return (
-    <FanEmailShell preview={`Allocation soon — ${showName}`}>
-      <FanHeading>Allocation is coming up.</FanHeading>
+    <FanEmailShell preview={`Seats decided soon — ${showName}`}>
+      <FanHeading>Your seats are decided soon.</FanHeading>
       <ShowSummaryLine
         artistName={artistName}
         showName={showName}
@@ -35,8 +35,8 @@ export function AllocationImminentEmail({
       />
       <FanText>
         Seats for this show are decided <strong>{whenLine}</strong>. This is your
-        last chance to revise your offer upward — once allocation runs, offers
-        are final and placed cards are charged.
+        last chance to raise your offer — once that&apos;s done, offers are
+        final and you&apos;re only charged if you&apos;re in.
       </FanText>
       <FanText>
         Check where you&apos;d land right now and adjust if you want a better

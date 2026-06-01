@@ -42,7 +42,7 @@ export function PreviewBanner({ view }: Props) {
           style={{ fontSize: 13, color: "var(--brick-700)" }}
         >
           Your offer is in the pool. The preview will light up here once
-          allocation runs.
+          we&apos;ve run it.
         </span>
       </Card>
     );
