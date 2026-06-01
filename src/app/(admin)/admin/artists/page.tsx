@@ -16,6 +16,7 @@ import { auth } from "@clerk/nextjs/server";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import { ArtistCreateForm } from "@/components/admin/ArtistCreateForm";
 import { Eyebrow } from "@/components/ui/Eyebrow";
 import { db } from "@/lib/db";
 import { listAllArtists, userIsAdmin } from "@/lib/db/repositories";
@@ -117,6 +118,10 @@ export default async function AdminArtistsPage() {
             ))}
           </div>
         )}
+
+        <div className="mt-10">
+          <ArtistCreateForm />
+        </div>
       </div>
     </main>
   );

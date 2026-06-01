@@ -10,6 +10,23 @@ import {
 } from "../../../../drizzle/schema";
 
 type Artist = typeof artists.$inferSelect;
+type ArtistMember = typeof artistMembers.$inferSelect;
+
+// Accepts the singleton Db or a transaction handle, so the write helpers below
+// compose inside onboardArtist's transaction without a cast.
+type WriteExecutor = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+// Postgres unique-violation SQLSTATE. The `postgres` (porsager) driver surfaces
+// it as `err.code === "23505"`. Used to turn a slug collision into a typed
+// result instead of a raw 500.
+function isUniqueViolation(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    (err as { code?: unknown }).code === "23505"
+  );
+}
 
 // Minimal artist shape for building role-aware navigation — id (for the
 // link target) + name (for the label). Deliberately not the full Artist
@@ -135,4 +152,118 @@ export async function listAllArtists(db: Db): Promise<ManageableArtist[]> {
     .select({ id: artists.id, name: artists.name })
     .from(artists)
     .orderBy(artists.name);
+}
+
+// ---------------------------------------------------------------------------
+// Write path — artist onboarding. Typed-result shape (ok | reason) mirrors the
+// guarded transitions in shows.ts (announceShow / pauseShow): the slug UNIQUE
+// constraint is the real collision guard, and we surface it as `slug_taken`
+// rather than letting a raw Postgres error become a 500.
+// ---------------------------------------------------------------------------
+
+export type CreateArtistResult =
+  | { ok: true; artist: Artist }
+  | { ok: false; reason: "slug_taken" };
+
+// Inserts a new artist. On a slug collision (the artists.slug UNIQUE
+// constraint) returns { ok: false, reason: "slug_taken" } so the caller can
+// map it to a 409 and the form can say "that slug is in use". Any other error
+// is genuinely unexpected and rethrown.
+export async function createArtist(
+  db: WriteExecutor,
+  input: { name: string; slug: string },
+): Promise<CreateArtistResult> {
+  try {
+    const rows = await db.insert(artists).values(input).returning();
+    // The INSERT either returns the row or throws — a missing row here would
+    // be a driver contract break, so the non-null assertion is safe.
+    return { ok: true, artist: rows[0]! };
+  } catch (err) {
+    if (isUniqueViolation(err)) return { ok: false, reason: "slug_taken" };
+    throw err;
+  }
+}
+
+// Links a user to an artist. Idempotent: onConflictDoNothing on the
+// (artist_id, user_id) UNIQUE means re-linking the same person is a no-op.
+// Returns the new membership row, or null if it already existed (no row comes
+// back from a do-nothing conflict) — so callers can tell "linked" from
+// "already a member".
+export async function addArtistMember(
+  db: WriteExecutor,
+  input: { artistId: string; userId: string; canManage?: boolean },
+): Promise<ArtistMember | null> {
+  const rows = await db
+    .insert(artistMembers)
+    .values({
+      artistId: input.artistId,
+      userId: input.userId,
+      canManage: input.canManage ?? true,
+    })
+    .onConflictDoNothing()
+    .returning();
+  return rows[0] ?? null;
+}
+
+// A member to attach during onboarding. `bumpToArtist` is decided by the
+// caller (the route bumps a plain FAN → ARTIST so they can actually manage,
+// but never touches an AUCKETS_ADMIN) — this repo just applies the decision.
+export type OnboardMember = {
+  userId: string;
+  canManage?: boolean;
+  bumpToArtist: boolean;
+};
+
+export type OnboardArtistResult =
+  | { ok: true; artist: Artist; memberLinked: boolean; roleBumped: boolean }
+  | { ok: false; reason: "slug_taken" };
+
+// Creates an artist and (optionally) links its first member + bumps their
+// role, all in one transaction — so a slug collision or a failed link can
+// never leave a half-onboarded artist behind. The slug violation propagates
+// out of the transaction (rolling it back) and is mapped to `slug_taken`
+// here; the member statements never run in that case because the artist
+// INSERT fails first.
+//
+// Resolving the member email → userId happens in the route BEFORE this call:
+// an email with no AUCKETS account is rejected there, so by the time we're in
+// the transaction the member (if any) is known to exist.
+export async function onboardArtist(
+  db: Db,
+  input: { name: string; slug: string; member?: OnboardMember },
+): Promise<OnboardArtistResult> {
+  try {
+    return await db.transaction(async (tx) => {
+      const rows = await tx
+        .insert(artists)
+        .values({ name: input.name, slug: input.slug })
+        .returning();
+      const artist = rows[0]!;
+
+      let memberLinked = false;
+      let roleBumped = false;
+      if (input.member) {
+        const linked = await addArtistMember(tx, {
+          artistId: artist.id,
+          userId: input.member.userId,
+          canManage: input.member.canManage ?? true,
+        });
+        memberLinked = linked !== null;
+        if (input.member.bumpToArtist) {
+          // "ARTIST" is the documented role (CLAUDE.md / ADR-0012). The role
+          // column is plain TEXT, so no enum migration is needed.
+          await tx
+            .update(users)
+            .set({ role: "ARTIST" })
+            .where(eq(users.id, input.member.userId));
+          roleBumped = true;
+        }
+      }
+
+      return { ok: true, artist, memberLinked, roleBumped };
+    });
+  } catch (err) {
+    if (isUniqueViolation(err)) return { ok: false, reason: "slug_taken" };
+    throw err;
+  }
 }

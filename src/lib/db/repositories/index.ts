@@ -5,13 +5,19 @@
 // columns untouched). Display formatting lives in src/lib/presenters/.
 
 export {
+  addArtistMember,
+  createArtist,
   getArtistById,
   getArtistBySlug,
   listAllArtists,
   listArtistMembershipsForUser,
   listArtistsManageableByUser,
+  onboardArtist,
   userCanManageArtist,
+  type CreateArtistResult,
   type ManageableArtist,
+  type OnboardArtistResult,
+  type OnboardMember,
 } from "./artists";
 
 export {
