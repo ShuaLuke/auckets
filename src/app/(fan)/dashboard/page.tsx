@@ -251,7 +251,9 @@ export default async function DashboardPage() {
           </>
         )}
 
-        {/* Offer history link — small affordance below the show list. */}
+        {/* Offer history link — small affordance below the show list.
+            Page lists every offer the user has made across every
+            show (open + past). */}
         <div className="mt-6 text-right">
           <Link
             href="/my-bids"

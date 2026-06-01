@@ -361,8 +361,8 @@ describe("presentShowDetail", () => {
       dateLong: "Sat · Jun 13 · 9pm",
       status: "open",
       statusLabel: "Offers open",
-      // Matches Show.jsx "Binding allocation runs in 23h 14m" — the prefix
-      // text lives in the JSX; the presenter just provides the bare unit.
+      // Renders as "Seats lock in 23h 14m" — the prefix text lives in the
+      // JSX; the presenter just provides the bare unit.
       bindingCountdown: "23h 14m",
       tierFloorsCents: { premium: 6000, mid: 4000, rear: 2500 },
       maxGroupSize: 10,

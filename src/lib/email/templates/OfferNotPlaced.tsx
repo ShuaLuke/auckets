@@ -23,7 +23,7 @@ export function OfferNotPlacedEmail({
   showUrl,
 }: OfferNotPlacedEmailProps) {
   return (
-    <FanEmailShell preview={`Allocation results — ${showName}`}>
+    <FanEmailShell preview={`How ${showName} landed`}>
       <FanHeading>This one didn&apos;t land.</FanHeading>
       <ShowSummaryLine
         artistName={artistName}

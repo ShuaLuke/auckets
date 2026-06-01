@@ -80,7 +80,7 @@ export function ShowHeader({ show, minToGetIn }: Props) {
                 className="font-sans text-[10px] uppercase tracking-[0.1em]"
                 style={{ color: "var(--fg-muted)" }}
               >
-                Min bid to get in
+                Min offer to get in
               </span>
               <span
                 className="font-mono tabular-nums leading-none"
@@ -108,7 +108,7 @@ export function ShowHeader({ show, minToGetIn }: Props) {
             style={{ color: "var(--ink-500)" }}
           >
             {show.status === "open"
-              ? `Binding allocation runs in ${show.bindingCountdown}`
+              ? `Seats lock in ${show.bindingCountdown}`
               : show.bindingCountdown}
           </span>
         </div>
