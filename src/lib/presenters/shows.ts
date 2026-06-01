@@ -30,11 +30,14 @@ import type { offers } from "../../../drizzle/schema";
 import {
   DEFAULT_TZ,
   formatBindingCountdown,
+  formatClock,
   formatCountdown,
   formatDateLong,
   formatDateShort,
+  formatWeekday,
+  isToday,
 } from "./format";
-import { presentOffer, type OfferView } from "./offers";
+import { presentOffer, presentStanding, type OfferView } from "./offers";
 
 type Offer = typeof offers.$inferSelect;
 
@@ -195,14 +198,110 @@ export function presentShowSummary(
     ),
   };
   if (userOffer) {
-    view.yourOffer = presentOffer(
+    const offerView = presentOffer(
       userOffer,
       userAssignment,
       userAssignmentRow,
       userTicket,
     );
+    // StandingLadder telemetry — only on a pre-binding ('open') offer that
+    // hasn't been placed yet. A placed/ticket-ready offer leads in the
+    // NowHero instead; an allocated show carries the result, not a preview.
+    if (status === "open" && !offerView.placed) {
+      const standing = presentStanding(
+        userOffer,
+        userAssignment,
+        userAssignmentRow,
+        summary.tierFloorsCents,
+      );
+      if (standing) offerView.standing = standing;
+    }
+    view.yourOffer = offerView;
   }
   return view;
+}
+
+// The NowHero lead band — the fan's single most important state, given the
+// full stage (Change 02). Two shapes; the page picks one across all the
+// fan's offer-shows by priority (ticket-ready > locking-in) then soonest.
+const BINDING_IMMINENT_MS = 24 * 60 * 60 * 1000;
+
+export type NowHeroView =
+  | {
+      kind: "ticket-ready";
+      showId: string;
+      eyebrow: string; // "You're in the room · tonight" | "· Sat"
+      title: string; // "Citizen Cope at Lincoln Theatre"
+      sub: string;
+      seats: string; // "Orchestra · Row AA · seats 7–10"
+      paid: string; // "$42.00 ×4"
+      doors: string; // "4h 12m" — NOT animated
+    }
+  | {
+      kind: "locking-in";
+      showId: string;
+      eyebrow: string; // "Seats lock in · 4h 12m"
+      title: string;
+      sub: string;
+      offerLine: string; // "up to $55.00"
+      projectedTier: string; // "Mid"
+      locks: string; // "4h 12m"
+    };
+
+// Build the hero state for ONE offer-show, or null if it doesn't qualify as
+// a lead. Pure: raw summary (for the dates) + the already-built OfferView
+// (for ticket/standing/paid) + now. The page calls this per offer-show and
+// selects the winner. Never promises a pay amount it doesn't have pre-
+// binding (README §6.2); the locking-in state speaks only of the cap +
+// where they'd land.
+export function presentNowHero(
+  summary: ShowSummary,
+  offer: OfferView,
+  now: Date,
+  tz: string = DEFAULT_TZ,
+): NowHeroView | null {
+  const title = `${summary.artistName} at ${summary.venueName}`;
+
+  // Priority 1 — a ready ticket. Needs the resolved seat preview string.
+  if (offer.ticketReady && offer.preview) {
+    const eyebrow = isToday(summary.doorsAt, now, tz)
+      ? "You're in the room · tonight"
+      : `You're in the room · ${formatWeekday(summary.doorsAt, tz)}`;
+    return {
+      kind: "ticket-ready",
+      showId: summary.id,
+      eyebrow,
+      title,
+      sub: `Doors ${formatClock(summary.doorsAt, tz)}. Your ticket unlocks when you arrive — geo-verified at the venue so it can't be screenshotted away.`,
+      seats: offer.preview,
+      paid: `${offer.paidPerTicket ?? offer.price} ×${offer.size}`,
+      doors: formatCountdown(summary.doorsAt, now),
+    };
+  }
+
+  // Priority 2 — binding within 24h on an open show, with a projection to
+  // stand on.
+  const msToBinding = summary.bindingAllocationAt.getTime() - now.getTime();
+  if (
+    summary.status === "open" &&
+    offer.standing &&
+    msToBinding > 0 &&
+    msToBinding < BINDING_IMMINENT_MS
+  ) {
+    const locks = formatCountdown(summary.bindingAllocationAt, now);
+    return {
+      kind: "locking-in",
+      showId: summary.id,
+      eyebrow: `Seats lock in · ${locks}`,
+      title,
+      sub: `You're in — you'd land in ${offer.standing.projectedTier} right now. Raise your offer any time before then; you can never be moved down.`,
+      offerLine: `up to ${offer.price}`,
+      projectedTier: offer.standing.projectedTier,
+      locks,
+    };
+  }
+
+  return null;
 }
 
 export function presentShowDetail(

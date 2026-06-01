@@ -1,18 +1,24 @@
-// Fan-side Dashboard. Prototype-fidelity port of
-// design/ui_kits/auckets/screens/Dashboard.jsx — same layout, same
-// styling tokens. Data comes from the read-side repositories that
-// GET /api/shows uses; this server component duplicates that loading
-// today so the page is fully SSR-rendered.
+// Fan-side Dashboard (Change 02 redesign). Instead of one flat list of
+// show rows, the page now:
+//   1. leads with the single most important state in a NowHero band,
+//   2. groups the rest into "Your offers" / "On the horizon" sections,
+//   3. shows calm guaranteed-floor standing on each active offer.
 //
-// FUTURE CLEANUP: extract the loading logic into a shared helper
-// (e.g. src/lib/dashboard/load.ts) once a second consumer needs it.
-// Slice 10 will add the Show page which has its own loading needs,
-// so the duplication doesn't compound yet — first cleanup target.
+// Data: unions the open shows (the horizon) with the fan's offer-shows
+// across every status — so a post-binding 'allocated' show with a ready
+// ticket can lead the page. Still fully SSR; the only client-free motion is
+// the CSS entrance stagger (.auk-reveal).
+//
+// FUTURE CLEANUP: the loading logic still duplicates GET /api/shows-ish
+// reads; extract to src/lib/dashboard/load.ts when a second consumer needs
+// it (unchanged from the pre-redesign note).
 
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 
+import { NowHero } from "@/components/dashboard/NowHero";
+import { SectionLabel } from "@/components/dashboard/SectionLabel";
 import { ShowRow } from "@/components/dashboard/ShowRow";
 import { Eyebrow } from "@/components/ui/Eyebrow";
 import { db } from "@/lib/db";
@@ -21,40 +27,61 @@ import {
   listOffersForUser,
   listOpenShows,
   listSeatAssignmentsByOfferIds,
+  listShowSummariesByIds,
   listTicketsByAssignmentIds,
 } from "@/lib/db/repositories";
 import {
   DEFAULT_TZ,
+  presentNowHero,
   presentShowSummary,
+  type NowHeroView,
   type ShowSummaryView,
 } from "@/lib/presenters";
 
 export const dynamic = "force-dynamic";
 
-async function loadDashboardData(userId: string): Promise<ShowSummaryView[]> {
-  // Same loading shape as GET /api/shows. See the route handler for
-  // the rationale on each step (N+1 avoidance, single `now` for
-  // consistent countdowns, etc.).
+type DashboardData = {
+  shows: ShowSummaryView[];
+  hero: NowHeroView | null;
+};
+
+// Hero priority: a ready ticket (0) leads over a binding-imminent offer (1);
+// within a priority, the soonest show wins.
+function heroPriority(hero: NowHeroView): number {
+  return hero.kind === "ticket-ready" ? 0 : 1;
+}
+
+async function loadDashboardData(userId: string): Promise<DashboardData> {
   const now = new Date();
-  const [rows, userOffers] = await Promise.all([
+  const [openShows, userOffers] = await Promise.all([
     listOpenShows(db),
     listOffersForUser(db, userId),
   ]);
 
   const offerByShowId = new Map<string, (typeof userOffers)[number]>();
-  for (const offer of userOffers) {
-    offerByShowId.set(offer.showId, offer);
-  }
+  for (const offer of userOffers) offerByShowId.set(offer.showId, offer);
 
+  // Union: the open shows (the horizon) + the fan's offer-shows that aren't
+  // already open (e.g. an 'allocated' show with a ready ticket to lead with).
+  const openIds = new Set(openShows.map((s) => s.id));
+  const extraOfferShowIds = [...offerByShowId.keys()].filter(
+    (id) => !openIds.has(id),
+  );
+  const extraShows = await listShowSummariesByIds(db, extraOfferShowIds);
+  const summaries = [...openShows, ...extraShows].sort(
+    (a, b) => a.doorsAt.getTime() - b.doorsAt.getTime(),
+  );
+
+  // Per-offer assignment + ticket + architecture (only for shows the fan
+  // actually has an offer on — the rest never need a preview/ticket join).
   const userOfferIds = userOffers.map((o) => o.id);
   const assignmentByOfferId = await listSeatAssignmentsByOfferIds(
     db,
     userOfferIds,
   );
-
   const archIdsForPreview = new Set<string>();
   const assignmentIdsForTickets: string[] = [];
-  for (const row of rows) {
+  for (const row of summaries) {
     const offer = offerByShowId.get(row.id);
     if (!offer) continue;
     const assignment = assignmentByOfferId.get(offer.id);
@@ -67,7 +94,9 @@ async function loadDashboardData(userId: string): Promise<ShowSummaryView[]> {
     listTicketsByAssignmentIds(db, assignmentIdsForTickets),
   ]);
 
-  return rows.map((row) => {
+  const shows: ShowSummaryView[] = [];
+  const heroCandidates: { hero: NowHeroView; doorsAt: Date }[] = [];
+  for (const row of summaries) {
     const offer = offerByShowId.get(row.id) ?? null;
     const assignment = offer ? assignmentByOfferId.get(offer.id) ?? null : null;
     let assignmentRow: { area: string; rowName: string } | null = null;
@@ -78,7 +107,7 @@ async function loadDashboardData(userId: string): Promise<ShowSummaryView[]> {
         arch?.rows.find((r) => r.id === assignment.venueRowId) ?? null;
       ticket = ticketByAssignmentId.get(assignment.id) ?? null;
     }
-    return presentShowSummary(
+    const view = presentShowSummary(
       row,
       now,
       DEFAULT_TZ,
@@ -87,7 +116,29 @@ async function loadDashboardData(userId: string): Promise<ShowSummaryView[]> {
       assignmentRow,
       ticket,
     );
-  });
+    shows.push(view);
+    if (view.yourOffer) {
+      const hero = presentNowHero(row, view.yourOffer, now, DEFAULT_TZ);
+      if (hero) heroCandidates.push({ hero, doorsAt: row.doorsAt });
+    }
+  }
+
+  heroCandidates.sort(
+    (a, b) =>
+      heroPriority(a.hero) - heroPriority(b.hero) ||
+      a.doorsAt.getTime() - b.doorsAt.getTime(),
+  );
+  const hero = heroCandidates[0]?.hero ?? null;
+
+  return { shows, hero };
+}
+
+// Count label for the "On the horizon" section: "opens soon" while at least
+// one show's window hasn't opened, else a plain count.
+function horizonCount(rows: ShowSummaryView[]): string {
+  const anyNotYetOpen = rows.some((s) => s.statusLabel.startsWith("Offers open "));
+  if (anyNotYetOpen) return "opens soon";
+  return rows.length === 1 ? "1 show" : `${rows.length} shows`;
 }
 
 export default async function DashboardPage() {
@@ -96,10 +147,21 @@ export default async function DashboardPage() {
 
   const user = await currentUser();
   const email = user?.primaryEmailAddress?.emailAddress ?? "unknown";
-  // Greet by first name when Clerk has it; fall back to the plain "Shows"
-  // heading the prototype shipped with.
   const firstName = user?.firstName ?? null;
-  const shows = await loadDashboardData(userId);
+  const { shows, hero } = await loadDashboardData(userId);
+
+  // The hero's show is shown in the band, not duplicated as a row.
+  const rows = hero ? shows.filter((s) => s.id !== hero.showId) : shows;
+  const yourOffers = rows.filter((s) => s.yourOffer);
+  const horizon = rows.filter((s) => !s.yourOffer);
+
+  const nothingAtAll = shows.length === 0;
+
+  // A single rising index drives the staggered entrance across the page.
+  let revealIndex = 0;
+  const revealStyle = () => ({
+    animationDelay: `${Math.min(revealIndex++, 6) * 55}ms`,
+  });
 
   return (
     <main
@@ -120,27 +182,73 @@ export default async function DashboardPage() {
           </span>
         </div>
 
-        {shows.length === 0 ? (
-          // Empty state — no open shows. Mirrors the prototype's tone
-          // (sunken paper card, muted text) without inventing copy
-          // that doesn't exist in the design.
+        {hero && <NowHero hero={hero} />}
+
+        {nothingAtAll ? (
+          // Nothing open at all — a warm, anti-FOMO block (lead with the
+          // Fair/calm promise), never a dead "No data" line.
           <div
-            className="rounded-xl p-5 font-sans text-[13px]"
-            style={{
-              background: "var(--paper-2)",
-              color: "var(--fg-muted)",
-              lineHeight: 1.55,
-            }}
+            className="auk-reveal rounded-xl p-6 font-sans"
+            style={{ background: "var(--paper-2)", color: "var(--fg-muted)" }}
           >
-            No open shows right now. Check back closer to the next
-            announced date.
+            <p
+              className="mb-1.5 font-display text-xl"
+              style={{ color: "var(--fg)" }}
+            >
+              Nothing open right now — and that&apos;s fine.
+            </p>
+            <p className="text-[13px]" style={{ lineHeight: 1.55 }}>
+              When an artist you follow opens offers, you&apos;ll see it here.
+              There&apos;s nothing to refresh and nothing to miss — we&apos;ll
+              email you the moment something opens.
+            </p>
           </div>
         ) : (
-          <div className="flex flex-col gap-3">
-            {shows.map((show) => (
-              <ShowRow key={show.id} show={show} />
-            ))}
-          </div>
+          <>
+            {yourOffers.length > 0 && (
+              <section>
+                <div className="auk-reveal" style={revealStyle()}>
+                  <SectionLabel
+                    label="Your offers"
+                    count={`${yourOffers.length} active`}
+                  />
+                </div>
+                <div className="flex flex-col gap-3">
+                  {yourOffers.map((show) => (
+                    <div
+                      key={show.id}
+                      className="auk-reveal"
+                      style={revealStyle()}
+                    >
+                      <ShowRow show={show} />
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {horizon.length > 0 && (
+              <section>
+                <div className="auk-reveal" style={revealStyle()}>
+                  <SectionLabel
+                    label="On the horizon"
+                    count={horizonCount(horizon)}
+                  />
+                </div>
+                <div className="flex flex-col gap-3">
+                  {horizon.map((show) => (
+                    <div
+                      key={show.id}
+                      className="auk-reveal"
+                      style={revealStyle()}
+                    >
+                      <ShowRow show={show} />
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+          </>
         )}
 
         {/* Offer history link — small affordance below the show list.
@@ -156,7 +264,7 @@ export default async function DashboardPage() {
           </Link>
         </div>
 
-        {/* "Heads up" note — matches Dashboard.jsx lines 66-73. */}
+        {/* "Heads up" note — on-voice (matches Change 01 §C). */}
         <div
           className="mt-6 rounded-xl p-5 font-sans text-[13px]"
           style={{

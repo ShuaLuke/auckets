@@ -12,8 +12,10 @@ import type { offers } from "../../../drizzle/schema";
 import {
   formatSeatAssignmentPreview,
   presentOffer,
+  presentStanding,
   type OfferStatus,
   type OfferView,
+  type StandingView,
 } from "./offers";
 
 type Offer = typeof offers.$inferSelect;
@@ -102,8 +104,18 @@ describe("presentOffer", () => {
       size: 4,
       status: "pool",
       placed: false,
+      intentNote: "we'll only use what's needed",
       ticketReady: false,
     });
+  });
+
+  it("frames the chip note by tier intent (proxy vs any-seat)", () => {
+    expect(presentOffer(makeOffer({ tierPreference: "specific" })).intentNote).toBe(
+      "we'll only use what's needed",
+    );
+    expect(presentOffer(makeOffer({ tierPreference: "any" })).intentNote).toBe(
+      "any seat is fine",
+    );
   });
 
   it("treats both 'placed' (provisional) and 'charged' (post-binding) as placed", () => {
@@ -281,5 +293,96 @@ describe("presentOffer", () => {
     // undefined coercion.
     const view = presentOffer(makeOffer({ status: "pool" }));
     expect(view).toHaveProperty("ticketReady", false);
+  });
+
+  it("exposes the real per-ticket charged amount once charged (not the cap)", () => {
+    // Cap is $42; the seat_assignment was charged $156 total for 4 → $39 each.
+    const view = presentOffer(
+      makeOffer({ status: "charged", groupSize: 4, pricePerTicketCents: 4200 }),
+      makeAssignment({ chargedAmountCents: 15600 }),
+      makeRow(),
+    );
+    expect(view.paidPerTicket).toBe("$39.00");
+    // The cap is still surfaced separately and unchanged.
+    expect(view.price).toBe("$42.00");
+  });
+
+  it("omits paidPerTicket pre-binding (nothing charged yet)", () => {
+    const view = presentOffer(makeOffer({ status: "pool" }));
+    expect(view).not.toHaveProperty("paidPerTicket");
+  });
+});
+
+describe("presentStanding", () => {
+  const FLOORS = { premium: 6800, mid: 5500, rear: 3400 };
+
+  it("returns null without a preview projection to stand on", () => {
+    expect(presentStanding(makeOffer(), null, makeRow(), FLOORS)).toBeNull();
+  });
+
+  it("returns null when the projected tier isn't among the show's floors", () => {
+    const standing = presentStanding(
+      makeOffer(),
+      makeAssignment({ tier: "balcony" }),
+      makeRow(),
+      FLOORS,
+    );
+    expect(standing).toBeNull();
+  });
+
+  it("projects the tier and frames the next tier up as an upgrade (delta from cap to its floor)", () => {
+    // Cap $55 in Mid; Premium floor $68 → reach is +$13.
+    const standing = presentStanding(
+      makeOffer({ pricePerTicketCents: 5500, groupSize: 4 }),
+      makeAssignment({ tier: "mid", venueRowId: "row_f" }),
+      makeRow({ rowName: "F" }),
+      FLOORS,
+    );
+    expect(standing).toEqual<StandingView>({
+      projectedTier: "Mid",
+      positionHint: "together", // group of 4 → seats-together is the salient fact
+      capCents: 5500,
+      nextTier: {
+        label: "Premium",
+        lineCents: 6800,
+        lineDisplay: "$68.00",
+        deltaCents: 1300,
+        deltaDisplay: "$13.00",
+      },
+      inTopTier: false,
+    });
+  });
+
+  it("uses a row-position hint for small groups", () => {
+    const standing = presentStanding(
+      makeOffer({ pricePerTicketCents: 5500, groupSize: 2 }),
+      makeAssignment({ tier: "mid" }),
+      makeRow({ rowName: "F" }),
+      FLOORS,
+    );
+    expect(standing?.positionHint).toBe("around row F");
+  });
+
+  it("marks the top tier and drops the reach row", () => {
+    const standing = presentStanding(
+      makeOffer({ pricePerTicketCents: 7000 }),
+      makeAssignment({ tier: "premium" }),
+      makeRow(),
+      FLOORS,
+    );
+    expect(standing?.inTopTier).toBe(true);
+    expect(standing?.nextTier).toBeUndefined();
+  });
+
+  it("omits the reach when the cap already clears the next floor (no fake +$0 nudge)", () => {
+    // Cap $70 but landed in Mid (Premium full); Premium floor $68 → delta ≤ 0.
+    const standing = presentStanding(
+      makeOffer({ pricePerTicketCents: 7000 }),
+      makeAssignment({ tier: "mid" }),
+      makeRow(),
+      FLOORS,
+    );
+    expect(standing?.inTopTier).toBe(false);
+    expect(standing?.nextTier).toBeUndefined();
   });
 });

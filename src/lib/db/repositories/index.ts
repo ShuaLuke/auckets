@@ -114,6 +114,7 @@ export {
   getShowById,
   listAllShows,
   listOpenShows,
+  listShowSummariesByIds,
   listShowIdsDueForBinding,
   listShowIdsDueForTicketIssuance,
   listShowsForArtist,

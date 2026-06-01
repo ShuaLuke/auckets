@@ -15,6 +15,8 @@ import Link from "next/link";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { type ShowSummaryView } from "@/lib/presenters";
 
+import { StandingLadder } from "./StandingLadder";
+
 type Props = {
   show: ShowSummaryView;
 };
@@ -63,12 +65,12 @@ export function ShowRow({ show }: Props) {
   return (
     <Link
       href={href}
-      className="flex items-center gap-3 rounded-xl border bg-[var(--page)] px-4 py-[18px] no-underline transition-shadow hover:shadow-[0_4px_12px_rgba(14,15,12,0.06)] md:gap-5 md:px-5"
+      className="group flex items-start gap-3 rounded-xl border bg-[var(--page)] px-4 py-[18px] no-underline transition-all duration-[120ms] ease-[var(--ease-out)] hover:-translate-y-px hover:border-[color:var(--border-strong)] hover:shadow-[var(--shadow-md)] md:gap-5 md:px-5"
       style={{ borderColor: "var(--border)" }}
     >
-      {/* Date stub */}
+      {/* Date stub — with the ticket-stub perforation on its right edge. */}
       <div
-        className="flex-shrink-0 rounded-md py-2.5 text-center"
+        className="relative flex-shrink-0 rounded-md py-2.5 text-center"
         style={{ width: 64, background: "var(--paper)" }}
       >
         <div className="font-mono text-[11px]" style={{ color: "var(--fg-muted)" }}>
@@ -77,10 +79,20 @@ export function ShowRow({ show }: Props) {
         <div className="mt-0.5 font-display text-[22px] font-bold leading-none">
           {stub.day}
         </div>
+        <span
+          className="pointer-events-none absolute bottom-2 top-2 w-0.5"
+          style={{
+            right: -1,
+            backgroundImage:
+              "radial-gradient(circle, var(--border-strong) 1px, transparent 1.2px)",
+            backgroundSize: "2px 9px",
+          }}
+          aria-hidden
+        />
       </div>
 
-      {/* Middle column — venue + artist + dateLong + yourOffer chip */}
-      <div className="flex flex-1 flex-col gap-1.5">
+      {/* Middle column — venue + artist + dateLong + yourOffer chip + ladder */}
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         <div className="flex items-baseline gap-3">
           <h3 className="text-lg">{show.venue}</h3>
           <span className="font-sans text-xs" style={{ color: "var(--fg-subtle)" }}>
@@ -93,29 +105,30 @@ export function ShowRow({ show }: Props) {
         </div>
         {show.yourOffer && (
           <div
-            className="mt-1 inline-flex items-baseline gap-2 self-start rounded-md px-2.5 py-1"
+            className="mt-1 inline-flex flex-wrap items-baseline gap-x-2 gap-y-0.5 self-start rounded-md px-2.5 py-1"
             style={{ background: "var(--greenwood-50)" }}
           >
             <span
-              className="font-mono text-xs"
+              className="font-mono text-xs tabular-nums"
               style={{ color: "var(--greenwood-700)" }}
             >
-              {show.yourOffer.price} × {show.yourOffer.size}
+              up to {show.yourOffer.price} × {show.yourOffer.size}
             </span>
-            {show.yourOffer.preview && (
-              <span
-                className="font-sans text-[11px]"
-                style={{ color: "var(--brand)" }}
-              >
-                · {show.yourOffer.preview}
-              </span>
-            )}
+            <span
+              className="font-sans text-[11px]"
+              style={{ color: "var(--brand)" }}
+            >
+              · {show.yourOffer.intentNote}
+            </span>
           </div>
+        )}
+        {show.yourOffer?.standing && (
+          <StandingLadder standing={show.yourOffer.standing} />
         )}
       </div>
 
       {/* Right column — badge + closes countdown */}
-      <div className="flex flex-col items-end gap-2">
+      <div className="flex flex-shrink-0 flex-col items-end gap-2">
         <Badge tone={tone}>{label}</Badge>
         {show.closes && (
           <span className="font-mono text-[11px]" style={{ color: "var(--fg-subtle)" }}>
@@ -127,6 +140,7 @@ export function ShowRow({ show }: Props) {
       <ChevronRight
         size={18}
         strokeWidth={1.75}
+        className="mt-0.5 flex-shrink-0"
         style={{ color: "var(--fg-faint)" }}
         aria-hidden
       />

@@ -91,6 +91,40 @@ export function formatCountdown(target: Date, now: Date): string {
 }
 
 /**
+ * Clock time in the venue's timezone — "8:00pm", "7:30pm". Always keeps
+ * minutes (unlike formatDateLong, which drops ":00"), for the NowHero
+ * "Doors 8:00pm" line.
+ */
+export function formatClock(date: Date, tz: string): string {
+  const p = partsOf(date, tz, {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+  return `${p.hour ?? ""}:${p.minute ?? "00"}${(p.dayPeriod ?? "").toLowerCase()}`;
+}
+
+/**
+ * Short weekday in the venue's timezone — "Sat", "Wed". Used by the
+ * dashboard NowHero eyebrow ("· Sat") when doors isn't today.
+ */
+export function formatWeekday(date: Date, tz: string): string {
+  return partsOf(date, tz, { weekday: "short" }).weekday ?? "";
+}
+
+/**
+ * True when `date` falls on the same calendar day as `now` in `tz`. Drives
+ * the NowHero eyebrow's "· tonight" vs "· {weekday}" — a show is "tonight"
+ * only when doors are actually today in the venue's timezone, never by a
+ * naive 24h window.
+ */
+export function isToday(date: Date, now: Date, tz: string): boolean {
+  const a = partsOf(date, tz, { year: "numeric", month: "2-digit", day: "2-digit" });
+  const b = partsOf(now, tz, { year: "numeric", month: "2-digit", day: "2-digit" });
+  return a.year === b.year && a.month === b.month && a.day === b.day;
+}
+
+/**
  * "23h until binding" / "12d until binding" — the closes-row label on the
  * Dashboard + ArtistDashboard when the offer window is open and binding is
  * the next milestone.

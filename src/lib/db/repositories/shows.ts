@@ -53,6 +53,13 @@ export type ShowSummary = {
   // a 624-seat venue can host a 280-seat show. Drizzle stores this as
   // jsonb (unknown); we narrow to string[] at the projection boundary.
   activeRowIds: string[];
+  // Per-show pricing-tier floors (tier name → min cents). Stored as jsonb
+  // (unknown); narrowed at the projection boundary. Carried on the summary
+  // so the fan dashboard's StandingLadder can compute the "reach the next
+  // tier" delta without a second per-show read (Change 02). Kept out
+  // originally as "raw JSONB noise"; the ladder is the first consumer that
+  // genuinely needs it on the flat list.
+  tierFloorsCents: Record<string, number>;
   artistName: Artist["name"];
   venueName: Venue["name"];
   venueCity: Venue["city"];
@@ -99,6 +106,7 @@ const SHOW_SUMMARY_SELECTION = {
   bindingAllocationAt: shows.bindingAllocationAt,
   pausedAt: shows.pausedAt,
   activeRowIds: shows.activeRowIds,
+  tierFloorsCents: shows.tierFloorsCents,
   artistName: artists.name,
   venueName: venues.name,
   venueCity: venues.city,
@@ -109,9 +117,14 @@ const SHOW_SUMMARY_SELECTION = {
 // narrow type.
 function narrowSummary(row: {
   activeRowIds: unknown;
+  tierFloorsCents: unknown;
   [k: string]: unknown;
 }): ShowSummary {
-  return { ...row, activeRowIds: row.activeRowIds as string[] } as ShowSummary;
+  return {
+    ...row,
+    activeRowIds: row.activeRowIds as string[],
+    tierFloorsCents: row.tierFloorsCents as Record<string, number>,
+  } as ShowSummary;
 }
 
 export async function listOpenShows(db: Db): Promise<ShowSummary[]> {
@@ -121,6 +134,27 @@ export async function listOpenShows(db: Db): Promise<ShowSummary[]> {
     .innerJoin(artists, eq(shows.artistId, artists.id))
     .innerJoin(venues, eq(shows.venueId, venues.id))
     .where(eq(shows.status, "open"))
+    .orderBy(shows.doorsAt);
+  return rows.map(narrowSummary);
+}
+
+// Summaries for an explicit set of show ids, any status. The fan dashboard
+// unions these (the shows the fan has an offer on — which may be post-binding
+// 'allocated' with a ready ticket) with listOpenShows so the NowHero
+// ticket-ready state can lead the page (Change 02). Returns [] for an empty
+// id list without hitting the DB. Order is by doors so the caller can pick
+// the soonest at a given hero priority.
+export async function listShowSummariesByIds(
+  db: Db,
+  ids: readonly string[],
+): Promise<ShowSummary[]> {
+  if (ids.length === 0) return [];
+  const rows = await db
+    .select(SHOW_SUMMARY_SELECTION)
+    .from(shows)
+    .innerJoin(artists, eq(shows.artistId, artists.id))
+    .innerJoin(venues, eq(shows.venueId, venues.id))
+    .where(inArray(shows.id, [...ids]))
     .orderBy(shows.doorsAt);
   return rows.map(narrowSummary);
 }

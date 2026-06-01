@@ -9,7 +9,9 @@ import type {
 
 import type { offers } from "../../../drizzle/schema";
 
+import { presentOffer, type OfferView } from "./offers";
 import {
+  presentNowHero,
   presentShowDetail,
   presentShowSummary,
   type ShowDetailView,
@@ -93,6 +95,7 @@ function makeSummary(overrides: Partial<ShowSummary> = {}): ShowSummary {
     bindingAllocationAt: new Date("2026-06-12T21:00:00-04:00"),
     pausedAt: null,
     activeRowIds: ["row_a", "row_b"],
+    tierFloorsCents: { premium: 6000, mid: 4000, rear: 2500 },
     artistName: "Citizen Cope",
     venueName: "Cope's place",
     venueCity: "Brooklyn, NY",
@@ -283,6 +286,7 @@ describe("presentShowSummary", () => {
       size: 4,
       status: "placed",
       placed: true,
+      intentNote: "we'll only use what's needed",
       ticketReady: false,
     });
   });
@@ -427,6 +431,7 @@ describe("presentShowDetail", () => {
       size: 2,
       status: "pool",
       placed: false,
+      intentNote: "we'll only use what's needed",
       ticketReady: false,
     });
   });
@@ -475,5 +480,83 @@ describe("presentShowDetail", () => {
       makeTicket({ status: "issued" }),
     );
     expect(view.yourOffer?.ticketReady).toBe(true);
+  });
+});
+
+describe("presentNowHero", () => {
+  // Fixed clock 6pm ET on Jun 12; doors 9pm ET Jun 13.
+  const now = new Date("2026-06-12T18:00:00-04:00");
+
+  it("leads with a ready ticket (priority 1): seats, real paid amount, doors countdown", () => {
+    const doorsTonight = new Date("2026-06-12T21:00:00-04:00"); // same day as now
+    const offerView = presentOffer(
+      makeOffer({ status: "charged", groupSize: 4, pricePerTicketCents: 4200 }),
+      makeAssignment({ tier: "orchestra", chargedAmountCents: 15600 }),
+      { area: "orchestra", rowName: "AA" },
+      makeTicket({ status: "issued" }),
+    );
+    const hero = presentNowHero(
+      makeSummary({
+        status: "allocated",
+        doorsAt: doorsTonight,
+        artistName: "Citizen Cope",
+        venueName: "Lincoln Theatre",
+      }),
+      offerView,
+      now,
+    );
+    expect(hero?.kind).toBe("ticket-ready");
+    if (hero?.kind !== "ticket-ready") throw new Error("expected ticket-ready");
+    expect(hero.eyebrow).toBe("You're in the room · tonight");
+    expect(hero.title).toBe("Citizen Cope at Lincoln Theatre");
+    expect(hero.seats).toBe("Orchestra · Row AA · seats 7–10");
+    expect(hero.paid).toBe("$39.00 ×4"); // the charged line, not the $42 cap
+    expect(hero.doors).toBe("3h");
+  });
+
+  it("falls back to the locking-in band (priority 2) when binding is <24h away", () => {
+    const binding = new Date("2026-06-12T23:00:00-04:00"); // +5h
+    const base = presentOffer(
+      makeOffer({ status: "pool", pricePerTicketCents: 5500 }),
+      makeAssignment({ tier: "mid" }),
+      { area: "orchestra", rowName: "F" },
+    );
+    const offerView: OfferView = {
+      ...base,
+      standing: {
+        projectedTier: "Mid",
+        positionHint: "around row F",
+        capCents: 5500,
+        inTopTier: false,
+      },
+    };
+    const hero = presentNowHero(
+      makeSummary({
+        status: "open",
+        bindingAllocationAt: binding,
+        artistName: "Citizen Cope",
+        venueName: "Paramount Theatre",
+      }),
+      offerView,
+      now,
+    );
+    expect(hero?.kind).toBe("locking-in");
+    if (hero?.kind !== "locking-in") throw new Error("expected locking-in");
+    expect(hero.eyebrow).toBe("Seats lock in · 5h");
+    expect(hero.offerLine).toBe("up to $55.00");
+    expect(hero.projectedTier).toBe("Mid");
+    expect(hero.sub).toContain("you'd land in Mid");
+  });
+
+  it("returns null when nothing qualifies (no ticket, binding far off)", () => {
+    const hero = presentNowHero(
+      makeSummary({
+        status: "open",
+        bindingAllocationAt: new Date("2026-07-01T21:00:00-04:00"),
+      }),
+      presentOffer(makeOffer({ status: "pool" })),
+      now,
+    );
+    expect(hero).toBeNull();
   });
 });

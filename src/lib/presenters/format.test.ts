@@ -3,9 +3,12 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_TZ,
   formatBindingCountdown,
+  formatClock,
   formatCountdown,
   formatDateLong,
   formatDateShort,
+  formatWeekday,
+  isToday,
 } from "./format";
 
 // All "live" prototype shapes assume America/New_York. The tests pin that
@@ -128,5 +131,46 @@ describe("formatBindingCountdown", () => {
   it("collapses to 'binding now' when target is past — the GAE should already be running", () => {
     const past = new Date(now.getTime() - 60_000);
     expect(formatBindingCountdown(past, now)).toBe("binding now");
+  });
+});
+
+describe("formatClock", () => {
+  it("keeps minutes even on the whole hour (NowHero 'Doors 8:00pm')", () => {
+    expect(formatClock(new Date("2026-06-13T20:00:00-04:00"), DEFAULT_TZ)).toBe(
+      "8:00pm",
+    );
+  });
+  it("renders half-hours", () => {
+    expect(formatClock(new Date("2026-07-02T19:30:00-04:00"), DEFAULT_TZ)).toBe(
+      "7:30pm",
+    );
+  });
+});
+
+describe("formatWeekday", () => {
+  it("renders the short weekday in the venue tz", () => {
+    expect(formatWeekday(new Date("2026-06-13T21:00:00-04:00"), DEFAULT_TZ)).toBe(
+      "Sat",
+    );
+  });
+});
+
+describe("isToday", () => {
+  const tz = DEFAULT_TZ;
+  it("true when doors and now share the calendar day in tz", () => {
+    const now = new Date("2026-06-13T18:00:00-04:00");
+    const doors = new Date("2026-06-13T21:00:00-04:00");
+    expect(isToday(doors, now, tz)).toBe(true);
+  });
+  it("false across a day boundary even within 24h", () => {
+    const now = new Date("2026-06-13T23:00:00-04:00");
+    const doors = new Date("2026-06-14T20:00:00-04:00"); // ~21h later, next day
+    expect(isToday(doors, now, tz)).toBe(false);
+  });
+  it("respects the tz, not the host/UTC day", () => {
+    // 2026-06-14T02:00Z is still Jun 13, 10pm in New York.
+    const now = new Date("2026-06-13T21:00:00-04:00");
+    const doors = new Date("2026-06-14T02:00:00Z");
+    expect(isToday(doors, now, tz)).toBe(true);
   });
 });
