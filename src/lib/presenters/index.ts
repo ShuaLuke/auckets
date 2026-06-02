@@ -93,7 +93,9 @@ export { presentRankBoard, type RankBoardView } from "./rank-board";
 
 export {
   presentAllocationFinal,
+  buildTierMinRowRank,
   type AllocationFinalShow,
+  type AllocationResultContext,
   type AllocationFinalView,
   type AllocationFinalPlacedView,
   type AllocationFinalCardFailureView,
