@@ -454,6 +454,44 @@ export async function getOfferStatsByShowIds(
   return out;
 }
 
+// Offer counts broken out by status, per show — one grouped query keyed by
+// (show_id, status). Drives the admin command center's capture-health metric
+// and the post-binding reconciliation surface (charged vs card_failure vs
+// unplaced). Shows/statuses with no rows simply don't appear; callers read a
+// missing key as zero. Mock-Db tests can't verify the SQL itself (same
+// caveat as getOfferStatsByShowIds) — it's exercised by the integration
+// suite against a real DB.
+export type OfferStatusCounts = Partial<Record<string, number>>;
+
+export async function getOfferStatusCountsByShowIds(
+  db: Db,
+  showIds: string[],
+): Promise<Map<string, OfferStatusCounts>> {
+  const out = new Map<string, OfferStatusCounts>();
+  if (showIds.length === 0) return out;
+
+  const rows = await db
+    .select({
+      showId: offers.showId,
+      status: offers.status,
+      count: sql<number>`COUNT(*)::int`,
+    })
+    .from(offers)
+    .where(inArray(offers.showId, showIds))
+    .groupBy(offers.showId, offers.status);
+
+  for (const row of rows) {
+    let bucket = out.get(row.showId);
+    if (!bucket) {
+      bucket = {};
+      out.set(row.showId, bucket);
+    }
+    bucket[row.status] = Number(row.count) || 0;
+  }
+
+  return out;
+}
+
 // Insert or update by the (show_id, user_id) UNIQUE constraint. On
 // conflict, updates the editable offer fields and stamps revised_at to
 // NOW. Submission-time fields (submitted_at, stripe_setup_intent_id,

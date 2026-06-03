@@ -14,11 +14,14 @@ import { auth } from "@clerk/nextjs/server";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import { AdminHealthStrip } from "@/components/admin/AdminHealthStrip";
 import { AdminShowRow } from "@/components/admin/AdminShowRow";
 import { Eyebrow } from "@/components/ui/Eyebrow";
 import { db } from "@/lib/db";
 import {
+  getChargedTotalsByShowIds,
   getOfferStatsByShowIds,
+  getOfferStatusCountsByShowIds,
   getProvisionalFilledByShowIds,
   getVenueArchitecturesByIds,
   listAllShows,
@@ -26,7 +29,11 @@ import {
 } from "@/lib/db/repositories";
 import {
   DEFAULT_TZ,
+  presentAdminHealth,
+  presentAdminShowOps,
   presentArtistShowSummary,
+  type AdminHealthView,
+  type AdminShowOpsView,
   type ArtistShowSummaryView,
 } from "@/lib/presenters";
 
@@ -35,41 +42,78 @@ export const dynamic = "force-dynamic";
 type AdminShowEntry = {
   artistId: string;
   view: ArtistShowSummaryView;
+  ops: AdminShowOpsView;
 };
 
-async function loadAllShows(): Promise<AdminShowEntry[]> {
+type AdminLoad = {
+  entries: AdminShowEntry[];
+  health: AdminHealthView;
+};
+
+async function loadAllShows(): Promise<AdminLoad> {
   const now = new Date();
   const rows = await listAllShows(db);
   const showIds = rows.map((r) => r.id);
 
-  // Same three aggregates the artist dashboard fetches, just over the
-  // full show set. Each is one batched DB hit keyed by show id.
-  const [offerStats, provisionalFilled, architectureById] = await Promise.all([
+  // The artist-dashboard aggregates over the full show set, plus the two
+  // ops-only aggregates (offer status counts + captured-money totals) that
+  // drive the health strip and the reconciliation read. Each is one batched
+  // DB hit keyed by show id.
+  const [
+    offerStats,
+    provisionalFilled,
+    architectureById,
+    statusCounts,
+    chargedTotals,
+  ] = await Promise.all([
     getOfferStatsByShowIds(db, showIds),
     getProvisionalFilledByShowIds(db, showIds),
     getVenueArchitecturesByIds(
       db,
       [...new Set(rows.map((r) => r.venueArchitectureId))],
     ),
+    getOfferStatusCountsByShowIds(db, showIds),
+    getChargedTotalsByShowIds(db, showIds),
   ]);
 
-  return rows.map((row) => ({
-    artistId: row.artistId,
-    view: presentArtistShowSummary(
+  const capacityByShowId = new Map<string, number>();
+  const entries: AdminShowEntry[] = rows.map((row) => {
+    const stats = offerStats.get(row.id) ?? {
+      count: 0,
+      ticketsCount: 0,
+      medianCents: null,
+      topCents: null,
+    };
+    const view = presentArtistShowSummary(
       row,
-      offerStats.get(row.id) ?? {
-        count: 0,
-        ticketsCount: 0,
-        medianCents: null,
-        topCents: null,
-      },
+      stats,
       provisionalFilled.get(row.id) ?? 0,
       architectureById.get(row.venueArchitectureId) ?? null,
       row.activeRowIds,
       now,
       DEFAULT_TZ,
-    ),
-  }));
+    );
+    capacityByShowId.set(row.id, view.capacity);
+    const ops = presentAdminShowOps({
+      summary: row,
+      poolCount: stats.count,
+      statusCounts: statusCounts.get(row.id),
+      chargedTotals: chargedTotals.get(row.id),
+      now,
+    });
+    return { artistId: row.artistId, view, ops };
+  });
+
+  const health = presentAdminHealth({
+    shows: rows,
+    offerStatsByShow: offerStats,
+    statusCountsByShow: statusCounts,
+    filledByShow: provisionalFilled,
+    capacityByShowId,
+    now,
+  });
+
+  return { entries, health };
 }
 
 export default async function AdminHomePage() {
@@ -81,8 +125,8 @@ export default async function AdminHomePage() {
   const allowed = await userIsAdmin(db, userId);
   if (!allowed) notFound();
 
-  const shows = await loadAllShows();
-  const showCount = shows.length;
+  const { entries, health } = await loadAllShows();
+  const showCount = entries.length;
   const showWord = showCount === 1 ? "show" : "shows";
 
   return (
@@ -100,6 +144,11 @@ export default async function AdminHomePage() {
           >
             {showCount} {showWord} across all artists. Click a show to manage it.
           </p>
+        </div>
+
+        {/* Live health strip — offers, fill, capture, next binding. */}
+        <div className="mb-6">
+          <AdminHealthStrip health={health} />
         </div>
 
         {/* Section nav. Shows is here; Requests is the existing inbox.
@@ -160,11 +209,12 @@ export default async function AdminHomePage() {
           </div>
         ) : (
           <div className="flex flex-col gap-3">
-            {shows.map((entry) => (
+            {entries.map((entry) => (
               <AdminShowRow
                 key={entry.view.id}
                 artistId={entry.artistId}
                 show={entry.view}
+                ops={entry.ops}
               />
             ))}
           </div>

@@ -75,6 +75,8 @@ export {
   getOfferStatsByTierForShow,
   getOfferStatsForArtist,
   getOfferStatsForShow,
+  getOfferStatusCountsByShowIds,
+  type OfferStatusCounts,
   getPriceDistributionForShow,
   getUserRankInShowPool,
   listBidsForUser,
@@ -141,11 +143,13 @@ export {
 } from "./venues";
 
 export {
+  getChargedTotalsByShowIds,
   getProvisionalFilledByShow,
   getProvisionalFilledByShowIds,
   getSeatAssignmentByOfferId,
   listSeatAssignmentsByOfferIds,
   listSeatAssignmentsForShow,
+  type ChargedTotals,
   type SeatAssignment,
 } from "./seat-assignments";
 
