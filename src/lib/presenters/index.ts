@@ -37,11 +37,16 @@ export {
 
 export {
   computeShowCapacity,
+  computeShowProjection,
   presentArtistShowSummary,
   presentArtistSnapshotStats,
+  presentShowConfidence,
   presentTierBreakdown,
   type ArtistShowSummaryView,
   type ArtistSnapshotStatsView,
+  type ShowConfidenceView,
+  type ShowConfidenceProjectionView,
+  type ShowProjectionCents,
   type TierBreakdownView,
   type TierBucketView,
 } from "./artist-shows";

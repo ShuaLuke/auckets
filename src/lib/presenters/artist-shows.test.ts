@@ -10,8 +10,10 @@ import type { VenueRow } from "@/lib/gae/types";
 
 import {
   computeShowCapacity,
+  computeShowProjection,
   presentArtistShowSummary,
   presentArtistSnapshotStats,
+  presentShowConfidence,
   presentTierBreakdown,
   type ArtistShowSummaryView,
   type ArtistSnapshotStatsView,
@@ -361,5 +363,111 @@ describe("presentTierBreakdown", () => {
     expect(view.buckets[0]?.label).toBe("Premium only");
     expect(view.buckets[1]?.label).toBe("Premium or below");
     expect(view.buckets[2]?.label).toBe("Anywhere I fit");
+  });
+});
+
+describe("computeShowProjection", () => {
+  const tierByRowId = new Map<string, string | undefined>([
+    ["row_prem", "premium"],
+    ["row_rear", "rear"],
+    ["row_untiered", undefined],
+  ]);
+  const floors = { premium: 6000, rear: 2500 };
+
+  it("sums pay-as-bid gross and face value over the placed seats", () => {
+    const projection = computeShowProjection(
+      [
+        // premium group of 2 @ $70 each (paid > floor $60)
+        { offerId: "o1", venueRowId: "row_prem", seatNumbers: ["1", "2"] },
+        // rear group of 3 @ $30 each (paid > floor $25)
+        { offerId: "o2", venueRowId: "row_rear", seatNumbers: ["5", "6", "7"] },
+      ],
+      new Map([
+        ["o1", 7000],
+        ["o2", 3000],
+      ]),
+      tierByRowId,
+      floors,
+    );
+    // gross: 7000*2 + 3000*3 = 23000 ; face: 6000*2 + 2500*3 = 19500
+    expect(projection.projectedGrossCents).toBe(23000);
+    expect(projection.faceValueCents).toBe(19500);
+    expect(projection.placedSeats).toBe(5);
+  });
+
+  it("skips offers with no resolved price and tiers with no floor", () => {
+    const projection = computeShowProjection(
+      [
+        // No resolved price → contributes a seat but nothing to gross.
+        { offerId: "missing", venueRowId: "row_untiered", seatNumbers: ["1"] },
+        // Untiered row → no floor, so contributes nothing to face value.
+        { offerId: "o2", venueRowId: "row_untiered", seatNumbers: ["9"] },
+      ],
+      new Map([["o2", 4000]]),
+      tierByRowId,
+      floors,
+    );
+    expect(projection.projectedGrossCents).toBe(4000);
+    expect(projection.faceValueCents).toBe(0);
+    expect(projection.placedSeats).toBe(2);
+  });
+});
+
+describe("presentShowConfidence", () => {
+  function leadSummary(
+    overrides: Partial<ShowSummary> = {},
+  ): ArtistShowSummaryView {
+    return presentArtistShowSummary(
+      makeSummary(overrides),
+      { count: 42, ticketsCount: 60, medianCents: 4200, topCents: 9000 },
+      0, // persisted provisional fill (live override comes via projection)
+      makeArchitecture([
+        makeRow({ id: "row_a", capacity: 100 }),
+        makeRow({ id: "row_b", capacity: 100 }),
+      ]),
+      ["row_a", "row_b"],
+      new Date("2026-06-01T12:00:00Z"),
+    );
+  }
+
+  it("formats projection, lift, and live fill when a projection is present", () => {
+    const view = presentShowConfidence(
+      leadSummary(),
+      { projectedGrossCents: 23000, faceValueCents: 19500, placedSeats: 120 },
+      null,
+    );
+    expect(view.projection).not.toBeNull();
+    expect(view.projection?.projectedGross).toBe("$230.00");
+    expect(view.projection?.faceValue).toBe("$195.00");
+    expect(view.projection?.liftAmount).toBe("+$35.00");
+    expect(view.projection?.liftPct).toBe(18); // round(3500/19500*100)
+    // Fill uses the live placement count (120/200), not the persisted 0.
+    expect(view.filled).toBe(120);
+    expect(view.fillPct).toBe(60);
+    expect(view.projectionNote).toBeNull();
+  });
+
+  it("falls back to the calm note + persisted fill when no projection", () => {
+    const view = presentShowConfidence(
+      leadSummary(),
+      null,
+      "Your projection locks in when binding runs.",
+    );
+    expect(view.projection).toBeNull();
+    expect(view.projectionNote).toBe("Your projection locks in when binding runs.");
+    expect(view.filled).toBe(0);
+    expect(view.fillPct).toBe(0);
+  });
+
+  it("shows no projection when the plan placed zero seats", () => {
+    const view = presentShowConfidence(
+      leadSummary(),
+      { projectedGrossCents: 0, faceValueCents: 0, placedSeats: 0 },
+      "Your projected gross appears once offers come in.",
+    );
+    expect(view.projection).toBeNull();
+    expect(view.projectionNote).toBe(
+      "Your projected gross appears once offers come in.",
+    );
   });
 });

@@ -134,6 +134,136 @@ export function presentArtistShowSummary(
   };
 }
 
+// --- Change 05.2: per-show confidence header -----------------------------
+//
+// Opens the artist page to *confidence* on their real, live next show: how
+// full it's getting, the demand it's drawing, and — the value-capture pitch —
+// what the offers would gross vs what the same seats would have made at face
+// (flat) pricing. All aggregates; never an individual fan's offer.
+//
+// PAY-AS-BID: "projected gross" sums each would-be-placed offer's own resolved
+// price (auto-bid settled), not a uniform clearing line. The "face value"
+// baseline is those *same placed seats* valued at their tier floor — so the
+// lift isolates the uplift the offer model captures and is independent of how
+// sold-out the show is. (We deliberately do NOT ship the spec's "fairness
+// spread" stat yet — "a fair band" has no agreed definition; flagged for a
+// product decision rather than invented.)
+
+export type ShowProjectionCents = {
+  // Sum of resolved offer price × seats, over the would-be-placed offers.
+  projectedGrossCents: number;
+  // The same placed seats valued at their tier floor (flat/face pricing).
+  faceValueCents: number;
+  // Seats the projection covers (the live placement count).
+  placedSeats: number;
+};
+
+// Pure: fold a (preview) allocation plan into the projection figures. Kept
+// out of the route so it's unit-testable without the GAE. The caller supplies
+// resolved per-offer prices and a row→tier map derived from the architecture.
+export function computeShowProjection(
+  assignmentRows: readonly {
+    offerId: string;
+    venueRowId: string;
+    seatNumbers: readonly string[];
+  }[],
+  resolvedPriceByOfferId: ReadonlyMap<string, number>,
+  tierByRowId: ReadonlyMap<string, string | undefined>,
+  tierFloorsCents: Record<string, number>,
+): ShowProjectionCents {
+  let projectedGrossCents = 0;
+  let faceValueCents = 0;
+  let placedSeats = 0;
+  for (const row of assignmentRows) {
+    const seats = row.seatNumbers.length;
+    if (seats === 0) continue;
+    placedSeats += seats;
+    const price = resolvedPriceByOfferId.get(row.offerId);
+    if (price !== undefined) projectedGrossCents += price * seats;
+    const tier = tierByRowId.get(row.venueRowId);
+    const floor = tier !== undefined ? tierFloorsCents[tier] : undefined;
+    if (floor !== undefined) faceValueCents += floor * seats;
+  }
+  return { projectedGrossCents, faceValueCents, placedSeats };
+}
+
+export type ShowConfidenceProjectionView = {
+  projectedGross: string; // "$13,640.00"
+  faceValue: string; // "$11,200.00"
+  liftAmount: string; // "+$2,440.00"
+  liftPct: number; // 22 — rounded; ≥0 in practice (offers clear the floor)
+};
+
+export type ShowConfidenceView = {
+  showId: string;
+  venue: string;
+  city: string | null;
+  dateLong: string;
+  statusLabel: string;
+  closes: string;
+  // Fill
+  filled: number;
+  capacity: number;
+  fillPct: number;
+  // Demand
+  offers: number;
+  ticketsCount: number;
+  medianPrice: string;
+  topPrice: string;
+  // Value capture — null when not projectable (no offers, or past the gate).
+  projection: ShowConfidenceProjectionView | null;
+  // Calm note shown in place of the projection when it isn't available.
+  projectionNote: string | null;
+};
+
+// Build the lead show's confidence header. `filledOverride` is the live
+// placement count when a projection ran (keeps the fill bar consistent with
+// the projected gross); falls back to the persisted provisional fill.
+export function presentShowConfidence(
+  summary: ArtistShowSummaryView,
+  projectionCents: ShowProjectionCents | null,
+  projectionNote: string | null,
+): ShowConfidenceView {
+  const filled = projectionCents?.placedSeats ?? summary.provisionalFilled;
+  const capacity = summary.capacity;
+  const fillPct =
+    capacity > 0 ? Math.round((filled / capacity) * 100) : 0;
+
+  let projection: ShowConfidenceProjectionView | null = null;
+  if (projectionCents && projectionCents.placedSeats > 0) {
+    const lift =
+      projectionCents.projectedGrossCents - projectionCents.faceValueCents;
+    const liftPct =
+      projectionCents.faceValueCents > 0
+        ? Math.round((lift / projectionCents.faceValueCents) * 100)
+        : 0;
+    projection = {
+      projectedGross: formatCents(projectionCents.projectedGrossCents),
+      faceValue: formatCents(projectionCents.faceValueCents),
+      liftAmount: `${lift >= 0 ? "+" : "-"}${formatCents(Math.abs(lift))}`,
+      liftPct,
+    };
+  }
+
+  return {
+    showId: summary.id,
+    venue: summary.venue,
+    city: summary.city,
+    dateLong: summary.dateLong,
+    statusLabel: summary.statusLabel,
+    closes: summary.closes,
+    filled,
+    capacity,
+    fillPct,
+    offers: summary.offers,
+    ticketsCount: summary.ticketsCount,
+    medianPrice: summary.medianPrice,
+    topPrice: summary.topPrice,
+    projection,
+    projectionNote: projection ? null : projectionNote,
+  };
+}
+
 // Tier breakdown — one tile per tier option that the OfferComposer
 // actually surfaces today (3 buckets). The 4th schema value
 // 'this_or_better' isn't exposed by the composer, so any rows that
