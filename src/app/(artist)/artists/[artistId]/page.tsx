@@ -15,25 +15,33 @@ import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
 
 import { ArtistShowRow } from "@/components/artist/ArtistShowRow";
+import { ShowConfidenceHeader } from "@/components/artist/ShowConfidenceHeader";
 import { SnapshotStats } from "@/components/artist/SnapshotStats";
 import { Button } from "@/components/ui/Button";
 import { Eyebrow } from "@/components/ui/Eyebrow";
+import { buildPreviewAllocationPlan } from "@/lib/allocation/build-plan";
 import { db } from "@/lib/db";
 import {
   getArtistById,
   getOfferStatsByShowIds,
   getOfferStatsForArtist,
   getProvisionalFilledByShowIds,
+  getShowById,
   getVenueArchitecturesByIds,
+  listPoolOffersForShow,
   listShowsForArtist,
   userCanManageArtist,
+  type ShowSummary,
 } from "@/lib/db/repositories";
 import {
+  computeShowProjection,
   DEFAULT_TZ,
   presentArtistShowSummary,
   presentArtistSnapshotStats,
+  presentShowConfidence,
   type ArtistShowSummaryView,
   type ArtistSnapshotStatsView,
+  type ShowConfidenceView,
 } from "@/lib/presenters";
 import { uuidParam } from "@/lib/validators/uuid";
 
@@ -43,11 +51,92 @@ const ParamsSchema = z.object({
   artistId: uuidParam,
 });
 
+// Statuses that still have a meaningful "if offers seat now" projection (no
+// permanent binding yet). PREVIEW_ELIGIBLE is the subset we can re-run the GAE
+// against in-memory for the live gross projection (mirrors run-preview.ts).
+const PRE_BINDING_STATUSES = new Set([
+  "draft",
+  "open",
+  "paused",
+  "closed",
+  "allocating",
+]);
+const PREVIEW_ELIGIBLE_STATUSES = new Set(["draft", "open", "paused"]);
+
 type LoadedView = {
   artistName: string;
   shows: ArtistShowSummaryView[];
   snapshot: ArtistSnapshotStatsView;
+  confidence: ShowConfidenceView | null;
 };
+
+// The "active / next show" the confidence header leads with: the soonest
+// pre-binding show (upcoming if any, else the soonest overall). Null when the
+// artist has only bound/complete shows.
+function pickLeadShow(rows: readonly ShowSummary[], now: Date): ShowSummary | null {
+  const preBinding = rows.filter((r) => PRE_BINDING_STATUSES.has(r.status));
+  if (preBinding.length === 0) return null;
+  const upcoming = preBinding.filter(
+    (r) => r.doorsAt.getTime() >= now.getTime(),
+  );
+  const pool = upcoming.length > 0 ? upcoming : preBinding;
+  return (
+    [...pool].sort((a, b) => a.doorsAt.getTime() - b.doorsAt.getTime())[0] ??
+    null
+  );
+}
+
+// Compute the lead show's confidence header. Runs the pure GAE in-memory for
+// the projected gross (preview-eligible shows only) — one extra show fetch +
+// pool query + allocation pass, scoped to the single lead show.
+async function loadConfidence(
+  leadRow: ShowSummary,
+  summary: ArtistShowSummaryView,
+): Promise<ShowConfidenceView> {
+  if (!PREVIEW_ELIGIBLE_STATUSES.has(leadRow.status)) {
+    return presentShowConfidence(
+      summary,
+      null,
+      "Your projection locks in when binding runs.",
+    );
+  }
+
+  const [leadShow, poolOffers] = await Promise.all([
+    getShowById(db, leadRow.id),
+    listPoolOffersForShow(db, leadRow.id),
+  ]);
+  if (!leadShow) {
+    return presentShowConfidence(
+      summary,
+      null,
+      "Your projected gross appears once offers come in.",
+    );
+  }
+
+  const plan = buildPreviewAllocationPlan(
+    leadShow,
+    leadShow.venueArchitecture,
+    poolOffers,
+  );
+  const resolvedPriceByOfferId = new Map(
+    plan.resolvedOffers.map((o) => [o.id, o.pricePerTicketCents]),
+  );
+  const tierByRowId = new Map(
+    leadShow.venueArchitecture.rows.map((r) => [r.id, r.tier]),
+  );
+  const projection = computeShowProjection(
+    plan.assignmentRows,
+    resolvedPriceByOfferId,
+    tierByRowId,
+    leadShow.tierFloorsCents as Record<string, number>,
+  );
+
+  return presentShowConfidence(
+    summary,
+    projection,
+    "Your projected gross appears once offers come in.",
+  );
+}
 
 async function loadArtistDashboard(
   artistId: string,
@@ -104,6 +193,15 @@ async function loadArtistDashboard(
     totalCapacity += show.capacity;
   }
 
+  // Lead show confidence header (Change 05.2). Scoped to the single soonest
+  // pre-binding show so the in-memory projection cost stays bounded.
+  const leadRow = pickLeadShow(rows, now);
+  const leadSummary = leadRow
+    ? shows.find((s) => s.id === leadRow.id) ?? null
+    : null;
+  const confidence =
+    leadRow && leadSummary ? await loadConfidence(leadRow, leadSummary) : null;
+
   return {
     artistName: artist.name,
     shows,
@@ -111,6 +209,7 @@ async function loadArtistDashboard(
       totalFilled,
       totalCapacity,
     }),
+    confidence,
   };
 }
 
@@ -165,6 +264,15 @@ export default async function ArtistDashboardPage({ params }: Props) {
             <Button variant="brand">New show</Button>
           </Link>
         </div>
+
+        {data.confidence && (
+          <div className="mb-6">
+            <ShowConfidenceHeader
+              artistId={parsed.data.artistId}
+              view={data.confidence}
+            />
+          </div>
+        )}
 
         <div className="mb-6">
           <SnapshotStats stats={data.snapshot} showCount={showCount} />
