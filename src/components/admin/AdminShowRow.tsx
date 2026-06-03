@@ -12,11 +12,18 @@ import { ChevronRight } from "lucide-react";
 import Link from "next/link";
 
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
-import { type ArtistShowSummaryView } from "@/lib/presenters";
+import {
+  type AdminShowOpsView,
+  type ArtistShowSummaryView,
+} from "@/lib/presenters";
 
 type Props = {
   artistId: string;
   show: ArtistShowSummaryView;
+  // The state + next-move line and (post-binding) reconciliation read. The
+  // guarded mutating controls themselves live one click away on ShowAdmin —
+  // we surface the state here and link through, not duplicate the BIND button.
+  ops: AdminShowOpsView;
 };
 
 // Open + window actually open → "open" tone; everything else (draft,
@@ -61,7 +68,7 @@ function Stat({ label, value, accent = false }: StatProps) {
   );
 }
 
-export function AdminShowRow({ artistId, show }: Props) {
+export function AdminShowRow({ artistId, show, ops }: Props) {
   const stub = splitDateShort(show.dateShort);
   const tone = badgeToneFor(show);
   const pct =
@@ -120,6 +127,13 @@ export function AdminShowRow({ artistId, show }: Props) {
             {show.provisionalFilled} / {show.capacity} · {pct}%
           </span>
         </div>
+        {/* Ops line — the state + next move. */}
+        <span
+          className="font-mono text-[11px]"
+          style={{ color: "var(--fg-subtle)" }}
+        >
+          {ops.opsLine}
+        </span>
       </div>
 
       {/* Stat columns */}
@@ -129,16 +143,41 @@ export function AdminShowRow({ artistId, show }: Props) {
         <Stat label="Top" value={show.topPrice} accent />
       </div>
 
-      {/* Status + countdown */}
+      {/* Status + reconciliation (post-binding) or countdown (pre-binding) */}
       <div className="flex flex-col items-end gap-1.5">
         <Badge tone={tone}>{show.statusLabel}</Badge>
-        {show.closes && (
+        {ops.reconciliation ? (
           <span
-            className="font-mono text-[11px]"
-            style={{ color: "var(--fg-subtle)" }}
+            title={`${ops.reconciliation.chargedDisplay} · ${ops.reconciliation.detail}`}
+            className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-sans text-[11px]"
+            style={
+              ops.reconciliation.reconciled
+                ? { background: "var(--greenwood-50)", color: "var(--greenwood-700)" }
+                : { background: "var(--brick-100)", color: "var(--brick-700)" }
+            }
           >
-            {show.closes}
+            <span
+              className="inline-block h-1.5 w-1.5 rounded-full"
+              style={{
+                background: ops.reconciliation.reconciled
+                  ? "var(--greenwood-600)"
+                  : "var(--brick-500)",
+              }}
+              aria-hidden
+            />
+            {ops.reconciliation.reconciled
+              ? ops.reconciliation.chargedDisplay
+              : ops.reconciliation.label}
           </span>
+        ) : (
+          show.closes && (
+            <span
+              className="font-mono text-[11px]"
+              style={{ color: "var(--fg-subtle)" }}
+            >
+              {show.closes}
+            </span>
+          )
         )}
       </div>
 

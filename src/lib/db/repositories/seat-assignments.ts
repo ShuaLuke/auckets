@@ -89,6 +89,44 @@ export async function getProvisionalFilledByShow(
   return Number(rows[0]?.filled ?? 0) || 0;
 }
 
+// Captured-money totals per show, from the binding seat assignments: the sum
+// of charged_amount_cents and the count of seats that actually captured. The
+// admin reconciliation surface compares these against the placed-seat count
+// and the charged-offer count to prove "seats ↔ charges" line up after a
+// binding run. charged_amount_cents is null until capture, so a seat held but
+// not yet charged contributes 0 — exactly what reconciliation wants to catch.
+export type ChargedTotals = { amountCents: number; chargedSeats: number };
+
+export async function getChargedTotalsByShowIds(
+  db: Db,
+  showIds: string[],
+): Promise<Map<string, ChargedTotals>> {
+  const out = new Map<string, ChargedTotals>();
+  if (showIds.length === 0) return out;
+
+  const rows = await db
+    .select({
+      showId: seatAssignments.showId,
+      // bigint sum comes back as a string from postgres-js; Number() is safe
+      // for any realistic gross (a 5,000-seat house at $1,000 is 5e8 cents,
+      // far under Number.MAX_SAFE_INTEGER).
+      amountCents: sql<string>`COALESCE(SUM(${seatAssignments.chargedAmountCents}), 0)::bigint`,
+      chargedSeats: sql<number>`COALESCE(SUM(CASE WHEN ${seatAssignments.chargedAmountCents} IS NOT NULL THEN array_length(${seatAssignments.seatNumbers}, 1) ELSE 0 END), 0)::int`,
+    })
+    .from(seatAssignments)
+    .where(inArray(seatAssignments.showId, showIds))
+    .groupBy(seatAssignments.showId);
+
+  for (const row of rows) {
+    out.set(row.showId, {
+      amountCents: Number(row.amountCents) || 0,
+      chargedSeats: Number(row.chargedSeats) || 0,
+    });
+  }
+
+  return out;
+}
+
 export async function getProvisionalFilledByShowIds(
   db: Db,
   showIds: string[],
