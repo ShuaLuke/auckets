@@ -1,11 +1,12 @@
-// Fan-side show detail / offer composer. Prototype-fidelity port of
-// design/ui_kits/auckets/screens/Show.jsx — server component for the
-// page shell, client component for the composer form itself.
+// Fan-side show detail — Change 04. The venue map + live "right now, you'd be
+// in {tier}" projection is the centerpiece; the offer is a price dial the fan
+// turns and watches (LivePreviewComposer). Server component for the shell +
+// first-paint data; the composer is the client island.
 //
-// FUTURE CLEANUP: same as the Dashboard page — loading logic
-// duplicates GET /api/shows/[showId]. Extract a shared
-// loadShowDetailForFan(showId, userId) once a third consumer
-// shows up. For now the duplication is contained.
+// The composer owns the map, the standing line, the dial, the express path,
+// and the (unchanged) submission. This page just loads the first-paint inputs:
+// the base venue fill (other fans' seats), the fan's seeded projection (from
+// their existing offer, if any), and the show detail.
 
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { notFound, redirect } from "next/navigation";
@@ -13,22 +14,17 @@ import { z } from "zod";
 
 import { CardFailureRecovery } from "@/components/show/CardFailureRecovery";
 import { DisplacementAlerts } from "@/components/show/DisplacementAlerts";
-import { OfferComposer } from "@/components/show/OfferComposer";
-import { PreviewBanner } from "@/components/show/PreviewBanner";
-import { RankBoard } from "@/components/show/RankBoard";
+import { LivePreviewComposer } from "@/components/show/LivePreviewComposer";
 import { ShowHeader } from "@/components/show/ShowHeader";
-import { VenuePreview } from "@/components/show/VenuePreview";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import {
   getMarginalPlacedPriceForShow,
   getOfferByShowAndUser,
-  getOfferStatsForShow,
   getProvisionalFilledByShow,
   getSeatAssignmentByOfferId,
   getShowById,
   getTicketByAssignmentId,
-  getUserRankInShowPool,
   listSeatAssignmentsForShow,
   listUnacknowledgedDisplacementEventsForUser,
 } from "@/lib/db/repositories";
@@ -38,33 +34,29 @@ import {
   presentCardFailureRecovery,
   presentDisplacementEvents,
   presentFanVenuePreview,
+  presentLiveProjection,
   presentMinToGetIn,
-  presentPreviewBanner,
-  presentRankBoard,
   presentShowDetail,
   type CardFailureRecoveryView,
   type DisplacementAlertView,
+  type FanSection,
+  type LiveProjectionView,
   type MinToGetInView,
-  type PreviewBannerView,
-  type RankBoardView,
   type ShowDetailView,
-  type VenuePreviewView,
 } from "@/lib/presenters";
 import { uuidParam } from "@/lib/validators/uuid";
 
 export const dynamic = "force-dynamic";
 
-const ParamsSchema = z.object({
-  showId: uuidParam,
-});
+const ParamsSchema = z.object({ showId: uuidParam });
 
 type LoadedShowDetail = {
   show: ShowDetailView;
-  rankBoard: RankBoardView;
   minToGetIn: MinToGetInView;
-  previewBanner: PreviewBannerView;
-  venuePreview: VenuePreviewView;
+  baseSections: readonly FanSection[];
+  capacity: number;
   venueName: string;
+  initialProjection: LiveProjectionView | null;
   displacementAlerts: DisplacementAlertView[];
   cardFailureRecovery: CardFailureRecoveryView | null;
 };
@@ -73,25 +65,17 @@ async function loadShowDetail(
   showId: string,
   userId: string,
 ): Promise<LoadedShowDetail | null> {
-  // Mirrors GET /api/shows/[showId]'s loading plus the right-column
-  // reads (RankBoard + PreviewBanner + VenuePreview). All independent
-  // queries ride along in the same Promise.all to keep the round-trip
-  // count flat.
   const [
     show,
     userOffer,
-    stats,
     provisionalFilled,
-    userRank,
     allAssignments,
     unackedEvents,
     marginalPlacedCents,
   ] = await Promise.all([
     getShowById(db, showId),
     getOfferByShowAndUser(db, showId, userId),
-    getOfferStatsForShow(db, showId),
     getProvisionalFilledByShow(db, showId),
-    getUserRankInShowPool(db, showId, userId),
     listSeatAssignmentsForShow(db, showId),
     listUnacknowledgedDisplacementEventsForUser(db, userId),
     getMarginalPlacedPriceForShow(db, showId),
@@ -104,14 +88,9 @@ async function loadShowDetail(
   const userTicket = userAssignment
     ? await getTicketByAssignmentId(db, userAssignment.id)
     : null;
-
-  // Resolve the architecture row for the user's assignment so the
-  // banner can render "Premium · Row A" without re-walking the rows
-  // in each component.
   const userAssignmentRow = userAssignment
-    ? show.venueArchitecture.rows.find(
-        (r) => r.id === userAssignment.venueRowId,
-      ) ?? null
+    ? show.venueArchitecture.rows.find((r) => r.id === userAssignment.venueRowId) ??
+      null
     : null;
 
   const now = new Date();
@@ -128,8 +107,6 @@ async function loadShowDetail(
     show.venueArchitecture,
     show.activeRowIds as string[],
   );
-  const rankBoard = presentRankBoard(userRank, stats, provisionalFilled, capacity);
-
   const minToGetIn = presentMinToGetIn(
     marginalPlacedCents,
     view.tierFloorsCents,
@@ -137,28 +114,46 @@ async function loadShowDetail(
     capacity,
   );
 
-  const previewBanner = presentPreviewBanner(
-    userOffer,
-    userAssignment,
-    userAssignmentRow,
-  );
-
-  const venuePreview = presentFanVenuePreview(
+  // Base map = every OTHER fan's seats (the caller's own seats are shown live
+  // as the projection highlight, so we drop them from the base fill to avoid
+  // double-marking them as "taken").
+  const baseAssignments = userOffer
+    ? allAssignments.filter((a) => a.offerId !== userOffer.id)
+    : allAssignments;
+  const baseSections = presentFanVenuePreview(
     show.venueArchitecture,
     show.activeRowIds as string[],
-    allAssignments,
-    userAssignment,
-  );
+    baseAssignments,
+    null,
+  ).sections;
 
-  // The repo returns the fan's unacknowledged alerts across all shows; scope
-  // to this show for the on-page toasts. (A global inbox can reuse the
-  // unscoped list later.)
+  // First-paint projection: seed from the fan's existing placement so a
+  // returning fan sees their seats immediately. No GAE run on load — the
+  // client re-projects the live state ~250ms after mount. Closed window →
+  // calm "unavailable" so the composer degrades gracefully.
+  let initialProjection: LiveProjectionView | null = null;
+  if (show.status !== "open") {
+    initialProjection = { available: false, reason: "closed" };
+  } else if (userOffer && userAssignment && userAssignmentRow) {
+    initialProjection = presentLiveProjection({
+      pricePerTicketCents: userOffer.pricePerTicketCents,
+      groupSize: userOffer.groupSize,
+      tierPreference: userOffer.tierPreference,
+      preferredTier: userOffer.preferredTier,
+      projection: {
+        placed: true,
+        tier: userAssignment.tier,
+        venueRowId: userAssignment.venueRowId,
+        seatNumbers: userAssignment.seatNumbers,
+      },
+      rowName: userAssignmentRow.rowName,
+      tierFloorsCents: view.tierFloorsCents,
+    });
+  }
+
   const displacementAlerts = presentDisplacementEvents(
     unackedEvents.filter((e) => e.showId === showId),
   );
-
-  // Card-failure recovery CTA (ADR-0003 §5): non-null only when this fan's
-  // own offer failed and is still inside the 4h window.
   const cardFailureRecovery = presentCardFailureRecovery(
     userOffer,
     userAssignment,
@@ -168,28 +163,21 @@ async function loadShowDetail(
 
   return {
     show: view,
-    rankBoard,
     minToGetIn,
-    previewBanner,
-    venuePreview,
+    baseSections,
+    capacity,
     venueName: show.venue.name,
+    initialProjection,
     displacementAlerts,
     cardFailureRecovery,
   };
 }
 
-type Props = {
-  params: { showId: string };
-};
+type Props = { params: { showId: string } };
 
 export default async function ShowPage({ params }: Props) {
   const { userId } = await auth();
   if (!userId) redirect("/sign-in");
-
-  // Surface unmistakable visitor — guard against the also-rare case
-  // where Clerk session exists but the local user wasn't mirrored
-  // (the offer composer's POST handles ensureUserMirror; this is
-  // just for symmetry with the Dashboard).
   await currentUser();
 
   const parsed = ParamsSchema.safeParse(params);
@@ -203,36 +191,27 @@ export default async function ShowPage({ params }: Props) {
       className="min-h-[calc(100vh-57px)]"
       style={{ background: "var(--paper)" }}
     >
-      <div
-        className="mx-auto px-4 pb-16 pt-8 md:px-8"
-        style={{ maxWidth: 1100 }}
-      >
+      <div className="mx-auto px-4 pb-16 pt-8 md:px-8" style={{ maxWidth: 900 }}>
         <ShowHeader show={data.show} minToGetIn={data.minToGetIn} />
 
         {data.cardFailureRecovery && (
           <CardFailureRecovery view={data.cardFailureRecovery} />
         )}
 
-        {/* Single column on phones/tablets; the composer | right-rail
-            two-column kicks in at lg (380px composer needs the room). */}
-        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[380px_1fr]">
-          <OfferComposer
-            show={data.show}
-            existingOffer={data.show.yourOffer ?? null}
-          />
-
-          {/* Right column. Card order matches the prototype: displacement
-              alerts first (when any), then live preview banner, venue map,
-              RankBoard. Alerts are server-rendered from displacement_events
-              and update on refresh (ADR-0018 §4); the live-toast-on-push
-              variant remains a future enhancement. */}
-          <div className="flex flex-col gap-5">
+        {data.displacementAlerts.length > 0 && (
+          <div className="mb-5">
             <DisplacementAlerts alerts={data.displacementAlerts} />
-            <PreviewBanner view={data.previewBanner} />
-            <VenuePreview view={data.venuePreview} venueName={data.venueName} />
-            <RankBoard view={data.rankBoard} />
           </div>
-        </div>
+        )}
+
+        <LivePreviewComposer
+          show={data.show}
+          existingOffer={data.show.yourOffer ?? null}
+          sections={data.baseSections}
+          venueName={data.venueName}
+          capacity={data.capacity}
+          initialProjection={data.initialProjection}
+        />
       </div>
     </main>
   );
