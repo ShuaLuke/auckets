@@ -7,12 +7,14 @@
 // preview):
 //
 //   Phase 1 — decide & persist, with ZERO Stripe calls, in one DB
-//   transaction. The GAE result is materialized into seat_assignments
-//   (is_binding=true) and offer.status transitions (pool → placed /
-//   unplaced), the show is flipped to 'allocating', the binding
-//   allocation_logs are appended, and the per-fan displacement_events for
-//   this compute (diffed against the last preview projection, ADR-0018 §4)
-//   are written. Once this commits, the placement decision is durable.
+//   transaction. The transaction OPENS with the closed → 'allocating'
+//   compare-and-set (step 2 of the gate below) — if that loses, the whole
+//   transaction aborts with zero writes. Then the GAE result is
+//   materialized into seat_assignments (is_binding=true) and offer.status
+//   transitions (pool → placed / unplaced), the binding allocation_logs
+//   are appended, and the per-fan displacement_events for this compute
+//   (diffed against the last preview projection, ADR-0018 §4) are
+//   written. Once this commits, the placement decision is durable.
 //
 //   Phase 2 — move money, OUTSIDE the transaction, per offer. Stripe is
 //   network I/O that can take seconds and partially fail; you can't hold
@@ -35,11 +37,13 @@ import { and, eq, inArray } from "drizzle-orm";
 
 import type { Db } from "@/lib/db";
 import {
+  claimShowForBinding,
   getLatestRaiseTargetsByOfferForShow,
   getShowById,
   getVenueArchitectureById,
   listPoolOffersForShow,
   listSeatAssignmentsForShow,
+  markShowAllocating,
 } from "@/lib/db/repositories";
 import {
   cancelOfferPaymentIntent,
@@ -94,28 +98,60 @@ export type RunBindingOutcome =
   | { ok: false; error: RunBindingError };
 
 // Binding is one-shot and irreversible (it moves real money), so — unlike
-// preview, which is freely re-runnable — it's only eligible from the
-// pre-binding statuses where the offer pool is still the source of truth.
-// 'allocating' is excluded on purpose: it means a binding run is already
-// in progress (Phase 1 committed), so a re-trigger must bounce rather than
-// risk double-capturing. 'allocated' / 'complete' are done; 'paused' means
-// a halt was requested (ADR-0013); 'draft' has no offers.
-const BINDING_ELIGIBLE_STATUSES = new Set(["open", "closed"]);
+// preview, which is freely re-runnable — it's gated by a two-step
+// compare-and-set rather than a read-then-act status check (which two
+// concurrent triggers, e.g. the admin Run-binding button and the 5-minute
+// sweep, could both pass):
+//
+//   Step 1 (here, before ANY other read): claimShowForBinding CAS-es the
+//   show 'open' → 'closed'. That atomically ends the offer window — POST
+//   /api/offers is 'open'-only for submissions and revisions alike — so the
+//   pool we read below can't gain or change members before Phase 1 commits.
+//   An already-'closed' show (ops end-early, or a previous attempt that
+//   crashed before Phase 1) passes too; every other status bounces:
+//   'paused' (halt requested, ADR-0013 — ops decides when it binds),
+//   'allocating' (a run's Phase 1 already committed — re-triggering would
+//   risk double-capture), 'allocated' / 'complete' (done), 'draft' (no
+//   offers).
+//
+//   Step 2 (first statement of the Phase-1 transaction): markShowAllocating
+//   CAS-es 'closed' → 'allocating'. Exactly one concurrent caller can win
+//   that row; a loser throws BindingClaimLost so its transaction aborts
+//   with zero writes and the run reports show_not_eligible.
+//
+// Crash recovery falls out of the same shape: dying between step 1 and the
+// Phase-1 commit leaves the show 'closed', which is still due for the
+// scheduled sweep — the next tick simply retries. Dying after Phase 1
+// leaves 'allocating', which no trigger will touch (Phase-2 resumability
+// is a separate slice).
+class BindingClaimLost extends Error {
+  constructor() {
+    super("binding claim lost: show was not 'closed' at Phase-1 CAS");
+    this.name = "BindingClaimLost";
+  }
+}
 
 export async function runBindingAllocation(
   db: Db,
   stripe: Stripe,
   showId: string,
 ): Promise<RunBindingOutcome> {
-  const show = await getShowById(db, showId);
-  if (!show) {
-    return { ok: false, error: { kind: "show_not_found", showId } };
-  }
-  if (!BINDING_ELIGIBLE_STATUSES.has(show.status)) {
+  // Step 1: claim the show (close the offer window) BEFORE reading anything.
+  const claim = await claimShowForBinding(db, showId);
+  if (!claim.ok) {
+    if (claim.reason === "not_found") {
+      return { ok: false, error: { kind: "show_not_found", showId } };
+    }
     return {
       ok: false,
-      error: { kind: "show_not_eligible", status: show.status },
+      error: { kind: "show_not_eligible", status: claim.status },
     };
+  }
+
+  const show = await getShowById(db, showId);
+  if (!show) {
+    // Deleted between the claim and this read; defensive.
+    return { ok: false, error: { kind: "show_not_found", showId } };
   }
 
   const architecture = await getVenueArchitectureById(
@@ -181,107 +217,133 @@ export async function runBindingAllocation(
   });
 
   // ---- Phase 1: decide & persist atomically (no Stripe calls) ----
-  await db.transaction(async (tx) => {
-    // Lock in the run so a concurrent or duplicate trigger sees status
-    // 'allocating' and bails out via the eligibility gate.
-    await tx
-      .update(shows)
-      .set({ status: "allocating" })
-      .where(eq(shows.id, showId));
+  try {
+    await db.transaction(async (tx) => {
+      // Step 2 of the gate, FIRST statement of the transaction: CAS
+      // 'closed' → 'allocating'. This is the real lock — if a concurrent
+      // run won the row (or ops moved the show) the conditional UPDATE
+      // matches nothing and we abort the whole transaction with zero
+      // writes, before any placement or offer-status mutation.
+      const won = await markShowAllocating(tx, showId);
+      if (!won) {
+        throw new BindingClaimLost();
+      }
 
-    // Clear prior PREVIEW rows for this show. seat_assignments is
-    // unique(offer_id), so a leftover is_binding=false row would collide
-    // with this run's is_binding=true insert. Binding rows can't already
-    // exist (we gated on a not-yet-allocating status).
-    await tx
-      .delete(seatAssignments)
-      .where(
-        and(
-          eq(seatAssignments.showId, showId),
-          eq(seatAssignments.isBinding, false),
-        ),
-      );
-    if (plan.assignmentRows.length > 0) {
-      await tx.insert(seatAssignments).values(plan.assignmentRows);
-    }
-    // allocation_logs is append-only history — preview logs stay; binding
-    // logs (mode='binding') are added alongside.
-    if (plan.logRows.length > 0) {
-      await tx.insert(allocationLogs).values(plan.logRows);
-    }
-    if (placedOfferIds.length > 0) {
+      // Clear prior PREVIEW rows for this show. seat_assignments is
+      // unique(offer_id), so a leftover is_binding=false row would collide
+      // with this run's is_binding=true insert. Binding rows can't already
+      // exist (the CAS above proves no prior run reached Phase 1).
       await tx
-        .update(offers)
-        .set({ status: "placed" })
-        .where(inArray(offers.id, placedOfferIds));
-    }
-    if (unplacedOffers.length > 0) {
-      await tx
-        .update(offers)
-        .set({ status: "unplaced" })
+        .delete(seatAssignments)
         .where(
-          inArray(
-            offers.id,
-            unplacedOffers.map((o) => o.id),
+          and(
+            eq(seatAssignments.showId, showId),
+            eq(seatAssignments.isBinding, false),
           ),
         );
-    }
+      if (plan.assignmentRows.length > 0) {
+        await tx.insert(seatAssignments).values(plan.assignmentRows);
+      }
+      // allocation_logs is append-only history — preview logs stay; binding
+      // logs (mode='binding') are added alongside.
+      if (plan.logRows.length > 0) {
+        await tx.insert(allocationLogs).values(plan.logRows);
+      }
+      if (placedOfferIds.length > 0) {
+        await tx
+          .update(offers)
+          .set({ status: "placed" })
+          .where(inArray(offers.id, placedOfferIds));
+      }
+      if (unplacedOffers.length > 0) {
+        await tx
+          .update(offers)
+          .set({ status: "unplaced" })
+          .where(
+            inArray(
+              offers.id,
+              unplacedOffers.map((o) => o.id),
+            ),
+          );
+      }
 
-    // Persist auto-bid raises for placed offers (ADR-0018): the offer-of-
-    // record's price + rankKey become the resolved amount, and an
-    // offer_revisions row captures the change so /my-bids and the activity
-    // feed show the raise — and so the charged amount matches the offer. The
-    // append-only revisions snapshot mirrors upsertOfferForUser's shape.
-    for (const raise of placedRaises) {
-      const resolved = resolvedOfferById.get(raise.offerId);
-      if (!resolved) continue; // derived from the plan; defensive
-      // rank_key is a GENERATED STORED column (price*1000 + group_size), so
-      // Postgres recomputes it from the new price — we never set it directly.
-      await tx
-        .update(offers)
-        .set({
-          pricePerTicketCents: resolved.pricePerTicketCents,
-          revisedAt: new Date(),
-        })
-        .where(eq(offers.id, raise.offerId));
-      await tx.insert(offerRevisions).values({
-        offerId: raise.offerId,
-        snapshot: {
-          groupSize: resolved.groupSize,
-          pricePerTicketCents: resolved.pricePerTicketCents,
-          tierPreference: resolved.tierPreference,
-          preferredTier: resolved.preferredTier,
-          channel: resolved.channel,
-          autoBidEnabled: resolved.autoBidEnabled,
-          autoBidCapCents: resolved.autoBidCapCents,
-          autoBidIncrementCents: resolved.autoBidIncrementCents,
-          privateThresholdCents: resolved.privateThresholdCents,
-          // Post-write state: this offer is being placed by this run.
-          status: "placed",
-          stripePaymentMethodId: resolved.stripePaymentMethodId,
-          stripeSetupIntentId: resolved.stripeSetupIntentId,
-          stripePaymentIntentId: resolved.stripePaymentIntentId,
-          // Mark the provenance so the activity feed can label it an
-          // auto-bid raise rather than a fan-initiated revision.
-          autoBidRaise: { fromCents: raise.fromCents, toCents: raise.toCents, steps: raise.steps },
+      // Persist auto-bid raises for placed offers (ADR-0018): the offer-of-
+      // record's price + rankKey become the resolved amount, and an
+      // offer_revisions row captures the change so /my-bids and the activity
+      // feed show the raise — and so the charged amount matches the offer. The
+      // append-only revisions snapshot mirrors upsertOfferForUser's shape.
+      for (const raise of placedRaises) {
+        const resolved = resolvedOfferById.get(raise.offerId);
+        if (!resolved) continue; // derived from the plan; defensive
+        // rank_key is a GENERATED STORED column (price*1000 + group_size), so
+        // Postgres recomputes it from the new price — we never set it directly.
+        await tx
+          .update(offers)
+          .set({
+            pricePerTicketCents: resolved.pricePerTicketCents,
+            revisedAt: new Date(),
+          })
+          .where(eq(offers.id, raise.offerId));
+        await tx.insert(offerRevisions).values({
+          offerId: raise.offerId,
+          snapshot: {
+            groupSize: resolved.groupSize,
+            pricePerTicketCents: resolved.pricePerTicketCents,
+            tierPreference: resolved.tierPreference,
+            preferredTier: resolved.preferredTier,
+            channel: resolved.channel,
+            autoBidEnabled: resolved.autoBidEnabled,
+            autoBidCapCents: resolved.autoBidCapCents,
+            autoBidIncrementCents: resolved.autoBidIncrementCents,
+            privateThresholdCents: resolved.privateThresholdCents,
+            // Post-write state: this offer is being placed by this run.
+            status: "placed",
+            stripePaymentMethodId: resolved.stripePaymentMethodId,
+            stripeSetupIntentId: resolved.stripeSetupIntentId,
+            stripePaymentIntentId: resolved.stripePaymentIntentId,
+            // Mark the provenance so the activity feed can label it an
+            // auto-bid raise rather than a fan-initiated revision.
+            autoBidRaise: { fromCents: raise.fromCents, toCents: raise.toCents, steps: raise.steps },
+          },
+        });
+      }
+
+      // Append the fan-facing displacement alerts for this binding compute,
+      // in the same transaction as the placement that produced them.
+      if (displacementEventRows.length > 0) {
+        await tx.insert(displacementEvents).values(
+          displacementEventRows.map((e) => ({
+            showId,
+            offerId: e.offerId,
+            userId: e.userId,
+            kind: e.kind,
+            detail: e.detail,
+          })),
+        );
+      }
+    });
+  } catch (err) {
+    if (err instanceof BindingClaimLost) {
+      // A concurrent run won the Phase-1 CAS, or ops moved the show between
+      // our step-1 claim and the transaction. The aborted transaction wrote
+      // nothing; report the standard ineligibility outcome with the show's
+      // current status (most likely 'allocating' — the winner is mid-run —
+      // or 'allocated' if it already finished).
+      const rows = await db
+        .select({ status: shows.status })
+        .from(shows)
+        .where(eq(shows.id, showId))
+        .limit(1);
+      return {
+        ok: false,
+        error: {
+          kind: "show_not_eligible",
+          status: rows[0]?.status ?? "unknown",
         },
-      });
+      };
     }
-
-    // Append the fan-facing displacement alerts for this binding compute,
-    // in the same transaction as the placement that produced them.
-    if (displacementEventRows.length > 0) {
-      await tx.insert(displacementEvents).values(
-        displacementEventRows.map((e) => ({
-          showId,
-          offerId: e.offerId,
-          userId: e.userId,
-          kind: e.kind,
-          detail: e.detail,
-        })),
-      );
-    }
-  });
+    throw err;
+  }
 
   // ---- Phase 2: move money (outside the transaction, per offer) ----
   let captured = 0;
@@ -378,6 +440,9 @@ export async function runBindingAllocation(
   }
 
   // ---- Phase 3: run complete ----
+  // Unconditional on purpose: only the Phase-1 CAS winner reaches this line,
+  // and no other transition touches an 'allocating' show (pause needs 'open',
+  // close needs 'open'/'paused', a rival binding run needs 'closed').
   await db
     .update(shows)
     .set({ status: "allocated" })

@@ -111,6 +111,7 @@ export {
 
 export {
   announceShow,
+  claimShowForBinding,
   closeShow,
   createShow,
   getShowById,
@@ -120,9 +121,11 @@ export {
   listShowIdsDueForBinding,
   listShowIdsDueForTicketIssuance,
   listShowsForArtist,
+  markShowAllocating,
   pauseShow,
   resumeShow,
   type AnnounceShowResult,
+  type BindingClaimResult,
   type NewShowInput,
   type ShowSummary,
   type ShowTransitionResult,
