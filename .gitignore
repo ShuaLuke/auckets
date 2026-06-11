@@ -18,6 +18,10 @@ test-results/
 playwright/.cache/
 
 # Env files — never commit. .env.example is the only one tracked.
+# upload_env is the local scratch file of real keys used to populate Vercel —
+# it doesn't match the .env* patterns below, so it must be listed explicitly
+# or a `git add -A` would commit production secrets.
+upload_env
 .env
 .env.local
 .env.development
