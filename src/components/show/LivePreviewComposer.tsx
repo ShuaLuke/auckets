@@ -28,6 +28,7 @@ import { loadStripe, type Stripe } from "@stripe/stripe-js";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { dialTickFractions } from "@/components/show/dial-ticks";
 import { LiveRoomMap } from "@/components/show/LiveRoomMap";
 import { Button } from "@/components/ui/Button";
 import { Eyebrow } from "@/components/ui/Eyebrow";
@@ -36,6 +37,7 @@ import { RadioGroup, type RadioOption } from "@/components/ui/RadioGroup";
 import { Stepper } from "@/components/ui/Stepper";
 import { TextInput } from "@/components/ui/TextInput";
 import { env } from "@/lib/env";
+import { useAnimatedNumber } from "@/lib/hooks/use-animated-number";
 import { formatCents, parseDollars } from "@/lib/money";
 import {
   type FanSection,
@@ -74,6 +76,12 @@ const TIER_OPTIONS: ReadonlyArray<RadioOption<TierValue>> = [
 ];
 
 const PROJECTION_DEBOUNCE_MS = 250;
+
+// Must match the thumb size in design-system.css (.auk-dial::-webkit-slider-thumb
+// / ::-moz-range-thumb). Used to align tier-floor ticks with the thumb's
+// center: a range thumb travels (track width − thumb width), not the full
+// track, so a tick at fraction f sits at half-thumb + f × (100% − thumb).
+const DIAL_THUMB_PX = 22;
 
 const stripePromise: Promise<Stripe | null> | null =
   env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
@@ -173,6 +181,12 @@ function LivePreviewComposerForm({
 
   const stripeReady = !stripeEnabled || (stripe !== null && elements !== null);
   const canSubmit = priceIsValid && autoMaxIsValid && stripeReady && !submitting;
+
+  // Rolling dollar displays (UI-4): tween in integer cents so the money lines
+  // count up/down with the dial instead of snapping. The hook snaps instantly
+  // under prefers-reduced-motion.
+  const animatedPriceCents = useAnimatedNumber(priceCents ?? 0);
+  const animatedHoldCents = useAnimatedNumber(holdCents);
 
   const windowClosed =
     projection !== null && projection.available === false;
@@ -303,6 +317,24 @@ function LivePreviewComposerForm({
 
   const submitLabel = existingOffer ? "Update my offer" : "Make this my offer";
 
+  // The dial's clamped dollar value, its fill (feeds the track gradient via a
+  // CSS custom property), and the tier-floor tick positions.
+  const dialValue = Math.min(
+    bounds.maxDollars,
+    Math.max(bounds.minDollars, Math.round((priceCents ?? 0) / 100)),
+  );
+  const dialFillPct =
+    bounds.maxDollars > bounds.minDollars
+      ? ((dialValue - bounds.minDollars) /
+          (bounds.maxDollars - bounds.minDollars)) *
+        100
+      : 0;
+  const dialTicks = dialTickFractions(
+    tierFloors,
+    bounds.minDollars,
+    bounds.maxDollars,
+  );
+
   return (
     <div className="flex flex-col gap-6">
       {/* Hero: the live map + the standing line. */}
@@ -339,20 +371,37 @@ function LivePreviewComposerForm({
         <div>
           <Eyebrow className="mb-2">What&apos;s this night worth to you?</Eyebrow>
           <div className="flex items-center gap-4">
-            <input
-              type="range"
-              min={bounds.minDollars}
-              max={bounds.maxDollars}
-              step={1}
-              value={Math.min(
-                bounds.maxDollars,
-                Math.max(bounds.minDollars, Math.round((priceCents ?? 0) / 100)),
-              )}
-              onChange={(e) => setPrice(e.target.value)}
-              aria-label="Price per ticket"
-              className="h-2 flex-1 cursor-pointer appearance-none rounded-full"
-              style={{ accentColor: "var(--brand)", background: "var(--paper-2)" }}
-            />
+            <div className="relative flex-1">
+              <input
+                type="range"
+                min={bounds.minDollars}
+                max={bounds.maxDollars}
+                step={1}
+                value={dialValue}
+                onChange={(e) => setPrice(e.target.value)}
+                aria-label="Price per ticket"
+                className="auk-dial w-full cursor-pointer"
+                // Feeds the filled-track gradient in design-system.css.
+                // Cast: React.CSSProperties doesn't model custom properties.
+                style={{ "--auk-dial-fill": `${dialFillPct}%` } as React.CSSProperties}
+              />
+              {/* Tier-floor ticks, aligned to the thumb's travel (the thumb
+                  center spans width − thumb, not the full track). */}
+              <div className="pointer-events-none absolute inset-0" aria-hidden>
+                {dialTicks.map((t) => (
+                  <span
+                    key={t.tier}
+                    className="auk-dial-tick"
+                    style={{
+                      left: `calc(${DIAL_THUMB_PX / 2}px + (100% - ${DIAL_THUMB_PX}px) * ${t.fraction})`,
+                    }}
+                  />
+                ))}
+                {/* TODO(liveness slice): when the projection carries a live
+                    "min offer to get in right now" value, render it here as a
+                    distinct marker. LiveProjectionView doesn't expose one yet. */}
+              </div>
+            </div>
             <div style={{ width: 120 }}>
               <TextInput
                 value={price}
@@ -369,7 +418,12 @@ function LivePreviewComposerForm({
             style={{ color: "var(--fg-subtle)", lineHeight: 1.5 }}
           >
             You pay exactly what you offer if you&apos;re seated —{" "}
-            <span className="font-mono">{priceIsValid ? formatCents(priceCents!) : "—"}</span>{" "}
+            <span
+              className="font-mono"
+              style={{ fontVariantNumeric: "tabular-nums" }}
+            >
+              {priceIsValid ? formatCents(animatedPriceCents) : "—"}
+            </span>{" "}
             a ticket. Never a fee.
           </p>
         </div>
@@ -494,7 +548,13 @@ function LivePreviewComposerForm({
         {priceIsValid && (
           <p className="text-center font-sans text-[11px]" style={{ color: "var(--fg-subtle)", lineHeight: 1.5 }}>
             You&apos;ll see a pending hold of{" "}
-            <span className="font-mono">{formatCents(holdCents)}</span>; it&apos;s
+            <span
+              className="font-mono"
+              style={{ fontVariantNumeric: "tabular-nums" }}
+            >
+              {formatCents(animatedHoldCents)}
+            </span>
+            ; it&apos;s
             only captured if you&apos;re seated, and only ever what you offered.
             You can raise your offer until 24h before doors — never lower it once
             placed.
@@ -527,8 +587,12 @@ function StandingReadout({
     );
   }
 
+  // The pulse (.auk-computing) makes the wait read as the engine working.
   const updatingTag = projecting ? (
-    <span className="ml-2 font-mono text-[11px]" style={{ color: "var(--fg-faint)" }}>
+    <span
+      className="auk-computing ml-2 font-mono text-[11px]"
+      style={{ color: "var(--fg-faint)" }}
+    >
       updating…
     </span>
   ) : null;
@@ -539,7 +603,10 @@ function StandingReadout({
     return (
       <div>
         <Eyebrow className="mb-2">Right now{updatingTag}</Eyebrow>
-        <p className="font-display text-2xl" style={{ lineHeight: 1.15 }}>
+        <p
+          className="auk-textswap font-display text-2xl"
+          style={{ lineHeight: 1.15 }}
+        >
           This one&apos;s filling up — raise your offer to get in.
         </p>
       </div>
@@ -568,7 +635,14 @@ function StandingReadout({
   return (
     <div>
       <Eyebrow className="mb-2">Right now, you&apos;d be in{updatingTag}</Eyebrow>
-      <p className="font-display text-2xl" style={{ lineHeight: 1.15 }}>
+      {/* Keyed remount: when the projected tier or row changes, the headline
+          crossfades in (.auk-textswap) instead of swapping flatly. Size-only
+          rewordings keep the node — no flicker while stepping the group. */}
+      <p
+        key={`${projection.tierLabel ?? ""}|${projection.rowName ?? ""}`}
+        className="auk-textswap font-display text-2xl"
+        style={{ lineHeight: 1.15 }}
+      >
         {projection.tierLabel}
         {projection.rowName ? ` — around Row ${projection.rowName}` : ""}
         {groupTail}.
@@ -577,13 +651,20 @@ function StandingReadout({
         {seatLine}
       </p>
       {projection.standing?.nextTier && (
-        <p className="mt-3 font-sans text-sm" style={{ color: "var(--brand)" }}>
+        <p
+          key={projection.standing.nextTier.label}
+          className="auk-textswap mt-3 font-sans text-sm"
+          style={{ color: "var(--brand)" }}
+        >
           You&apos;re in. Raise to reach {projection.standing.nextTier.label}{" "}
           (+{projection.standing.nextTier.deltaDisplay}).
         </p>
       )}
       {projection.standing?.inTopTier && (
-        <p className="mt-3 font-sans text-sm" style={{ color: "var(--brand)" }}>
+        <p
+          className="auk-textswap mt-3 font-sans text-sm"
+          style={{ color: "var(--brand)" }}
+        >
           You&apos;re in the front section — nothing more to do.
         </p>
       )}

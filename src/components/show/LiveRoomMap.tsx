@@ -11,7 +11,7 @@
 
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import type { FanSection } from "@/lib/presenters";
 
@@ -60,8 +60,35 @@ export function LiveRoomMap({
     [yourSeats],
   );
 
+  // Track the PREVIOUS projection's seats so a seat that just became yours
+  // can pop once (UI-4). The snapshot is memoized on the projection's
+  // identity, so the "newly yours" computation is stable across unrelated
+  // re-renders (price keystrokes, the updating toggle) — the pop class stays
+  // put while its one-shot animation plays, and resets only when the next
+  // projection actually lands. No pop on first paint: the ref starts at the
+  // initial seats.
+  const prevYourSeatsRef = useRef<Props["yourSeats"]>(yourSeats);
+  const prev = useMemo(
+    () => {
+      const p = prevYourSeatsRef.current;
+      return { rowId: p?.rowId ?? null, numbers: new Set(p?.numbers ?? []) };
+    },
+    // Intentionally keyed on the CURRENT projection: the snapshot of the
+    // previous one must refresh exactly when a new projection arrives (the
+    // effect below then advances the ref after paint).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [yourSeats],
+  );
+  useEffect(() => {
+    prevYourSeatsRef.current = yourSeats;
+  }, [yourSeats]);
+
   return (
     <div
+      // The pulse (.auk-computing) breathes around the inline 0.85 dim while
+      // a projection is in flight; reduced-motion drops the pulse but keeps
+      // the static dim. The transition handles entering/leaving the dim.
+      className={updating ? "auk-computing" : undefined}
       style={{
         opacity: updating ? 0.85 : 1,
         transition: "opacity var(--dur-base) var(--ease-out)",
@@ -83,6 +110,8 @@ export function LiveRoomMap({
             >
               {row.seats.map((seat, i) => {
                 const yours = isYourRow && yourNumbers.has(seat.number);
+                const wasYours =
+                  row.rowId === prev.rowId && prev.numbers.has(seat.number);
                 const color = yours
                   ? COLOR.yours
                   : seat.status === "placed"
@@ -91,6 +120,12 @@ export function LiveRoomMap({
                 return (
                   <span
                     key={`${row.rowId}-${seat.number}-${i}`}
+                    // .auk-seat glides fill/ring changes over --dur-base (so a
+                    // vacated seat fades back instead of teleporting); a seat
+                    // that JUST became yours pops once via --ease-snap.
+                    className={
+                      yours && !wasYours ? "auk-seat auk-seat-pop" : "auk-seat"
+                    }
                     style={{
                       width: cellW,
                       height: cellH,
