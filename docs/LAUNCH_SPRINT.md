@@ -26,16 +26,16 @@ session from here. Target launch: ~2026-06-21.
 | #123 | **Critical:** binding Phase 2 is resumable — settlement derived from DB state, per-offer idempotent Inngest steps, deterministic Stripe idempotency keys, stuck-`allocating` recovery sweep. Ops runbook in the PR body |
 | #124 | The dial is an instrument: seats glide/pop, prices count up, tier crossfade, custom slider with tier-floor ticks, computing pulse |
 
-Open PR not from this sprint: **#125** (metadataBase from NEXT_PUBLIC_APP_URL) — opened separately by Josh; review/merge independently.
+**auckets.com is the live production domain as of 2026-06-11** (DNS on Vercel; `NEXT_PUBLIC_APP_URL=https://auckets.com`). #125 (metadataBase from env) merged same day, so social cards resolve on the real domain.
 
 ---
 
 ## 🔴 Tier 0 — ops, minutes of work, gates everything (Josh)
 
-- [ ] **Set 3 Vercel production env vars**: `STRIPE_WEBHOOK_SECRET`, `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`, then redeploy. Production deploys fail loudly-by-design (#116) until these exist — **all eleven merged PRs are queued behind this**. Full checklist in PR #116's body.
-- [ ] Rename Clerk app "My Application" → **AUCKETS** (Clerk dashboard; the sign-in headline reads from it).
-- [ ] Resend: verify `auckets.com` + set `RESEND_API_KEY` in prod (all fan lifecycle emails are wired but dormant).
-- [ ] Set `NEXT_PUBLIC_SENTRY_DSN` in prod (Sentry is fully wired, dormant without it).
+- [x] **Set 3 Vercel production env vars** *(done 2026-06-11 — production deploys READY, all 11 PRs live)*: `STRIPE_WEBHOOK_SECRET`, `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`, then redeploy. Production deploys fail loudly-by-design (#116) until these exist — **all eleven merged PRs are queued behind this**. Full checklist in PR #116's body.
+- [x] Rename Clerk app "My Application" → **AUCKETS** (Clerk dashboard; the sign-in headline reads from it).
+- [x] Resend: verify `auckets.com` + set `RESEND_API_KEY` in prod (all fan lifecycle emails are wired but dormant).
+- [x] Set `NEXT_PUBLIC_SENTRY_DSN` in prod (Sentry is fully wired, dormant without it).
 - [ ] Pre-beta ops from CLAUDE.md: separate prod Supabase project; revoke HFC's Stripe access.
 
 ## 🟠 Tier 1 — code, before real money (security/reliability)
