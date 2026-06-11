@@ -53,12 +53,18 @@ export function OfferHistoryCard({ bid, history }: Props) {
   const hasMeaningfulHistory = history.entries.length > 1;
   return (
     <div
-      className="rounded-xl border"
-      style={{ background: "var(--page)", borderColor: "var(--border)" }}
+      // Hover lift matches the dashboard ShowRow idiom (border-strong +
+      // shadow + motion-safe 1px rise) so every clickable row reads the
+      // same. Lives on the wrapper, not the Link, so the lift covers the
+      // whole card including the history disclosure strip.
+      className="rounded-xl border border-[color:var(--border)] bg-[var(--page)] transition-[border-color,box-shadow,transform] duration-[120ms] ease-[var(--ease-out)] hover:border-[color:var(--border-strong)] hover:shadow-[var(--shadow-md)] motion-safe:hover:-translate-y-px"
     >
       <Link
         href={`/shows/${bid.showId}`}
-        className="flex items-center gap-3 px-4 py-[18px] no-underline transition-shadow hover:shadow-[0_4px_12px_rgba(14,15,12,0.06)] md:gap-5 md:px-5"
+        // flex-wrap below sm: the status column drops to its own line so
+        // the meta text doesn't wrap word-by-word into it (390px bug,
+        // same fix as ShowRow).
+        className="flex flex-wrap items-center gap-3 px-4 py-[18px] no-underline sm:flex-nowrap md:gap-5 md:px-5"
       >
         {/* Date stub */}
         <div
@@ -77,8 +83,9 @@ export function OfferHistoryCard({ bid, history }: Props) {
         </div>
 
         {/* Middle column — show + offer details */}
-        <div className="flex flex-1 flex-col gap-1.5">
-          <div className="flex items-baseline gap-3">
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+          {/* Stacked below sm so the meta line gets full column width. */}
+          <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-3">
             <h3 className="text-lg">{bid.venue}</h3>
             <span
               className="font-sans text-xs"
@@ -125,8 +132,8 @@ export function OfferHistoryCard({ bid, history }: Props) {
           </div>
         </div>
 
-        {/* Status badges */}
-        <div className="flex flex-col items-end gap-1.5">
+        {/* Status badges — drop to their own full-width row below sm. */}
+        <div className="order-last flex w-full items-center justify-between gap-2 pl-[76px] sm:order-none sm:w-auto sm:flex-col sm:items-end sm:gap-1.5 sm:pl-0">
           <Badge tone={tone}>{bid.offerStatusLabel}</Badge>
           {bid.showStatusHint && (
             <span

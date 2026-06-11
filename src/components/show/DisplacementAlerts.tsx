@@ -32,18 +32,48 @@ const TONE_STYLES: Record<
   positive: { bg: "#E3EEDD", border: "#7FA06A", accent: "#4B6B38", Icon: TrendingUp },
 };
 
+// How long the height-collapse fold runs before the alert leaves the DOM.
+// Matches --dur-base (180ms) plus a small buffer so the transition always
+// finishes first. Reduced-motion users skip the fold (transition: none in
+// design-system.css) and just see the alert leave after the same beat.
+const COLLAPSE_MS = 200;
+
 export function DisplacementAlerts({ alerts }: Props) {
   const router = useRouter();
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  // Alerts mid-fold: still rendered, collapsing via .auk-collapsible.
+  const [closing, setClosing] = useState<Set<string>>(new Set());
   const [errorId, setErrorId] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
 
   const visible = alerts.filter((a) => !dismissed.has(a.id));
   if (visible.length === 0) return null;
 
-  async function dismiss(id: string) {
+  // Two-phase dismiss: fold the alert shut (CSS height collapse + fade),
+  // then remove it and fire the acknowledge POST. On failure both sets are
+  // restored, so the alert unfolds back open and the fan can retry.
+  function beginDismiss(id: string) {
     setPendingId(id);
     setErrorId(null);
+    setClosing((prev) => new Set(prev).add(id));
+    window.setTimeout(() => void dismiss(id), COLLAPSE_MS);
+  }
+
+  function restore(id: string) {
+    setDismissed((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    setClosing((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    setErrorId(id);
+  }
+
+  async function dismiss(id: string) {
     // Optimistic remove — restore on failure so the fan can retry.
     setDismissed((prev) => new Set(prev).add(id));
     try {
@@ -51,22 +81,17 @@ export function DisplacementAlerts({ alerts }: Props) {
         method: "POST",
       });
       if (!res.ok) {
-        setDismissed((prev) => {
-          const next = new Set(prev);
-          next.delete(id);
-          return next;
-        });
-        setErrorId(id);
+        restore(id);
         return;
       }
-      router.refresh();
-    } catch {
-      setDismissed((prev) => {
+      setClosing((prev) => {
         const next = new Set(prev);
         next.delete(id);
         return next;
       });
-      setErrorId(id);
+      router.refresh();
+    } catch {
+      restore(id);
     } finally {
       setPendingId(null);
     }
@@ -78,12 +103,21 @@ export function DisplacementAlerts({ alerts }: Props) {
         const tone = TONE_STYLES[alert.tone];
         const Icon = tone.Icon;
         return (
+          // .auk-collapsible: dismissing folds the alert's height shut
+          // instead of snapping it out of the layout. .auk-reveal: a calm
+          // slide-in on mount. Both are reduced-motion safe via the
+          // design-system media queries.
           <div
             key={alert.id}
-            role="status"
-            className="flex items-start gap-3 rounded-lg p-[14px]"
-            style={{ background: tone.bg, border: `1px solid ${tone.border}` }}
+            className="auk-collapsible"
+            data-closed={closing.has(alert.id) ? "true" : "false"}
           >
+            <div className="auk-reveal">
+              <div
+                role="status"
+                className="flex items-start gap-3 rounded-lg p-[14px]"
+                style={{ background: tone.bg, border: `1px solid ${tone.border}` }}
+              >
             <Icon
               size={20}
               strokeWidth={1.75}
@@ -112,16 +146,18 @@ export function DisplacementAlerts({ alerts }: Props) {
                 </div>
               )}
             </div>
-            <button
-              type="button"
-              onClick={() => dismiss(alert.id)}
-              disabled={pendingId === alert.id}
-              aria-label="Dismiss alert"
-              className="flex h-7 w-7 items-center justify-center rounded-md border-0 bg-transparent"
-              style={{ color: tone.accent, cursor: "pointer", flexShrink: 0 }}
-            >
-              <X size={16} strokeWidth={1.75} aria-hidden />
-            </button>
+                <button
+                  type="button"
+                  onClick={() => beginDismiss(alert.id)}
+                  disabled={pendingId === alert.id}
+                  aria-label="Dismiss alert"
+                  className="flex h-7 w-7 items-center justify-center rounded-md border-0 bg-transparent"
+                  style={{ color: tone.accent, cursor: "pointer", flexShrink: 0 }}
+                >
+                  <X size={16} strokeWidth={1.75} aria-hidden />
+                </button>
+              </div>
+            </div>
           </div>
         );
       })}

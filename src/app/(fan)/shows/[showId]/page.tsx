@@ -192,26 +192,36 @@ export default async function ShowPage({ params }: Props) {
       style={{ background: "var(--paper)" }}
     >
       <div className="mx-auto px-4 pb-16 pt-8 md:px-8" style={{ maxWidth: 900 }}>
-        <ShowHeader show={data.show} minToGetIn={data.minToGetIn} />
+        {/* Entrance stagger — the dashboard's .auk-reveal idiom, applied at
+            the page level only (the composer's internals belong to another
+            slice; we wrap, never reach inside). Reduced-motion users get
+            instant paint via the design-system media query. */}
+        <div className="auk-reveal">
+          <ShowHeader show={data.show} minToGetIn={data.minToGetIn} />
+        </div>
 
         {data.cardFailureRecovery && (
-          <CardFailureRecovery view={data.cardFailureRecovery} />
+          <div className="auk-reveal" style={{ animationDelay: "55ms" }}>
+            <CardFailureRecovery view={data.cardFailureRecovery} />
+          </div>
         )}
 
         {data.displacementAlerts.length > 0 && (
-          <div className="mb-5">
+          <div className="auk-reveal mb-5" style={{ animationDelay: "55ms" }}>
             <DisplacementAlerts alerts={data.displacementAlerts} />
           </div>
         )}
 
-        <LivePreviewComposer
-          show={data.show}
-          existingOffer={data.show.yourOffer ?? null}
-          sections={data.baseSections}
-          venueName={data.venueName}
-          capacity={data.capacity}
-          initialProjection={data.initialProjection}
-        />
+        <div className="auk-reveal" style={{ animationDelay: "110ms" }}>
+          <LivePreviewComposer
+            show={data.show}
+            existingOffer={data.show.yourOffer ?? null}
+            sections={data.baseSections}
+            venueName={data.venueName}
+            capacity={data.capacity}
+            initialProjection={data.initialProjection}
+          />
+        </div>
       </div>
     </main>
   );
