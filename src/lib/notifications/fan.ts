@@ -114,7 +114,9 @@ export async function notifyOfferNotPlaced(
   await safeSend("offer_not_placed", { showId: ctx.showId, to: args.to }, () =>
     sendEmail({
       to: args.to,
-      subject: `Allocation results — ${ctx.showName}`,
+      // Matches the template's preview line — "allocation" is forbidden
+      // fan-facing vocabulary (PR #107 fixed the preview, missed the subject).
+      subject: `How ${ctx.showName} landed`,
       react: OfferNotPlacedEmail({
         artistName: ctx.artistName,
         showName: ctx.showName,
@@ -155,7 +157,9 @@ export async function notifyAllocationImminent(
     () =>
       sendEmail({
         to: args.to,
-        subject: `Allocation soon — ${ctx.showName}`,
+        // Matches the template's preview line — "allocation" is forbidden
+        // fan-facing vocabulary (PR #107 fixed the preview, missed the subject).
+        subject: `Seats decided soon — ${ctx.showName}`,
         react: AllocationImminentEmail({
           artistName: ctx.artistName,
           showName: ctx.showName,

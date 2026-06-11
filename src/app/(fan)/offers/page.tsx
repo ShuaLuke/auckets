@@ -1,16 +1,18 @@
-// Fan-side bid history. Lists every offer the user has placed across
-// every show — open, paused, closed, allocated, complete. Reverse-
-// chrono by submitted_at.
+// Fan-side offer history (/offers — renamed from /my-bids in the UI-3 copy
+// pack; "bid" is forbidden fan-facing vocabulary and lived in every fan's
+// URL bar). Lists every offer the user has made across every show — open,
+// paused, closed, allocated, complete. Reverse-chrono by submitted_at.
 //
-// No revision history per offer yet — see project_offer_revision_history
-// memory for the follow-up that needs a new offer_revisions table +
-// writes on every upsert.
+// Internal symbols still say "bid" where they mirror the repository /
+// presenter layer (BidView, listBidsForUser) — renaming those is a wider
+// mechanical sweep across repos + presenters, deferred to keep this slice
+// string-focused.
 
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 
-import { BidCard } from "@/components/bids/BidCard";
+import { OfferHistoryCard } from "@/components/offers/OfferHistoryCard";
 import { Eyebrow } from "@/components/ui/Eyebrow";
 import { db } from "@/lib/db";
 import {
@@ -47,7 +49,7 @@ async function loadBids(userId: string): Promise<LoadedBid[]> {
   }));
 }
 
-export default async function MyBidsPage() {
+export default async function OffersPage() {
   const { userId } = await auth();
   if (!userId) redirect("/sign-in");
 
@@ -107,7 +109,7 @@ export default async function MyBidsPage() {
         ) : (
           <div className="flex flex-col gap-3">
             {loaded.map(({ bid, history }) => (
-              <BidCard key={bid.offerId} bid={bid} history={history} />
+              <OfferHistoryCard key={bid.offerId} bid={bid} history={history} />
             ))}
           </div>
         )}

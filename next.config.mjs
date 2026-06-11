@@ -1,7 +1,17 @@
 import { withSentryConfig } from "@sentry/nextjs";
 
 /** @type {import('next').NextConfig} */
-const nextConfig = {};
+const nextConfig = {
+  async redirects() {
+    return [
+      // UI-3 copy pack: the fan offer-history page moved from /my-bids to
+      // /offers ("bid" is forbidden fan-facing vocabulary, and the old name
+      // sat in every fan's URL bar). Permanent so bookmarks and any emailed
+      // links keep working.
+      { source: "/my-bids", destination: "/offers", permanent: true },
+    ];
+  },
+};
 
 // Sentry's Next.js plugin auto-instruments routes for error/perf reporting
 // and (when a DSN + auth token are set) uploads source maps at build time.

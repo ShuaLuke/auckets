@@ -406,8 +406,9 @@ function LivePreviewComposerForm({
                 Auto-raise to hold my section
               </div>
               <div className="mt-0.5 font-sans text-[11px]" style={{ color: "var(--fg-subtle)" }}>
-                Set a cap and we only ever use what&apos;s needed to keep your
-                seats — most fans pay below their cap.
+                We&apos;ll raise your offer only if someone passes you — never
+                above your cap. You only ever pay what it takes to hold your
+                seats.
               </div>
             </div>
           </label>
@@ -453,19 +454,30 @@ function LivePreviewComposerForm({
           </div>
         )}
 
+        {/* Honest anticipation, not a verdict: nothing is decided until the
+            window closes, so this confirms the offer, names where the live
+            projection has the fan right now, and points at the lock. */}
         {succeeded && !error && (
           <div
-            className="rounded-lg p-3 font-sans text-xs"
+            className="auk-reveal rounded-lg p-4 font-sans text-[13px]"
             style={{
-              background: "var(--paper-2)",
+              background: "var(--brand-bg)",
               color: "var(--fg)",
-              border: "1px solid var(--border-strong)",
-              lineHeight: 1.5,
+              border: "1px solid var(--brand)",
+              lineHeight: 1.55,
             }}
           >
-            <strong>You&apos;re in.</strong> Your offer is placed — your
-            projected seats are above. You can raise it any time until 24h
-            before doors.
+            <strong>Your offer is in.</strong>{" "}
+            {projection &&
+            projection.available &&
+            projection.placed &&
+            projection.tierLabel
+              ? `Right now that lands you in ${projection.tierLabel}${
+                  projection.rowName ? `, around Row ${projection.rowName}` : ""
+                }. `
+              : "The map above shows where you stand as offers come in. "}
+            Seats lock when the window closes — we&apos;ll email you the moment
+            they&apos;re decided. Until then, you can raise your offer any time.
           </div>
         )}
 

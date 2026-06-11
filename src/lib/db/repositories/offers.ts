@@ -666,7 +666,7 @@ export async function getPriceDistributionForShow(
 }
 
 // Bulk: all revisions for several offers (e.g. the user's full
-// /my-bids history in one query). Returned as a Map<offerId, OfferRevision[]>
+// /offers history in one query). Returned as a Map<offerId, OfferRevision[]>
 // with each list already oldest-first. Empty input → empty map; empty
 // keys are NOT backfilled because callers iterate over their offers
 // list and ?? [] their way to a clean view.

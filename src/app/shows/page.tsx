@@ -71,7 +71,7 @@ export default async function ShowsIndexPage() {
               className="font-sans"
               style={{ fontSize: 15, color: "var(--ink-600)" }}
             >
-              No shows announced yet. Check back soon.
+              No shows announced yet — the next one will land here first.
             </p>
           </div>
         ) : (

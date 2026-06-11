@@ -1,6 +1,6 @@
 // Shared chrome for fan-facing emails (wordmark header, card container,
-// footer). The 5 fan templates fill in the body + CTA. Kept separate from
-// the ops templates (welcome / RequestActioned), which are plainer.
+// footer). The fan templates — including the welcome — fill in the body +
+// CTA. The ops template (RequestActioned) stays plainer and off-shell.
 //
 // Props are presentation-only — callers pass pre-formatted strings, so this
 // module never imports DB types or the repositories layer.
@@ -20,9 +20,13 @@ import type { ReactNode } from "react";
 
 export function FanEmailShell({
   preview,
+  footerNote,
   children,
 }: {
   preview: string;
+  // Why-you're-getting-this line in the footer. The default fits the show
+  // lifecycle emails; the welcome (no show activity yet) passes its own.
+  footerNote?: string;
   children: ReactNode;
 }) {
   return (
@@ -57,8 +61,8 @@ export function FanEmailShell({
           {children}
           <Hr style={{ borderColor: "#e5e1d6", margin: "28px 0 16px" }} />
           <Text style={{ fontSize: "11px", color: "#9ca3af", margin: 0 }}>
-            AUCKETS — not an auction. You&apos;re receiving this because you have
-            activity on a show. Please don&apos;t reply to this address.
+            {footerNote ??
+              "AUCKETS — not an auction. You're receiving this because you have activity on a show. Please don't reply to this address."}
           </Text>
         </Container>
       </Body>

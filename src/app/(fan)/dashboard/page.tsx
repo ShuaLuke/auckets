@@ -146,7 +146,6 @@ export default async function DashboardPage() {
   if (!userId) redirect("/sign-in");
 
   const user = await currentUser();
-  const email = user?.primaryEmailAddress?.emailAddress ?? "unknown";
   const firstName = user?.firstName ?? null;
   const { shows, hero } = await loadDashboardData(userId);
 
@@ -169,17 +168,12 @@ export default async function DashboardPage() {
       style={{ background: "var(--paper)" }}
     >
       <div className="mx-auto max-w-[960px] px-4 py-12 md:px-8">
-        <div className="mb-7 flex items-baseline justify-between">
-          <div>
-            <Eyebrow className="mb-2">Welcome back</Eyebrow>
-            <h1 className="text-4xl">{firstName ? `Hi, ${firstName}` : "Shows"}</h1>
-          </div>
-          <span className="font-sans text-[13px]" style={{ color: "var(--fg-muted)" }}>
-            Signed in as{" "}
-            <span className="font-medium" style={{ color: "var(--fg)" }}>
-              {email}
-            </span>
-          </span>
+        {/* Greeting only — no "Signed in as {email}" line. It could render
+            "unknown" for accounts without a primary email, and the warm
+            greeting carries the identity signal on its own. */}
+        <div className="mb-7">
+          <Eyebrow className="mb-2">Welcome back</Eyebrow>
+          <h1 className="text-4xl">{firstName ? `Hi, ${firstName}` : "Shows"}</h1>
         </div>
 
         {hero && <NowHero hero={hero} />}
@@ -256,7 +250,7 @@ export default async function DashboardPage() {
             show (open + past). */}
         <div className="mt-6 text-right">
           <Link
-            href="/my-bids"
+            href="/offers"
             className="font-sans text-[13px] no-underline"
             style={{ color: "var(--fg-muted)" }}
           >
