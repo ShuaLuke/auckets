@@ -25,6 +25,30 @@ import type Stripe from "stripe";
 
 import { logger } from "@/lib/logger";
 
+// Stripe rejects idempotency keys longer than 255 characters.
+const STRIPE_IDEMPOTENCY_KEY_MAX_LENGTH = 255;
+
+// Namespaces a client-supplied Stripe idempotency key under the calling
+// user before it reaches Stripe. Stripe idempotency keys are scoped to
+// the whole ACCOUNT, so forwarding the raw client value would let any
+// authenticated user replay (or collide with) another user's key —
+// e.g. submitting with a guessed key and getting back the cached
+// response for someone else's PaymentIntent create. Prefixing with the
+// server-verified userId makes the effective namespace per-user, and
+// the cap keeps a hostile oversized header from turning into a Stripe
+// 400 instead of doing its job.
+//
+// Returns undefined when the client sent no key (Stripe then assigns
+// its own — retries lose dedup safety, which is the pre-existing
+// documented behavior).
+export function namespacedStripeIdempotencyKey(
+  userId: string,
+  rawKey: string | null,
+): string | undefined {
+  if (!rawKey) return undefined;
+  return `${userId}:${rawKey}`.slice(0, STRIPE_IDEMPOTENCY_KEY_MAX_LENGTH);
+}
+
 export type CreateOfferPaymentIntentParams = {
   // The PaymentMethod ID created client-side via Stripe Elements (or
   // similar).

@@ -57,6 +57,7 @@ import { ensureStripeCustomer } from "@/lib/stripe/customers";
 import {
   cancelOfferPaymentIntent,
   createOfferPaymentIntent,
+  namespacedStripeIdempotencyKey,
 } from "@/lib/stripe/payment-intents";
 import { uuidParam } from "@/lib/validators/uuid";
 
@@ -280,8 +281,14 @@ export async function POST(
     // Optional idempotency key from the request header. Stripe uses
     // this server-side to dedupe retries of the same PaymentIntent
     // create call. When absent, retries CAN create duplicates — the
-    // client SHOULD always send one.
-    const idempotencyKey = request.headers.get("Idempotency-Key") ?? undefined;
+    // client SHOULD always send one. Namespaced with the verified
+    // userId (and length-capped) before it reaches Stripe — keys are
+    // account-scoped on Stripe's side, so the raw client value must
+    // not be the whole key.
+    const idempotencyKey = namespacedStripeIdempotencyKey(
+      userId,
+      request.headers.get("Idempotency-Key"),
+    );
 
     // Create the NEW PaymentIntent BEFORE cancelling any old one. If
     // this fails on a revision, the fan's existing auth stays intact
@@ -321,13 +328,55 @@ export async function POST(
       );
     }
 
+    // Idempotent replay guard: if the PaymentIntent Stripe just handed
+    // back is the SAME one already stored on the fan's offer, this is
+    // a retry of a request that already completed server-side (the
+    // client lost the response and re-sent with the same
+    // Idempotency-Key, so Stripe replayed PI create instead of making
+    // a new PI). Treating it as a revision would CANCEL the very auth
+    // the offer points at — at binding, capture would fail and the fan
+    // would be flagged card_failure despite doing everything right.
+    // Short-circuit with the stored offer instead of falling through
+    // to the upsert: upsertOfferForUser is not a no-op on identical
+    // values — it stamps revised_at and appends an offer_revisions
+    // snapshot, so re-running it would fabricate a phantom revision
+    // (and flip a first submission's replayed response from 201 to
+    // 200). The confirmation email was already sent by the original
+    // request, so skipping it here is correct, not a gap.
+    if (
+      existing &&
+      existing.stripePaymentIntentId === piResult.paymentIntentId
+    ) {
+      logger.info(
+        {
+          offerId: existing.id,
+          paymentIntentId: piResult.paymentIntentId,
+          showId: body.showId,
+        },
+        "Idempotent replay of offer submission — returning stored offer, not cancelling its PaymentIntent",
+      );
+      const isRevision = existing.revisedAt !== null;
+      return NextResponse.json(
+        {
+          ok: true,
+          offerId: existing.id,
+          isRevision,
+          showId: existing.showId,
+          path: "real",
+        },
+        { status: isRevision ? 200 : 201 },
+      );
+    }
+
     // Revision: now that the new auth is held, cancel the prior
     // PaymentIntent to release the old hold. Only for offers that
     // carried a REAL PaymentIntent (pi_ prefix) — stub-era offers have
     // a placeholder setup_intent_id and nothing to cancel. A cancel
     // failure is logged but NOT fatal: the new auth is valid, and the
     // old auth lapses on its own within the offer window. Failing the
-    // fan's revision over a stale-auth cleanup would be worse.
+    // fan's revision over a stale-auth cleanup would be worse. The
+    // old-PI-equals-new-PI replay case never reaches here — it
+    // returned above.
     if (existing?.stripePaymentIntentId?.startsWith("pi_")) {
       const cancelResult = await cancelOfferPaymentIntent(
         stripe,
