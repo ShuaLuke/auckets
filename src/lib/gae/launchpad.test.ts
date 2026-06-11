@@ -150,10 +150,11 @@ describe("launchPad — capacity edge cases", () => {
   });
 
   it("skip-and-defer: greedy stops at first non-fit; offer waits for next row", () => {
-    // Spec docstring (GAE_SPEC.md §Tests launchpad) writes this case as
-    // [6, 6, 4] which is unreachable under pure greedy — the correct
-    // form for the described outcome is [6, 4, 6] in rank order. PR
-    // body flags this as a spec typo to clean up later.
+    // GAE_SPEC.md §Tests (launchpad, skip-and-defer) now writes this
+    // case as [6, 4, 6] in rank order — an earlier spec draft had
+    // [6, 6, 4], which is unreachable under pure greedy (greedy never
+    // defers an offer that fits). The spec carries a note explaining
+    // the correction.
     const rows = [
       makeRow({ id: "row-1", rowRank: 1, capacity: 14 }),
       makeRow({ id: "row-2", rowRank: 2, capacity: 8 }),
