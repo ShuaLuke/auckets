@@ -292,7 +292,7 @@ The GAE has the strictest testing standards in the codebase. Every public functi
 - Surplus inventory: 5 offers totaling 10 seats into a 14-seat row → all placed, 4 unfilled.
 - Oversubscribed: offers totaling 20 seats into a 14-seat row → rank-best 14-seats-worth placed, rest deferred.
 - Orphan creation: `[6, 6]` into a 13-seat row → one 6 placed, FitResolver skips next 6 (won't fit), one orphan seat. (Or alternative: two 6s placed and orphan accepted per policy.)
-- Skip-and-defer: `[6, 6, 4]` into 14-seat row followed by 8-seat row → first row gets [6, 4], second row gets [6, ...]. (Greedy.)
+- Skip-and-defer: `[6, 4, 6]` (rank order) into 14-seat row followed by 8-seat row → first row gets [6, 4] and the trailing 6 defers to the second row. (Greedy. Note: an earlier draft wrote this pool as `[6, 6, 4]` with the same outcome, which is impossible under the greedy algorithm — greedy never defers an offer that *fits*, so `[6, 6, 4]` would put both 6s in the 14-seat row and send the 4 to the second. The deferral this case exercises requires the second 6 to arrive after the row is already down to fewer than 6 seats.)
 - Holds in row: row of 10 with holds at positions 5-6 → groups larger than 4 contiguous don't fit there.
 - Empty inputs: no offers or no rows → empty result, no crash.
 
