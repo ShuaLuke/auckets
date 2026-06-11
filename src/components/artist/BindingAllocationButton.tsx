@@ -31,14 +31,19 @@ type BindingStats = {
   fillRate: number;
 };
 
-// Mirrors the BindingSuccess body from POST /api/shows/[showId]/allocate.
+// Mirrors the BindingSuccess / BindingResumeSuccess bodies from
+// POST /api/shows/[showId]/allocate. The resume variant (`resumed: true`,
+// returned when the show was stuck mid-binding and this click settled the
+// remainder) has no stats / assignmentsWritten — the placement decision was
+// made by the earlier run; this call only finished the money movement.
 type SuccessBody = {
   showId: string;
   mode: "binding";
   ranAt: string;
-  stats: BindingStats;
-  assignmentsWritten: number;
-  logsWritten: number;
+  resumed?: boolean;
+  stats?: BindingStats;
+  assignmentsWritten?: number;
+  logsWritten?: number;
   // Placed offers whose auth was captured (fan charged).
   captured: number;
   // Placed offers whose capture failed (e.g. auth lapsed) — need follow-up.
@@ -150,7 +155,9 @@ export function BindingAllocationButton({ showId }: Props) {
               style={{ letterSpacing: "-0.01em" }}
             >
               {result
-                ? "Binding complete."
+                ? result.resumed
+                  ? "Binding resumed and settled."
+                  : "Binding complete."
                 : "Capture cards and seat the room?"}
             </h3>
 
@@ -234,19 +241,23 @@ export function BindingAllocationButton({ showId }: Props) {
                     card_failures={result.cardFailures}
                   </div>
                   <div>cancelled={result.cancelled} (auths released)</div>
-                  <div>
-                    placed_offers={result.stats.placedOffers} /{" "}
-                    {result.stats.totalOffers}
-                  </div>
-                  <div>placed_seats={result.stats.placedSeats}</div>
-                  <div>unplaced_offers={result.stats.unplacedOffers}</div>
-                  <div>
-                    fill_rate={(result.stats.fillRate * 100).toFixed(1)}%
-                  </div>
-                  <div>
-                    assignments_written={result.assignmentsWritten} ·
-                    logs={result.logsWritten}
-                  </div>
+                  {result.stats && (
+                    <>
+                      <div>
+                        placed_offers={result.stats.placedOffers} /{" "}
+                        {result.stats.totalOffers}
+                      </div>
+                      <div>placed_seats={result.stats.placedSeats}</div>
+                      <div>unplaced_offers={result.stats.unplacedOffers}</div>
+                      <div>
+                        fill_rate={(result.stats.fillRate * 100).toFixed(1)}%
+                      </div>
+                      <div>
+                        assignments_written={result.assignmentsWritten} ·
+                        logs={result.logsWritten}
+                      </div>
+                    </>
+                  )}
                 </div>
                 {result.cardFailures > 0 && (
                   <p

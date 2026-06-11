@@ -9,8 +9,13 @@
 //   "binding" — one-shot, irreversible: captures placed offers' card
 //               auths, releases unplaced ones, transitions offer + show
 //               statuses. Requires Stripe to be configured (503 if not).
-//               The automatic T-24h trigger (an Inngest schedule) is a
-//               separate slice; this is the manually-triggered path.
+//               On a show stuck in 'allocating' (a previous run's Phase 1
+//               committed but its settlement died), binding mode RESUMES
+//               the settlement instead of bouncing 409 — the manual
+//               recovery lever alongside the scheduled sweep's automatic
+//               one. The scheduled trigger lives in
+//               src/lib/jobs/functions/scheduled-binding.ts; this is the
+//               manually-triggered path.
 
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
@@ -24,6 +29,7 @@ import {
   type RunPreviewResult,
 } from "@/lib/allocation/run-preview";
 import {
+  resumeBindingAllocation,
   runBindingAllocation,
   type RunBindingError,
   type RunBindingResult,
@@ -32,6 +38,17 @@ import { stripe } from "@/lib/stripe/client";
 import { uuidParam } from "@/lib/validators/uuid";
 
 export const dynamic = "force-dynamic";
+// Binding captures N placed offers' PaymentIntents sequentially against the
+// Stripe API — a popular show is minutes of network I/O, not seconds.
+// Without this export the route runs under Vercel's default function
+// timeout (~15s on Pro) and a mid-capture kill is exactly the stuck-
+// 'allocating' failure mode this slice exists to recover from. 300s is the
+// Pro-plan ceiling without Fluid Compute and comfortably covers ~100+
+// captures; past that scale the scheduled sweep (batched Inngest steps,
+// each its own invocation) is the right trigger, and even a timeout here is
+// now recoverable (resume). Preview shares the route but is one DB
+// transaction — the long ceiling is harmless for it.
+export const maxDuration = 300;
 
 const ParamsSchema = z.object({
   showId: uuidParam,
@@ -62,7 +79,21 @@ type BindingSuccess = {
   cancelled: number;
 };
 
-type Success = PreviewSuccess | BindingSuccess;
+// A resumed binding settlement (the show was 'allocating'). No stats /
+// assignmentsWritten: the placement decision was Phase 1's, made by the
+// earlier crashed run — this invocation only settled the remaining money
+// movement.
+type BindingResumeSuccess = {
+  showId: string;
+  mode: "binding";
+  resumed: true;
+  ranAt: string;
+  captured: number;
+  cardFailures: number;
+  cancelled: number;
+};
+
+type Success = PreviewSuccess | BindingSuccess | BindingResumeSuccess;
 
 type ErrorBody = { error: string };
 
@@ -137,6 +168,30 @@ export async function POST(
       parsedParams.data.showId,
     );
     if (!outcome.ok) {
+      // 'allocating' means a previous run's Phase 1 committed but its
+      // settlement died (or is in flight — resume is concurrency-safe
+      // either way: capture CAS + idempotency keys, finalize CAS). Resume
+      // instead of bouncing so ops' "Run binding" click is also the manual
+      // un-stick lever. Any race that moves the show out of 'allocating'
+      // before the resume's status check falls through to the normal 409.
+      if (
+        outcome.error.kind === "show_not_eligible" &&
+        outcome.error.status === "allocating"
+      ) {
+        const resume = await resumeBindingAllocation(
+          db,
+          stripe,
+          parsedParams.data.showId,
+        );
+        if (!resume.ok) {
+          return allocationErrorResponse(resume.error);
+        }
+        // `finalized` is internal bookkeeping (did THIS pass win the flip);
+        // the response carries the settlement counts only.
+        const { ranAt, finalized, ...rest } = resume.value;
+        void finalized;
+        return NextResponse.json({ ...rest, ranAt: ranAt.toISOString() });
+      }
       return allocationErrorResponse(outcome.error);
     }
     const { ranAt, ...rest } = outcome.value;

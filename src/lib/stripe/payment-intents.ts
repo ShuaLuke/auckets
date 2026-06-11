@@ -190,6 +190,10 @@ export type CancelPaymentIntentResult =
 // success — the goal (no live auth on the old PI) is already met — and
 // only surface hard errors. This keeps a revision from failing just
 // because the old auth had already lapsed or been captured.
+//
+// No Stripe idempotency key needed (unlike capture): the terminal-state
+// soft-success above already makes a retried cancel converge — there is
+// no ambiguous-timeout double-path where a replayed cancel could do harm.
 export async function cancelOfferPaymentIntent(
   stripe: Stripe,
   paymentIntentId: string,
@@ -229,28 +233,66 @@ export async function cancelOfferPaymentIntent(
 }
 
 export type CapturePaymentIntentResult =
-  | { ok: true }
+  | {
+      ok: true;
+      // Set when THIS call didn't move the money — the PI was already in
+      // 'succeeded' when we tried to capture it. That's the binding-resume
+      // case: a previous attempt's capture reached Stripe but the process
+      // died before the terminal DB write. The funds moved exactly once;
+      // the caller can safely mark the offer charged.
+      alreadyCaptured?: true;
+      // The amount Stripe reports as actually received, when we learned it
+      // from the already-captured retrieve. Callers should prefer this over
+      // their recomputed amount when present (it's the ground truth).
+      amountReceivedCents?: number;
+    }
   | { ok: false; code: string; message: string };
+
+// Deterministic Stripe idempotency key for a binding capture. One key per
+// (offer, PaymentIntent) pair, so however many times the binding run is
+// retried/resumed, Stripe sees the SAME request and replays the original
+// response instead of double-processing. Stripe capture is idempotent per
+// PI anyway (a second capture of a succeeded PI errors), but the key
+// removes the ambiguous-timeout double-path: a capture that succeeded but
+// whose response we never saw is replayed as a success, not re-attempted
+// into an unexpected_state error.
+//
+// Well under Stripe's 255-char key limit (uuid + pi id ≈ 70 chars).
+export function bindingCaptureIdempotencyKey(
+  offerId: string,
+  paymentIntentId: string,
+): string {
+  return `capture:${offerId}:${paymentIntentId}`;
+}
 
 // Captures a previously-authorized PaymentIntent at binding allocation —
 // this is the moment the fan's card is actually charged for a placed
 // offer. Pass the full authorized amount (price × group_size); Stripe
 // captures up to the original auth.
 //
-// Deliberately NOT idempotent-soft like cancelOfferPaymentIntent: a
-// payment_intent_unexpected_state here means the auth is no longer
-// capturable (canceled, expired, or already captured). We must NOT
-// swallow that as success — doing so would let the caller mark an offer
-// "charged" when no funds moved. The binding orchestrator maps a failure
-// to the card_failure state instead, which is exactly the ~2% case
-// ADR-0003 describes (card canceled between auth and capture). Because
-// binding is gated so it can't re-run on a show mid-allocation, each PI
-// is captured at most once from a fresh requires_capture state, so the
-// "already captured" sub-case doesn't arise in practice.
+// NOT blanket-idempotent-soft like cancelOfferPaymentIntent: a
+// payment_intent_unexpected_state usually means the auth is no longer
+// capturable (canceled or expired) and swallowing that as success would
+// mark an offer 'charged' when no funds moved. But since binding became
+// resumable, ONE sub-case of unexpected_state is a true success: the PI is
+// already 'succeeded' because a previous attempt captured it and died
+// before recording the result. We disambiguate by retrieving the PI:
+//   - status 'succeeded'  → ok with alreadyCaptured (funds moved, once)
+//   - anything else, or the retrieve itself fails → surface the failure;
+//     the binding orchestrator maps it to card_failure (the ~2% case
+//     ADR-0003 describes: card canceled between auth and capture).
 export async function captureOfferPaymentIntent(
   stripe: Stripe,
   paymentIntentId: string,
   amountToCaptureCents?: number,
+  opts?: {
+    // Stripe idempotency key (see bindingCaptureIdempotencyKey). When a
+    // retried capture's original attempt succeeded, Stripe replays the
+    // success instead of erroring — the clean half of resume safety; the
+    // retrieve-on-unexpected_state above is the belt-and-braces half
+    // (Stripe idempotency replay lasts 24h; the retrieve has no horizon).
+    idempotencyKey?: string;
+  },
 ): Promise<CapturePaymentIntentResult> {
   try {
     await stripe.paymentIntents.capture(
@@ -258,11 +300,43 @@ export async function captureOfferPaymentIntent(
       amountToCaptureCents !== undefined
         ? { amount_to_capture: amountToCaptureCents }
         : undefined,
+      opts?.idempotencyKey
+        ? { idempotencyKey: opts.idempotencyKey }
+        : undefined,
     );
     return { ok: true };
   } catch (err) {
     if (err && typeof err === "object" && "code" in err) {
       const stripeErr = err as { code?: string; message?: string };
+
+      if (stripeErr.code === "payment_intent_unexpected_state") {
+        // Disambiguate "auth is dead" from "already captured" — the latter
+        // happens when a prior binding attempt charged the fan and crashed
+        // before writing 'charged'. Retrieve failure falls through to the
+        // failure path (conservative: never claim funds moved unseen).
+        try {
+          const intent = await stripe.paymentIntents.retrieve(paymentIntentId);
+          if (intent.status === "succeeded") {
+            logger.info(
+              { paymentIntentId },
+              "Capture skipped — PaymentIntent already captured (resume)",
+            );
+            return {
+              ok: true,
+              alreadyCaptured: true,
+              ...(typeof intent.amount_received === "number"
+                ? { amountReceivedCents: intent.amount_received }
+                : {}),
+            };
+          }
+        } catch (retrieveErr) {
+          logger.error(
+            { paymentIntentId, err: retrieveErr },
+            "PaymentIntent retrieve failed while disambiguating capture state",
+          );
+        }
+      }
+
       logger.error(
         { paymentIntentId, code: stripeErr.code, message: stripeErr.message },
         "Stripe paymentIntents.capture failed",

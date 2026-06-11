@@ -168,8 +168,10 @@ export async function listShowSummariesByIds(
 // open → closed before reading the pool; if the process dies between that
 // claim and the Phase-1 commit, the show is left 'closed' — still due, so the
 // next 5-minute sweep re-triggers it and the run completes. (A crash AFTER
-// Phase 1 leaves 'allocating', which is intentionally NOT due — money may
-// already be moving; resuming that is the Phase-2 resumability slice.)
+// Phase 1 leaves 'allocating', which is intentionally NOT due here — a fresh
+// run on it would risk double-capture. It's recovered by the sweep's
+// stuck-show pass instead: listShowIdsStuckInAllocating below feeds the
+// idempotent resume path, resumeBindingAllocation.)
 const BINDING_DUE_STATUSES = ["open", "closed"] as const;
 
 // Shows whose announced binding checkpoint (binding_allocation_at) has arrived
@@ -188,6 +190,41 @@ export async function listShowIdsDueForBinding(
       and(
         lte(shows.bindingAllocationAt, now),
         inArray(shows.status, [...BINDING_DUE_STATUSES]),
+      ),
+    )
+    .orderBy(shows.bindingAllocationAt);
+  return rows.map((r) => r.id);
+}
+
+// Shows stuck mid-binding: status 'allocating' (a run's Phase 1 committed —
+// placements and offer statuses are durable) whose settlement never finished
+// because the process died (timeout, deploy, OOM, Stripe outage). Without
+// recovery these are stuck FOREVER: nothing else transitions 'allocating',
+// some fans are charged without tickets ever issuing, and unplaced fans'
+// auths are never released. The sweep routes these into the idempotent
+// resume path (settleBinding), which rebuilds the remaining work from offer
+// statuses.
+//
+// `threshold` is the now-minus-grace cutoff the CALLER computes (~10 min).
+// shows has no updated_at column, so binding_allocation_at is the proxy for
+// "when the run started": sweep-triggered runs start at the first tick after
+// the checkpoint, so a show still 'allocating' well past its checkpoint is a
+// dead run, not a slow one — especially since the Inngest sweep's
+// concurrency:1 means a healthy run blocks the next tick rather than racing
+// it. (An ops-triggered bind BEFORE the checkpoint that crashes waits until
+// checkpoint+grace for auto-recovery; the admin Run-binding button resumes
+// it immediately.) Backed by shows_status_idx + shows_binding_at_idx.
+export async function listShowIdsStuckInAllocating(
+  db: Db,
+  threshold: Date,
+): Promise<string[]> {
+  const rows = await db
+    .select({ id: shows.id })
+    .from(shows)
+    .where(
+      and(
+        eq(shows.status, "allocating"),
+        lte(shows.bindingAllocationAt, threshold),
       ),
     )
     .orderBy(shows.bindingAllocationAt);
@@ -469,7 +506,8 @@ export type BindingClaimResult =
 //
 // Every other status refuses: 'paused' (a halt was requested — ADR-0013, ops
 // decides when a halted show binds), 'allocating' (a run's Phase 1 already
-// committed), 'allocated' / 'complete' (done), 'draft' (no offers).
+// committed — that state belongs to the resume path, resumeBindingAllocation,
+// never to a fresh run), 'allocated' / 'complete' (done), 'draft' (no offers).
 export async function claimShowForBinding(
   db: Db,
   showId: string,
