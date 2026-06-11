@@ -13,6 +13,7 @@ import {
   cancelOfferPaymentIntent,
   captureOfferPaymentIntent,
   createOfferPaymentIntent,
+  namespacedStripeIdempotencyKey,
 } from "./payment-intents";
 
 // Minimal Stripe shape — only the methods the helper actually calls.
@@ -313,5 +314,27 @@ describe("captureOfferPaymentIntent", () => {
     });
     const result = await captureOfferPaymentIntent(stripe, "pi_x");
     expect(result).toEqual({ ok: false, code: "internal", message: "ECONNREFUSED" });
+  });
+});
+
+describe("namespacedStripeIdempotencyKey", () => {
+  it("prefixes the client key with the verified userId (per-user namespace)", () => {
+    expect(namespacedStripeIdempotencyKey("user_abc", "retry-1")).toBe(
+      "user_abc:retry-1",
+    );
+  });
+
+  it("caps the combined key at Stripe's 255-char limit", () => {
+    const key = namespacedStripeIdempotencyKey("user_abc", "x".repeat(500));
+    expect(key).toHaveLength(255);
+    expect(key?.startsWith("user_abc:")).toBe(true);
+  });
+
+  it("returns undefined when the client sent no key (header absent)", () => {
+    expect(namespacedStripeIdempotencyKey("user_abc", null)).toBeUndefined();
+  });
+
+  it("returns undefined for an empty header value", () => {
+    expect(namespacedStripeIdempotencyKey("user_abc", "")).toBeUndefined();
   });
 });

@@ -11,6 +11,7 @@ import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import { recoverCardFailure } from "@/lib/stripe/card-failure-recovery";
 import { stripe } from "@/lib/stripe/client";
+import { namespacedStripeIdempotencyKey } from "@/lib/stripe/payment-intents";
 import { uuidParam } from "@/lib/validators/uuid";
 
 export const dynamic = "force-dynamic";
@@ -58,7 +59,13 @@ export async function POST(
     );
   }
 
-  const idempotencyKey = request.headers.get("Idempotency-Key") ?? undefined;
+  // Namespaced with the verified userId (and length-capped) before it
+  // reaches Stripe — idempotency keys are account-scoped on Stripe's
+  // side, so the raw client value must not be the whole key.
+  const idempotencyKey = namespacedStripeIdempotencyKey(
+    userId,
+    request.headers.get("Idempotency-Key"),
+  );
   const outcome = await recoverCardFailure(db, stripe, {
     offerId: parsedParams.data.offerId,
     userId,
