@@ -34,9 +34,9 @@ export function OfferReceivedEmail({
         dateLong={dateLong}
       />
       <FanText>
-        We&apos;ve received your offer of <strong>{offerLine}</strong>. There&apos;s
-        no auction and no countdown — when the offer window closes, we rank
-        every offer and seat groups together, best section first.
+        We&apos;ve received your offer of <strong>{offerLine}</strong>. When the
+        window closes, every offer in the room is ranked and groups are seated
+        together, best section first. Nothing to refresh, nothing to race.
       </FanText>
       <FanText>
         You can raise your offer any time before seats are decided. We&apos;ll

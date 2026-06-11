@@ -1,4 +1,4 @@
-// Presenter for the fan-side bid history page (/my-bids).
+// Presenter for the fan-side offer history page (/offers, formerly /my-bids).
 //
 // Each BidView is one row in the user's bid history — the current state
 // of their offer on a given show. There's no offer-revision history

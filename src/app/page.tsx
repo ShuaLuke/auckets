@@ -23,10 +23,10 @@
 // can ever be status="open" before it's meant to be public, add an
 // explicit visibility flag rather than overloading "open".
 //
-// Marketing copy below is preserved verbatim from the prototype. A
-// dedicated copy review is a separate workstream (see
-// docs/LANDING_PAGE_PLAN.md) — several FAQ claims describe behavior gated
-// on the still-unconfirmed ADR-0003.
+// Marketing copy was reviewed in the UI-3 copy pack (2026-06): hero leads
+// with the night instead of the negation, FAQ answers lost the raw rank_key
+// formula and the forbidden "outbid". Several FAQ claims still describe
+// behavior gated on the still-unconfirmed ADR-0003.
 
 import { SignUpButton } from "@clerk/nextjs";
 import { auth } from "@clerk/nextjs/server";
@@ -87,15 +87,15 @@ function Hero({ heroShow }: { heroShow: ShowSummaryView | null }) {
     >
       <div className="flex flex-col gap-10 md:flex-row md:items-end md:gap-16">
         <div style={{ flex: 1.4 }}>
-          <Eyebrow className="mb-5">A fairer way to seat a room</Eyebrow>
+          <Eyebrow className="mb-5">No auctions. No countdowns.</Eyebrow>
           <h1
             className="display-1 mb-6"
             style={{ maxWidth: 720 }}
           >
-            Front row, fair price.
+            Your price. Your people.
             <br />
             <span style={{ color: "var(--fg-muted)" }}>
-              No auctions, no countdowns.
+              Your row.
             </span>
           </h1>
           <p
@@ -486,33 +486,34 @@ function ForArtists() {
 
 // =========================================================================
 // FAQ — design Landing.jsx lines 151-192
-// Copy preserved verbatim from the design.
+// Copy rewritten in the UI-3 copy pack: plain English, no engineering
+// formulas, no forbidden auction vocabulary (PR #107 rules).
 // =========================================================================
 
 const FAQ_ITEMS: ReadonlyArray<[string, string]> = [
   [
     "How is rank calculated?",
-    "rank_key = (price_per_ticket_cents × 1000) + group_size. Price wins; group size only breaks ties at equal price. Earliest submission breaks remaining ties.",
+    "Highest price per ticket goes first. Bigger groups break ties at the same price, and the earliest offer breaks whatever's left. That's the whole rule — nothing hidden, no fees in the math.",
   ],
   [
     "Can I revise my offer?",
-    "Yes — upward only, up to 24 hours before binding allocation. Lowering is never allowed. Each revision releases your card auth and creates a new one.",
+    "Yes — you can raise it any time until 24 hours before doors, when seats lock. Lowering is never allowed. Each time you raise, we release the old card hold and place a new one.",
   ],
   [
-    "What happens if I'm outbid?",
-    "There's no \"outbid\" — there's rank. If a lot of higher-ranked offers come in, your provisional placement moves to a lower row, or to \"unplaced\". You'll see this in real time.",
+    "What if other offers pass mine?",
+    "Your projected seats can move — to a row further back, or out of the room if the show truly fills. You'll see it happen live on the show page, and you can raise your offer any time until seats lock.",
   ],
   [
     "When am I charged?",
-    "When binding allocation runs (24h before doors). Before that, your card is authorized but not charged. If you're not placed, the auth is released and you pay $0.",
+    "When seats lock, 24 hours before doors. Until then your card is held, not charged. If you don't get seats, the hold is released and you pay $0.",
   ],
   [
     "What if the show sells out before my offer is competitive?",
-    "You'll see \"unplaced\" on the preview and get a notification 24h before binding. You can revise upward; you can't go below the tier floor.",
+    "You'll see exactly where you stand on the live preview, and we'll email you before seats lock so you have time to raise. You can always go up; you can't go below the section floor.",
   ],
   [
     "Are there service fees?",
-    "No. The price you offer is the price you pay. Stripe fees come from the artist payout.",
+    "No. The price you offer is the price you pay. Card-processing costs come out of the artist payout, never on top of your ticket.",
   ],
 ];
 

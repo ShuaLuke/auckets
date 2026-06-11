@@ -1,8 +1,12 @@
-// One card on /my-bids. Top row = current bid state, click-through to
-// /shows/[showId] to revise. A native <details> disclosure below the
-// row reveals the full revision history (oldest → newest) — built
-// from offer_revisions, populated by upsertOfferForUser inside the
-// same transaction.
+// One card on /offers (the fan's offer history). Top row = current offer
+// state, click-through to /shows/[showId] to revise. A native <details>
+// disclosure below the row reveals the full revision history (oldest →
+// newest) — built from offer_revisions, populated by upsertOfferForUser
+// inside the same transaction.
+//
+// The `bid`-named prop + BidView type mirror the presenter layer; renaming
+// that layer is a wider sweep deferred from the UI-3 copy pack. Nothing
+// "bid" renders to the fan.
 
 import { ChevronRight } from "lucide-react";
 import Link from "next/link";
@@ -40,7 +44,7 @@ function splitDateShort(dateShort: string): { month: string; day: string } {
   return { month: month.toUpperCase(), day };
 }
 
-export function BidCard({ bid, history }: Props) {
+export function OfferHistoryCard({ bid, history }: Props) {
   const stub = splitDateShort(bid.dateShort);
   const tone = statusTone(bid.offerStatusLabel);
   // Hide the disclosure when there's nothing past the initial submission
@@ -72,7 +76,7 @@ export function BidCard({ bid, history }: Props) {
           </div>
         </div>
 
-        {/* Middle column — show + bid details */}
+        {/* Middle column — show + offer details */}
         <div className="flex flex-1 flex-col gap-1.5">
           <div className="flex items-baseline gap-3">
             <h3 className="text-lg">{bid.venue}</h3>
