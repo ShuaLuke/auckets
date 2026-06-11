@@ -14,11 +14,10 @@
 //   upcoming — show is announced but window hasn't opened yet (muted)
 //   inverse  — dark pill on light surface (used in inverse cards)
 //
-// The palette values are the prototype's exact hex codes. Future
-// refactor could map them to the design system's CSS variables
-// (--greenwood-50, --marquee-100, etc.), but going variable-by-variable
-// when the prototype is authoritative would risk visual drift while
-// the design is still being authored. Kept inline for now.
+// The palette maps to the design-system CSS variables. Each variable's
+// value is the prototype's exact hex code (verified one-for-one against
+// design-system.css before the swap), so this is drift-proofing with
+// zero visual change: if the system palette moves, badges move with it.
 
 import { type HTMLAttributes } from "react";
 
@@ -33,14 +32,46 @@ export type BadgeTone =
   | "inverse";
 
 const palettes: Record<BadgeTone, { bg: string; fg: string; dot: string }> = {
-  placed: { bg: "#EEF3EE", fg: "#163823", dot: "#1F4A2E" },
-  preview: { bg: "#F6E6CC", fg: "#8F6A2A", dot: "#C99A4B" },
-  pending: { bg: "#F6E6CC", fg: "#8F6A2A", dot: "#C99A4B" },
-  skipped: { bg: "#E8E6DE", fg: "#46443B", dot: "#6B6759" },
-  unplaced: { bg: "#F2D9D3", fg: "#722417", dot: "#A93C2A" },
-  open: { bg: "#EEF3EE", fg: "#1F4A2E", dot: "#2D5C3A" },
-  upcoming: { bg: "#E8E6DE", fg: "#46443B", dot: "#6B6759" },
-  inverse: { bg: "#0E0F0C", fg: "#F4F1E8", dot: "#F4F1E8" },
+  placed: {
+    bg: "var(--greenwood-50)",
+    fg: "var(--greenwood-700)",
+    dot: "var(--greenwood-600)",
+  },
+  preview: {
+    bg: "var(--marquee-100)",
+    fg: "var(--marquee-700)",
+    dot: "var(--marquee-500)",
+  },
+  pending: {
+    bg: "var(--marquee-100)",
+    fg: "var(--marquee-700)",
+    dot: "var(--marquee-500)",
+  },
+  skipped: {
+    bg: "var(--ink-100)",
+    fg: "var(--ink-500)",
+    dot: "var(--ink-400)",
+  },
+  unplaced: {
+    bg: "var(--brick-100)",
+    fg: "var(--brick-700)",
+    dot: "var(--brick-500)",
+  },
+  open: {
+    bg: "var(--greenwood-50)",
+    fg: "var(--greenwood-600)",
+    dot: "var(--greenwood-500)",
+  },
+  upcoming: {
+    bg: "var(--ink-100)",
+    fg: "var(--ink-500)",
+    dot: "var(--ink-400)",
+  },
+  inverse: {
+    bg: "var(--ink-900)",
+    fg: "var(--paper)",
+    dot: "var(--paper)",
+  },
 };
 
 type Props = HTMLAttributes<HTMLSpanElement> & {

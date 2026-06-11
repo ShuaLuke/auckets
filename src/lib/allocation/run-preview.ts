@@ -30,6 +30,7 @@ import {
   getLatestRaiseTargetsByOfferForShow,
   getShowById,
   getVenueArchitectureById,
+  listHoldsForShow,
   listPoolOffersForShow,
   listSeatAssignmentsForShow,
 } from "@/lib/db/repositories";
@@ -44,6 +45,7 @@ import {
   type AllocationPlan,
 } from "./build-plan";
 import { detectDisplacementEvents, type Placement } from "./displacement";
+import { mergeShowHoldsIntoArchitecture } from "./translate";
 
 export type RunPreviewResult = {
   showId: string;
@@ -108,8 +110,22 @@ export async function runPreviewAllocation(
     };
   }
 
+  // Per-show holds (artist comps, ADA, production) live in the `holds`
+  // table — the architecture JSONB only carries building-level manifest
+  // holds. Merge them so the GAE never seats a fan in a held seat. The
+  // binding run does the same merge, so preview stays faithful to it.
+  const showHolds = await listHoldsForShow(db, showId);
+  const effectiveArchitecture = mergeShowHoldsIntoArchitecture(
+    architecture,
+    showHolds,
+  );
+
   const poolOffers = await listPoolOffersForShow(db, showId);
-  const plan = buildPreviewAllocationPlan(show, architecture, poolOffers);
+  const plan = buildPreviewAllocationPlan(
+    show,
+    effectiveArchitecture,
+    poolOffers,
+  );
 
   // ---- Displacement alerts (ADR-0018 §4) ----
   // Diff this run against the PRIOR preview projection to find the per-fan

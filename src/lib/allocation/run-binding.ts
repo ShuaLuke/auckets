@@ -58,6 +58,7 @@ import {
   getLatestRaiseTargetsByOfferForShow,
   getShowById,
   getVenueArchitectureById,
+  listHoldsForShow,
   listPoolOffersForShow,
   listSeatAssignmentsForShow,
   markShowAllocating,
@@ -83,6 +84,7 @@ import {
 
 import { buildBindingAllocationPlan, type AllocationPlan } from "./build-plan";
 import { detectDisplacementEvents, type Placement } from "./displacement";
+import { mergeShowHoldsIntoArchitecture } from "./translate";
 
 export type RunBindingResult = {
   showId: string;
@@ -206,8 +208,19 @@ export async function runBindingPhase1(
     };
   }
 
+  // Per-show holds (artist comps, ADA, production) live in the `holds`
+  // table — the architecture JSONB only carries building-level manifest
+  // holds. Merge them so the binding run never seats (and charges) a fan
+  // into a held seat. Preview and the live projection do the same merge,
+  // so the projection a fan saw stays faithful to what binding does.
+  const showHolds = await listHoldsForShow(db, showId);
+
   const poolOffers = await listPoolOffersForShow(db, showId);
-  const plan = buildBindingAllocationPlan(show, architecture, poolOffers);
+  const plan = buildBindingAllocationPlan(
+    show,
+    mergeShowHoldsIntoArchitecture(architecture, showHolds),
+    poolOffers,
+  );
 
   const placedOfferIds = plan.assignmentRows.map((r) => r.offerId);
   const placedSet = new Set(placedOfferIds);

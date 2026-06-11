@@ -2,6 +2,7 @@
 // border, hard 4px offset shadow. On hover the shadow collapses to 2px
 // and the button translates 2px down-right so the visual offset stays
 // constant — the "stamping in" animation that's iconic to the design.
+// On press (:active) it stamps the rest of the way (1px shadow).
 //
 // Matches design/ui_kits/auckets/components/Buttons.jsx MarqueeButton.
 // Used by Landing.jsx (Create an account, Pitch your venue) and any
@@ -11,16 +12,22 @@
 // or brand CTA, prefer Button — MarqueeButton is reserved for hero /
 // section-leading CTAs where the poster effect is wanted.
 //
-// "use client": this component attaches inline onMouseEnter/onMouseLeave
-// handlers to its <button>, so it must be a Client Component. Without the
-// directive it's treated as a Server Component, and rendering it from one
-// (e.g. the landing page) throws "Event handlers cannot be passed to
-// Client Component props" at render time — which took the marketing page
-// down on the root route.
+// The stamp used to be inline onMouseEnter/onMouseLeave handlers (which
+// forced "use client" and gave keyboard + touch users nothing). It's now
+// pure CSS — :hover and :focus-visible both stamp, so tabbing onto the
+// button reads the same as mousing over it, and the component can render
+// from Server Components again. The translate halves are motion-safe:
+// reduced-motion users still get the shadow change (a color/size cue),
+// never the movement. The shadow color is the --auk-stamp custom property
+// so callers can re-ink the stamp (the landing page's amber variant) and
+// every state stays in sync.
 
-"use client";
-
-import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
+import {
+  forwardRef,
+  type ButtonHTMLAttributes,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 
 type Props = ButtonHTMLAttributes<HTMLButtonElement> & {
   children: ReactNode;
@@ -29,18 +36,34 @@ type Props = ButtonHTMLAttributes<HTMLButtonElement> & {
   // having to know about an icon set.
   iconAfter?: ReactNode;
   iconBefore?: ReactNode;
+  // Stamp (hard shadow) color. Defaults to ink; the landing page passes
+  // the marquee amber for the venue-pitch CTA.
+  stampColor?: string;
 };
 
 export const MarqueeButton = forwardRef<HTMLButtonElement, Props>(
   function MarqueeButton(
-    { children, iconAfter, iconBefore, className = "", style, type = "button", ...rest },
+    {
+      children,
+      iconAfter,
+      iconBefore,
+      stampColor = "var(--ink-900)",
+      className = "",
+      style,
+      type = "button",
+      ...rest
+    },
     ref,
   ) {
+    // CSSProperties doesn't model custom properties; the cast is sound
+    // because React passes unknown keys straight through to the style
+    // attribute, where --auk-stamp is valid CSS.
+    const stampVar = { "--auk-stamp": stampColor } as CSSProperties;
     return (
       <button
         ref={ref}
         type={type}
-        className={`group inline-flex items-center gap-2.5 rounded-lg border font-sans font-semibold leading-none transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-50 ${className}`.trim()}
+        className={`group inline-flex items-center gap-2.5 rounded-lg border font-sans font-semibold leading-none shadow-[4px_4px_0_0_var(--auk-stamp)] transition-all duration-150 hover:shadow-[2px_2px_0_0_var(--auk-stamp)] focus-visible:shadow-[2px_2px_0_0_var(--auk-stamp)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--brand)] enabled:active:shadow-[1px_1px_0_0_var(--auk-stamp)] motion-safe:hover:translate-x-[2px] motion-safe:hover:translate-y-[2px] motion-safe:focus-visible:translate-x-[2px] motion-safe:focus-visible:translate-y-[2px] motion-safe:enabled:active:translate-x-[3px] motion-safe:enabled:active:translate-y-[3px] disabled:cursor-not-allowed disabled:opacity-50 ${className}`.trim()}
         style={{
           padding: "11px 22px",
           fontSize: 15,
@@ -48,22 +71,9 @@ export const MarqueeButton = forwardRef<HTMLButtonElement, Props>(
           background: "var(--page)",
           color: "var(--ink-900)",
           borderColor: "var(--ink-900)",
-          boxShadow: "4px 4px 0 0 var(--ink-900)",
           transitionTimingFunction: "var(--ease-out)",
+          ...stampVar,
           ...style,
-        }}
-        // Hover effect is done with inline event handlers rather than
-        // :hover styles because the shadow + transform need to stay in
-        // visual sync, and Tailwind's hover: variants don't compose
-        // cleanly with custom box-shadow + transform together. Three
-        // lines of JS for a one-shot landing animation is fine.
-        onMouseEnter={(e) => {
-          e.currentTarget.style.boxShadow = "2px 2px 0 0 var(--ink-900)";
-          e.currentTarget.style.transform = "translate(2px, 2px)";
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.boxShadow = "4px 4px 0 0 var(--ink-900)";
-          e.currentTarget.style.transform = "translate(0, 0)";
         }}
         {...rest}
       >
