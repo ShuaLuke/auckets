@@ -5,6 +5,7 @@ import { Bricolage_Grotesque, JetBrains_Mono } from "next/font/google";
 
 import { SiteNav } from "@/components/nav/SiteNav";
 import { clerkAppearance } from "@/lib/clerk-appearance";
+import { env } from "@/lib/env";
 
 import "./globals.css";
 
@@ -38,9 +39,9 @@ const DESCRIPTION =
   "Fans name their price for the show. The engine seats the room fairly — no auctions, no countdowns, no scalpers.";
 
 export const metadata: Metadata = {
-  // Production host, so OG/twitter image URLs resolve absolutely in
+  // Canonical host, so OG/twitter image URLs resolve absolutely in
   // shared links. (Next would otherwise fall back to the deployment URL.)
-  metadataBase: new URL("https://auckets-olive.vercel.app"),
+  metadataBase: new URL(env.NEXT_PUBLIC_APP_URL),
   title: {
     default: TAGLINE,
     template: "%s · AUCKETS",
