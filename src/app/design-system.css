@@ -379,6 +379,155 @@ a.quiet:hover { border-bottom-color: currentColor; opacity: 1; }
   .auk-reveal { animation: none; }
 }
 
+/* =============================================================
+   The instrument (UI-4) — motion for the live-dial composer.
+   Cause-and-effect: turn the dial, watch the room respond. All
+   one-shot or gentle; every animation is disabled (or reduced to
+   a static state) under prefers-reduced-motion.
+   ============================================================= */
+
+/* --- Seat map response ---------------------------------------
+   Seats glide between fills instead of teleporting; a seat that
+   just became YOURS pops once (overshoot via --ease-snap, the
+   bounce curve) so the eye lands exactly where the engine put
+   you. Vacated seats fade back through the same fill transition. */
+.auk-seat {
+  transition:
+    background-color var(--dur-base) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out);
+}
+@keyframes auk-seat-pop {
+  from { transform: scale(1.4); }
+  to   { transform: none; }
+}
+.auk-seat-pop {
+  animation: auk-seat-pop var(--dur-slow) var(--ease-snap) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .auk-seat-pop { animation: none; }
+}
+
+/* --- Text swap (standing readout) ----------------------------
+   A purpose-built short fade/rise for keyed remounts when the
+   projected tier or row changes — reads as the line updating,
+   not the page flickering. Shorter than .auk-reveal on purpose. */
+@keyframes auk-textswap {
+  from { opacity: 0; transform: translateY(3px); }
+  to   { opacity: 1; transform: none; }
+}
+.auk-textswap {
+  animation: auk-textswap 150ms var(--ease-out) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .auk-textswap { animation: none; }
+}
+
+/* --- In-flight "computing" pulse ------------------------------
+   While a fresh projection is in flight the map holds its last
+   state at 0.85 opacity (set inline by the component); this adds
+   a slow breath around that dim so the wait reads as the engine
+   working, not the UI stalling. Reduced motion keeps the static
+   dim and drops the pulse. */
+@keyframes auk-computing {
+  0%, 100% { opacity: 0.85; }
+  50%      { opacity: 0.68; }
+}
+.auk-computing {
+  animation: auk-computing 1.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .auk-computing { animation: none; }
+}
+
+/* --- The price dial -------------------------------------------
+   A real instrument, not a default range input: visible filled
+   track (the component sets --auk-dial-fill inline as a percent),
+   a thumb that grows under the finger, and tier-floor tick marks
+   overlaid by the component (.auk-dial-tick). */
+input[type="range"].auk-dial {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 28px;            /* generous hit area; track drawn thinner */
+  margin: 0;
+  background: transparent;
+}
+input[type="range"].auk-dial:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  border-radius: var(--radius-pill);
+}
+
+/* WebKit/Blink: no native filled-track pseudo, so the fill is a
+   two-stop gradient pinned to --auk-dial-fill. */
+.auk-dial::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(
+    to right,
+    var(--brand) 0%,
+    var(--brand) var(--auk-dial-fill, 0%),
+    var(--paper-3) var(--auk-dial-fill, 0%),
+    var(--paper-3) 100%
+  );
+}
+.auk-dial::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 22px;
+  height: 22px;
+  margin-top: -8px;        /* center the 22px thumb on the 6px track */
+  border-radius: 50%;
+  background: var(--page);
+  border: 2px solid var(--brand);
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.auk-dial:active::-webkit-slider-thumb {
+  transform: scale(1.2);
+}
+
+/* Firefox: native progress pseudo does the fill. */
+.auk-dial::-moz-range-track {
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--paper-3);
+}
+.auk-dial::-moz-range-progress {
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--brand);
+}
+.auk-dial::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--page);
+  border: 2px solid var(--brand);
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.auk-dial:active::-moz-range-thumb {
+  transform: scale(1.2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auk-dial::-webkit-slider-thumb { transition: none; }
+  .auk-dial::-moz-range-thumb { transition: none; }
+}
+
+/* Tier-floor tick: a small notch the composer absolutely positions
+   over the track at each tier's floor price. */
+.auk-dial-tick {
+  position: absolute;
+  top: 50%;
+  width: 2px;
+  height: 12px;
+  margin-left: -1px;
+  transform: translateY(-50%);
+  border-radius: 1px;
+  background: var(--ink-300);
+  opacity: 0.8;
+}
+
 /* Loading skeleton — a paper-2 block with a soft light band sweeping
    through (UI-2 feel pack). Used by the route loading.tsx files so a
    navigation paints a layout-shaped placeholder instead of a blank
