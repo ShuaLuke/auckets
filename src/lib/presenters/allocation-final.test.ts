@@ -330,6 +330,23 @@ describe("presentAllocationFinal — edges", () => {
     expect(v.minutesLeft).toBeNull();
   });
 
+  it("renders a mid-recovery ('recovering') offer as the card_failure screen", () => {
+    // The recovery claim lasts seconds; the result page must not flash to a
+    // 404 while the replacement card is being charged.
+    const v = presentAllocationFinal(
+      SHOW,
+      offer({ status: "recovering", pricePerTicketCents: 3000, groupSize: 2 }),
+      seat({ isBinding: true }),
+      ROW,
+      false,
+      ctx({ cardFailure: null }),
+      NOW,
+      TZ,
+    );
+    if (v?.kind !== "card_failure") throw new Error("expected card_failure");
+    expect(v.amountDueDisplay).toBe("$60.00");
+  });
+
   it("renders unplaced with the offer price, no charge, and the marginal price", () => {
     const v = presentAllocationFinal(
       SHOW,

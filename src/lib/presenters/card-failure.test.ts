@@ -27,6 +27,7 @@ function makeOffer(overrides: Partial<Offer> = {}): Offer {
     stripePaymentIntentId: "pi_old",
     status: "card_failure",
     submittedAt: NOW,
+    recoveringAt: null,
     revisedAt: null,
     ...overrides,
   };
@@ -66,6 +67,20 @@ describe("presentCardFailureRecovery", () => {
       WINDOW,
     );
     expect(view).toBeNull();
+  });
+
+  it("treats a mid-recovery ('recovering') offer like card_failure for display", () => {
+    // The recovery claim is a seconds-long state; the banner staying up is
+    // honest (seat held, payment unsettled) and a duplicate submit is
+    // rejected atomically by the recovery claim itself.
+    const view = presentCardFailureRecovery(
+      makeOffer({ status: "recovering" }),
+      assignmentFailedMinutesAgo(60),
+      NOW,
+      WINDOW,
+    );
+    expect(view).not.toBeNull();
+    expect(view?.minutesLeft).toBe(180);
   });
 
   it("returns null when the offer isn't in card_failure", () => {

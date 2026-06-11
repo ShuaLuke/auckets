@@ -143,6 +143,20 @@ describe("presentAdminShowOps", () => {
     expect(ops.reconciliation?.label).toBe("2 card failures — money unsettled");
   });
 
+  it("counts a mid-recovery ('recovering') offer as unsettled money", () => {
+    // 'recovering' is a card_failure with a recovery charge in flight —
+    // still not settled, so reconciliation must stay loud.
+    const ops = presentAdminShowOps({
+      summary: makeShow({ status: "allocated" }),
+      poolCount: 0,
+      statusCounts: { charged: 199, card_failure: 0, recovering: 1, unplaced: 0 },
+      chargedTotals: { amountCents: 1410000, chargedSeats: 199 },
+      now: NOW,
+    });
+    expect(ops.reconciliation?.reconciled).toBe(false);
+    expect(ops.reconciliation?.label).toBe("1 card failure — money unsettled");
+  });
+
   it("has no reconciliation for a pre-binding show", () => {
     const ops = presentAdminShowOps({
       summary: makeShow({ status: "paused" }),

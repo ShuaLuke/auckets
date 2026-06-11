@@ -6,10 +6,11 @@
 //
 // Active-pool filter for aggregate stats: status IN ('pool', 'placed'). Both
 // statuses are live offers contributing to provisional revenue. 'unplaced',
-// 'charged', 'refunded', 'resold', 'gifted', 'card_failure' are excluded —
-// 'unplaced' didn't make it into a seat, 'charged' is post-binding (no
-// longer part of the pre-binding signal the dashboards show), and the rest
-// are post-resale or terminal failure states.
+// 'charged', 'refunded', 'resold', 'gifted', 'card_failure', 'recovering'
+// are excluded — 'unplaced' didn't make it into a seat, 'charged' is
+// post-binding (no longer part of the pre-binding signal the dashboards
+// show), and the rest are post-resale or post-binding payment/failure
+// states ('recovering' is a card_failure mid-recovery).
 //
 // Median is computed in Postgres via
 //   percentile_cont(0.5) WITHIN GROUP (ORDER BY price_per_ticket_cents)

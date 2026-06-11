@@ -93,7 +93,10 @@ export function presentAdminHealth(input: AdminHealthInput): AdminHealthView {
     if (RESULTED_STATUSES.has(show.status)) {
       const counts = input.statusCountsByShow.get(show.id);
       charged += statusCount(counts, "charged");
-      cardFailures += statusCount(counts, "card_failure");
+      // 'recovering' (a recovery charge mid-flight) is the same ops
+      // situation as card_failure: money not yet settled.
+      cardFailures +=
+        statusCount(counts, "card_failure") + statusCount(counts, "recovering");
     }
     if (
       SCHEDULED_BINDING_STATUSES.has(show.status) &&
@@ -191,7 +194,11 @@ export function presentAdminShowOps(input: AdminShowOpsInput): AdminShowOpsView 
   let reconciliation: ReconciliationView | null = null;
   if (RESULTED_STATUSES.has(summary.status)) {
     const charged = statusCount(input.statusCounts, "charged");
-    const cardFailures = statusCount(input.statusCounts, "card_failure");
+    // Same treatment as presentAdminHealth: an in-flight recovery is still
+    // unsettled money.
+    const cardFailures =
+      statusCount(input.statusCounts, "card_failure") +
+      statusCount(input.statusCounts, "recovering");
     const unplaced = statusCount(input.statusCounts, "unplaced");
     const amountCents = input.chargedTotals?.amountCents ?? 0;
     const chargedSeats = input.chargedTotals?.chargedSeats ?? 0;

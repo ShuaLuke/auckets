@@ -69,6 +69,7 @@ function buildSyntheticOffer(show: Show, candidate: CandidateInput): Offer {
     stripePaymentIntentId: null,
     status: "pool",
     submittedAt: candidate.submittedAt,
+    recoveringAt: null,
     revisedAt: null,
   };
 }

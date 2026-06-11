@@ -50,6 +50,9 @@ const OFFER_STATUS_LABEL: Record<OfferStatus, string> = {
   unplaced: "Not placed",
   charged: "Ticket purchased",
   card_failure: "Payment failed",
+  // Mid-recovery (replacement card being charged) — same fan-facing
+  // situation as card_failure; it resolves within seconds either way.
+  recovering: "Payment failed",
   refunded: "Refunded",
   resold: "Resold",
   gifted: "Gifted",

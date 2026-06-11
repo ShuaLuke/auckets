@@ -238,9 +238,21 @@ export const offers = pgTable(
     // duration of the offer window. Null when the offer was submitted
     // via the SetupIntent fallback path (or the dev stub).
     stripePaymentIntentId: text("stripe_payment_intent_id"),
-    // pool | placed | unplaced | charged | card_failure | refunded | resold |
-    // gifted.
+    // pool | placed | unplaced | charged | card_failure | recovering |
+    // refunded | resold | gifted.
+    //
+    // 'recovering' is the short-lived claim state for card-failure recovery
+    // (src/lib/stripe/card-failure-recovery.ts): the fan's recovery request
+    // claims the offer with a compare-and-set (card_failure → recovering)
+    // BEFORE any Stripe call, so two concurrent recovery requests can't both
+    // charge. It resolves to 'charged' on success or reverts to
+    // 'card_failure' on a failed charge; a crashed recovery is swept back to
+    // 'card_failure' by the expiry cron via recovering_at below.
     status: text("status").notNull().default("pool"),
+    // When the in-flight card-failure recovery claimed this offer (status
+    // 'recovering'). NULL otherwise. The expiry cron uses it to sweep
+    // recoveries orphaned by a crash back to 'card_failure'.
+    recoveringAt: timestamp("recovering_at", { withTimezone: true }),
     submittedAt: timestamp("submitted_at", { withTimezone: true }).notNull().defaultNow(),
     revisedAt: timestamp("revised_at", { withTimezone: true }),
   },

@@ -16,11 +16,15 @@
 // disputes arrive with the resale + dispute slices.
 //
 // Idempotency: Stripe redelivers events. We read the prior receipt and skip
-// re-acting on one already in a terminal status; the state transitions below
-// are themselves idempotent (they only move an offer between specific
-// statuses), so a mid-flight redelivery is also safe.
+// re-acting on one already in a terminal status. recordWebhookReceived is the
+// concurrent-delivery gate: it claims the receipt row with an insert-or-noop,
+// and only the claim winner runs handlers — two simultaneous deliveries of the
+// same event can't both act (and, e.g., send the card-failure email twice).
+// A receipt left in 'error' (handler threw) or in a stale 'received' (process
+// died mid-handling) is reprocessed on Stripe's retry; the state transitions
+// below are themselves idempotent, so a reprocess is safe.
 
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type Stripe from "stripe";
 
 import type { Db } from "@/lib/db";
@@ -88,6 +92,12 @@ function paymentIntentOf(event: Stripe.Event): Stripe.PaymentIntent | null {
   return null;
 }
 
+// How fresh a 'received' (claimed, not yet finished) receipt must be to count
+// as in-flight. Concurrent duplicate deliveries land within seconds; a
+// 'received' row older than this means the claiming process died mid-handling,
+// and Stripe's retry should reprocess rather than be told "duplicate" forever.
+const IN_FLIGHT_RECEIPT_MAX_AGE_MS = 5 * 60_000;
+
 export async function processStripeEvent(
   db: Db,
   event: Stripe.Event,
@@ -102,11 +112,33 @@ export async function processStripeEvent(
   }
 
   const pi = paymentIntentOf(event);
-  await recordWebhookReceived(db, {
+  const claimed = await recordWebhookReceived(db, {
     eventId: event.id,
     type: event.type,
     paymentIntentId: pi?.id ?? null,
   });
+  if (!claimed) {
+    // The receipt row already existed, so we did NOT win the claim. Decide
+    // from its status whether this delivery should still run handlers:
+    //   - terminal → finished since our fast-path read; duplicate.
+    //   - fresh 'received' → another delivery is handling it right now;
+    //     running handlers too would double-act (the concurrent-delivery
+    //     race this claim exists to close). Duplicate.
+    //   - 'error', or a stale 'received' (claimer died mid-handling) →
+    //     this is Stripe's retry; fall through and reprocess.
+    const receipt = await getWebhookEvent(db, event.id);
+    if (receipt) {
+      const terminal = (
+        WEBHOOK_TERMINAL_STATUSES as readonly string[]
+      ).includes(receipt.status);
+      const inFlight =
+        receipt.status === "received" &&
+        Date.now() - receipt.createdAt.getTime() < IN_FLIGHT_RECEIPT_MAX_AGE_MS;
+      if (terminal || inFlight) {
+        return { processed: false, action: "duplicate" };
+      }
+    }
+  }
 
   try {
     let action: WebhookAction;
@@ -165,18 +197,48 @@ async function handlePaymentFailed(
     );
     return "ignored";
   }
-  await db.transaction(async (tx) => {
-    await tx
+  if (offer.status === "recovering") {
+    // An in-flight card-failure recovery owns this offer (it already knows
+    // the card failed — that's why it's recovering). Resetting it to
+    // card_failure here would break the recovery's claim and reopen the
+    // double-charge window; the recovery itself reverts on a failed charge.
+    logger.warn(
+      { offerId: offer.id, paymentIntentId: pi.id },
+      "payment_failed for an offer mid-recovery — recovery owns it; ignoring",
+    );
+    return "ignored";
+  }
+  const flipped = await db.transaction(async (tx) => {
+    // Status-guarded for the same reason as above, but atomically: the
+    // read of offer.status can go stale before this write (a recovery
+    // claiming the offer, the succeeded backstop charging it). Only stamp
+    // the seat — and only email the fan below — when the flip happened.
+    const rows = await tx
       .update(offers)
       .set({ status: "card_failure" })
-      .where(eq(offers.id, offer.id));
+      .where(
+        and(
+          eq(offers.id, offer.id),
+          inArray(offers.status, ["pool", "placed", "unplaced", "card_failure"]),
+        ),
+      )
+      .returning({ id: offers.id });
+    if (rows.length === 0) return false;
     // Stamps the assignment when one exists (binding-time failure); matches
     // zero rows for a pre-binding failure, which is fine.
     await tx
       .update(seatAssignments)
       .set({ cardFailureAt: new Date() })
       .where(eq(seatAssignments.offerId, offer.id));
+    return true;
   });
+  if (!flipped) {
+    logger.warn(
+      { offerId: offer.id, paymentIntentId: pi.id },
+      "payment_failed flip skipped — offer status moved concurrently",
+    );
+    return "ignored";
+  }
 
   // Tell the fan to add a working card within the recovery window. Best-effort
   // and fully isolated: a mail/lookup hiccup must not flip the webhook to an
@@ -227,7 +289,9 @@ async function handleSucceeded(
   }
   if (offer.status !== "placed" && offer.status !== "card_failure") {
     // A capture on an offer we think is pool/unplaced is anomalous — record
-    // and surface it rather than silently flipping it to charged.
+    // and surface it rather than silently flipping it to charged. This also
+    // covers 'recovering': an in-flight recovery owns the offer and will
+    // write its own outcome.
     logger.warn(
       { offerId: offer.id, status: offer.status, paymentIntentId: pi.id },
       "payment_intent.succeeded for an offer in an unexpected status — recorded only",
@@ -237,15 +301,33 @@ async function handleSucceeded(
   // amount_received is the captured amount; fall back to the offer's total.
   const amountCents =
     pi.amount_received || offer.pricePerTicketCents * offer.groupSize;
-  await db.transaction(async (tx) => {
-    await tx
+  const charged = await db.transaction(async (tx) => {
+    // Status-guarded: the read above can go stale (e.g. a recovery claims
+    // the offer between our read and this write). Only the statuses we
+    // checked for may flip; the seat stamp rides on the flip.
+    const rows = await tx
       .update(offers)
       .set({ status: "charged" })
-      .where(eq(offers.id, offer.id));
+      .where(
+        and(
+          eq(offers.id, offer.id),
+          inArray(offers.status, ["placed", "card_failure"]),
+        ),
+      )
+      .returning({ id: offers.id });
+    if (rows.length === 0) return false;
     await tx
       .update(seatAssignments)
       .set({ chargedAmountCents: amountCents, cardFailureAt: null })
       .where(eq(seatAssignments.offerId, offer.id));
+    return true;
   });
+  if (!charged) {
+    logger.warn(
+      { offerId: offer.id, paymentIntentId: pi.id },
+      "payment_intent.succeeded flip skipped — offer status moved concurrently",
+    );
+    return "ignored";
+  }
   return "charged";
 }
