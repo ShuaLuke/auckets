@@ -407,6 +407,83 @@ describe("waterfall — already-placed seats become holds in subsequent passes",
   });
 });
 
+describe("waterfall — partial venue activation (activeRowIds, NEW-4)", () => {
+  it("orders tiers by ACTIVE rows only: an inactive better-ranked row must not poison the tier ordering", () => {
+    // Venue: gold has rows at rowRank 1 (INACTIVE this show) and
+    // rowRank 10 (active); silver is active at rowRank 5. For THIS
+    // show, the seating reality is silver (rank 5) above gold (rank 10).
+    //
+    // A this_or_worse:silver fan whose silver row fills must waterfall
+    // into the active gold row — gold is "worse" in the active ordering.
+    // The bug: building the tier index from ALL rows ranks gold above
+    // silver via the inactive rank-1 row, so the matcher rejects the
+    // gold row, the fan goes unplaced, and 4 free active gold seats sit
+    // empty (lost revenue + a wrong "no seat" email).
+    const rows = [
+      makeRow({ id: "gold-inactive", rowRank: 1, capacity: 4, tier: "gold" }),
+      makeRow({ id: "silver-1", rowRank: 5, capacity: 4, tier: "silver" }),
+      makeRow({ id: "gold-active", rowRank: 10, capacity: 4, tier: "gold" }),
+    ];
+    const venue = makeVenue(rows, ["silver-1", "gold-active"]);
+    const offers = [
+      makeOffer({
+        id: "fills-silver",
+        pricePerTicketCents: 9000,
+        groupSize: 4,
+        tierPreference: { type: "specific", tier: "silver" },
+      }),
+      makeOffer({
+        id: "silver-or-worse",
+        pricePerTicketCents: 8000,
+        groupSize: 4,
+        tierPreference: { type: "this_or_worse", tier: "silver" },
+      }),
+    ];
+
+    const result = runFull(venue, offers);
+
+    expect(result.unplaced).toEqual([]);
+    const waterfalled = result.decisions.find(
+      (d) => d.action === "WATERFALLED",
+    );
+    expect(waterfalled?.offerId).toBe("silver-or-worse");
+    expect(waterfalled?.snapshot["preferredTier"]).toBe("silver");
+    expect(waterfalled?.snapshot["placedTier"]).toBe("gold");
+    const placedRows = result.assignments
+      .filter((a) => a.offerId === "silver-or-worse")
+      .map((a) => a.venueRowId);
+    expect(placedRows).toHaveLength(4);
+    expect(placedRows.every((r) => r === "gold-active")).toBe(true);
+  });
+
+  it("classifies a specific-tier offer as no_compatible_tier when that tier's rows exist but are all inactive", () => {
+    // Spec §"Tier preferences with no compatible rows": no premium rows
+    // *active in this show* → reason must be no_compatible_tier. The
+    // bug: the all-rows tier index still contains 'premium', so the
+    // offer was misclassified as no_fit_anywhere.
+    const rows = [
+      makeRow({ id: "premium-1", rowRank: 1, capacity: 4, tier: "premium" }),
+      makeRow({ id: "mid-1", rowRank: 5, capacity: 4, tier: "mid" }),
+    ];
+    const venue = makeVenue(rows, ["mid-1"]);
+    const offers = [
+      makeOffer({
+        id: "premium-only",
+        pricePerTicketCents: 9000,
+        groupSize: 4,
+        tierPreference: { type: "specific", tier: "premium" },
+      }),
+    ];
+
+    const result = runFull(venue, offers);
+
+    expect(result.assignments).toEqual([]);
+    expect(result.unplaced).toEqual([
+      { offerId: "premium-only", reason: "no_compatible_tier" },
+    ]);
+  });
+});
+
 describe("waterfall — tier ordering inference", () => {
   it("infers tier order from min rowRank per tier (lower = better)", () => {
     // premium spans rowRanks [3, 4], mid spans [1, 2]. Despite the

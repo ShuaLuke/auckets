@@ -23,8 +23,9 @@
 // in place for spec compliance and to remain correct under future
 // smarter packing where one pass's placements might unlock another.
 //
-// Tier ordering is inferred from `rowRank`: a tier's "rank" is the
-// minimum rowRank of any row in that tier (better tiers have lower
+// Tier ordering is inferred from `rowRank` over the rows ACTIVE for
+// this show (venue.activeRowIds): a tier's "rank" is the minimum
+// rowRank of any active row in that tier (better tiers have lower
 // ranks). Ties broken by tier name. Documented as a working assumption
 // in the PR — if a venue ever surfaces interleaved tiers (e.g. premium
 // and mid sharing rowRank ranges), the artist should specify the order
@@ -71,7 +72,7 @@ export function waterfall(
     return { assignments: [], decisions: [], unplaced: [] };
   }
 
-  const tierIdx = buildTierIndex(venue.rows);
+  const tierIdx = buildTierIndex(getActiveRows(venue));
   const matcher = makeRelaxedMatcher(tierIdx);
 
   // Track placed seats by row so we can keep extending the holds list
@@ -115,8 +116,25 @@ export function waterfall(
   };
 }
 
+// Rows enabled for THIS show (NEW-4 partial venue activation). Same
+// idiom as launchpad's getActiveRowsByRank, minus the sort — the tier
+// index computes its own min-rank ordering.
+function getActiveRows(venue: VenueArchitecture): VenueRow[] {
+  const activeSet = new Set(venue.activeRowIds);
+  return venue.rows.filter((r) => activeSet.has(r.id));
+}
+
 // Build an ordered index of tier name → integer rank. Lower index =
 // "better" tier (closer to rowRank 1).
+//
+// MUST be built from the ACTIVE rows only. The waterfall reasons about
+// this show's seating reality, not the building's: an inactive row's
+// rowRank must not promote its tier above tiers that are actually open
+// (a closed gold row at rowRank 1 doesn't make the open gold row at
+// rowRank 10 "better" than the open silver row at rowRank 5), and a
+// tier whose rows are all inactive must be absent from the index so
+// offers anchored to it classify as `no_compatible_tier` (spec §"Tier
+// preferences with no compatible rows").
 function buildTierIndex(rows: VenueRow[]): Map<string, number> {
   const minRankByTier = new Map<string, number>();
   for (const row of rows) {

@@ -527,3 +527,53 @@ input[type="range"].auk-dial:focus-visible {
   background: var(--ink-300);
   opacity: 0.8;
 }
+
+/* Loading skeleton — a paper-2 block with a soft light band sweeping
+   through (UI-2 feel pack). Used by the route loading.tsx files so a
+   navigation paints a layout-shaped placeholder instead of a blank
+   stall. Under prefers-reduced-motion the sweep is dropped and the
+   block sits static — still a placeholder, never a strobe. */
+@keyframes auk-shimmer {
+  to { background-position: -200% 0; }
+}
+.auk-skeleton {
+  border-radius: var(--radius-md);
+  background-color: var(--paper-2);
+  background-image: linear-gradient(
+    90deg,
+    transparent 35%,
+    rgba(255, 255, 255, 0.55) 50%,
+    transparent 65%
+  );
+  background-size: 200% 100%;
+  background-position: 200% 0;
+  background-repeat: no-repeat;
+  animation: auk-shimmer 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .auk-skeleton { animation: none; background-image: none; }
+}
+
+/* Height collapse — the grid-template-rows 0fr/1fr trick (UI-2 feel
+   pack). Wrap dismissible content in .auk-collapsible with a single
+   child; flipping data-closed="true" folds it shut (height + fade)
+   instead of snapping it out of the layout. Reduced-motion users get
+   the state change without the fold. */
+.auk-collapsible {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition:
+    grid-template-rows var(--dur-base) var(--ease-out),
+    opacity var(--dur-base) var(--ease-out);
+}
+.auk-collapsible > * {
+  min-height: 0;
+  overflow: hidden;
+}
+.auk-collapsible[data-closed="true"] {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .auk-collapsible { transition: none; }
+}

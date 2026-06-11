@@ -7,6 +7,11 @@
 // It reuses buildPreviewAllocationPlan, so the projection is faithful to what
 // a real preview/binding run would do (including auto-bid resolution), not an
 // approximation. Pure: no DB, no clock, no Stripe — the route supplies `now`.
+//
+// Caller contract: `architecture` must already include the per-show holds
+// (merge the `holds` table in via mergeShowHoldsIntoArchitecture, exactly
+// as run-preview/run-binding do) — otherwise the projection would show a
+// fan landing in seats binding would never sell.
 
 import type { Offer, VenueArchitecture as DbVenueArchitecture } from "@/lib/db/repositories";
 
