@@ -49,6 +49,89 @@ export function assertNoDevStubInProduction(envVars: NodeJS.ProcessEnv): void {
 
 assertNoDevStubInProduction(process.env);
 
+// Production-fatal env vars. Several keys are Zod-optional so dev, preview,
+// and CI can run without real credentials — but in REAL production their
+// absence doesn't fail loudly, it degrades silently:
+//
+//   STRIPE_SECRET_KEY              missing → POST /api/offers 503s AND the
+//                                  scheduled-binding cron skips every sweep,
+//                                  so shows never bind and nobody is paged.
+//   STRIPE_WEBHOOK_SECRET          missing → the Stripe webhook 503s; card-
+//                                  failure detection is dead.
+//   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY  missing → Stripe Elements never
+//                                  mounts; fans can't submit card details.
+//   INNGEST_EVENT_KEY / INNGEST_SIGNING_KEY  missing → none of the four
+//                                  crons fire (binding, card-failure expiry,
+//                                  ticket issuance, imminent emails).
+//
+// So: on a real production deploy, require them all at module load with one
+// error that lists exactly what's missing and what breaks without it.
+//
+// "Real production" means VERCEL_ENV === "production" — strictly, with NO
+// NODE_ENV fallback. This is deliberately narrower than
+// assertNoDevStubInProduction: CI builds and unit tests run with
+// NODE_ENV=production and format-valid dummy envs (only DATABASE_URL +
+// Clerk + APP_URL), and must keep passing without Stripe/Inngest keys.
+// Vercel sets VERCEL_ENV at build time too, so a production deploy with a
+// missing key fails the build — loudly, before it can serve traffic.
+//
+// INNGEST_DEV is the inverse: it must be ABSENT in production. If set,
+// the Inngest SDK skips request-signature validation and /api/inngest
+// becomes an unauthenticated job-execution endpoint.
+//
+// Exported so the guard is unit-testable without module-reload tricks.
+export function assertProductionCriticalEnv(envVars: NodeJS.ProcessEnv): void {
+  if (envVars.VERCEL_ENV !== "production") return;
+
+  // What silently breaks without each var, for the error message.
+  // emptyStringAsUndefined below means "" is as good as unset — treat it so.
+  const required: Array<[name: string, silentFailure: string]> = [
+    [
+      "STRIPE_SECRET_KEY",
+      "offer submission 503s and the scheduled-binding cron silently skips every sweep (shows never bind)",
+    ],
+    [
+      "STRIPE_WEBHOOK_SECRET",
+      "the Stripe webhook 503s (card-failure detection dead)",
+    ],
+    [
+      "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+      "fans cannot submit card details (Stripe Elements never mounts)",
+    ],
+    [
+      "INNGEST_EVENT_KEY",
+      "events are never delivered, so no cron fires (binding, card-failure expiry, ticket issuance, imminent emails)",
+    ],
+    [
+      "INNGEST_SIGNING_KEY",
+      "Inngest cannot authenticate to /api/inngest, so no cron fires",
+    ],
+  ];
+
+  const problems: string[] = [];
+  for (const [name, silentFailure] of required) {
+    const value = envVars[name];
+    if (value === undefined || value === "") {
+      problems.push(`  - ${name} is missing: ${silentFailure}`);
+    }
+  }
+  if (envVars.INNGEST_DEV !== undefined && envVars.INNGEST_DEV !== "") {
+    problems.push(
+      "  - INNGEST_DEV is set: the Inngest SDK skips signature validation, making /api/inngest an unauthenticated job-execution endpoint. Remove it.",
+    );
+  }
+
+  if (problems.length > 0) {
+    throw new Error(
+      "Production environment is misconfigured — refusing to start:\n" +
+        problems.join("\n") +
+        "\nSet these in the Vercel production environment (see the launch runbook) and redeploy.",
+    );
+  }
+}
+
+assertProductionCriticalEnv(process.env);
+
 export const env = createEnv({
   server: {
     DATABASE_URL: z.url(),

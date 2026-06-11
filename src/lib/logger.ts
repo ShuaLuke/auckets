@@ -14,7 +14,10 @@ import pino, { type Logger } from "pino";
  * existence of a secret field doesn't leak either.
  */
 
-const REDACT_PATHS = [
+// Exported for the redaction unit test (logger.test.ts), which builds a
+// pino instance with these paths against an in-memory sink — the singleton
+// below writes to stdout, so it can't be asserted against directly.
+export const REDACT_PATHS = [
   "password",
   "*.password",
   "token",
@@ -27,6 +30,12 @@ const REDACT_PATHS = [
   "*.authorization",
   "cookie",
   "*.cookie",
+  // Drizzle rows come back camelCased, so the generic names above miss the
+  // actually-sensitive column on the tickets table: totpSecret (the base32
+  // seed for the rotating QR — logging it lets anyone mint valid tickets).
+  // Redact it at the top level and one level deep (a logged ticket row).
+  "totpSecret",
+  "*.totpSecret",
   "req.headers.authorization",
   "req.headers.cookie",
 ];
