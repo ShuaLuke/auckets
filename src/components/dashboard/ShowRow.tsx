@@ -65,8 +65,10 @@ export function ShowRow({ show }: Props) {
   return (
     <Link
       href={href}
-      className="group flex items-start gap-3 rounded-xl border bg-[var(--page)] px-4 py-[18px] no-underline transition-all duration-[120ms] ease-[var(--ease-out)] hover:-translate-y-px hover:border-[color:var(--border-strong)] hover:shadow-[var(--shadow-md)] md:gap-5 md:px-5"
-      style={{ borderColor: "var(--border)" }}
+      // flex-wrap below sm: the badge/countdown column drops to its own
+      // full-width line under the show details instead of squeezing the
+      // meta text into one-word-per-line wraps next to it (390px bug).
+      className="group flex flex-wrap items-start gap-3 rounded-xl border border-[color:var(--border)] bg-[var(--page)] px-4 py-[18px] no-underline transition-all duration-[120ms] ease-[var(--ease-out)] hover:border-[color:var(--border-strong)] hover:shadow-[var(--shadow-md)] motion-safe:hover:-translate-y-px sm:flex-nowrap md:gap-5 md:px-5"
     >
       {/* Date stub — with the ticket-stub perforation on its right edge. */}
       <div
@@ -93,7 +95,9 @@ export function ShowRow({ show }: Props) {
 
       {/* Middle column — venue + artist + dateLong + yourOffer chip + ladder */}
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-        <div className="flex items-baseline gap-3">
+        {/* Stacked below sm so the artist · city meta gets the full column
+            width instead of wrapping word-by-word beside the venue name. */}
+        <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-3">
           <h3 className="text-lg">{show.venue}</h3>
           <span className="font-sans text-xs" style={{ color: "var(--fg-subtle)" }}>
             {show.artist}
@@ -127,8 +131,10 @@ export function ShowRow({ show }: Props) {
         )}
       </div>
 
-      {/* Right column — badge + closes countdown */}
-      <div className="flex flex-shrink-0 flex-col items-end gap-2">
+      {/* Right column — badge + closes countdown. Below sm it wraps to its
+          own row (order-last + w-full), indented to align with the text
+          column, with the badge and countdown side by side. */}
+      <div className="order-last flex w-full flex-shrink-0 items-center justify-between gap-2 pl-[76px] sm:order-none sm:w-auto sm:flex-col sm:items-end sm:pl-0">
         <Badge tone={tone}>{label}</Badge>
         {show.closes && (
           <span className="font-mono text-[11px]" style={{ color: "var(--fg-subtle)" }}>

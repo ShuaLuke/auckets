@@ -418,10 +418,10 @@ function ForArtists() {
             <SignUpButton mode="modal">
               <MarqueeButton
                 iconAfter={<ArrowRight size={18} strokeWidth={1.75} aria-hidden />}
+                stampColor="var(--marquee-500)"
                 style={{
                   background: "var(--paper)",
                   color: "var(--ink-900)",
-                  boxShadow: "4px 4px 0 0 var(--marquee-500)",
                 }}
               >
                 Pitch your venue
