@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Auckets mark, Greenwood">
+  <defs>
+    <pattern id="perf-g" x="0" y="0" width="8" height="14" patternUnits="userSpaceOnUse">
+      <circle cx="4" cy="7" r="2" fill="#F4F1E8"></circle>
+    </pattern>
+  </defs>
+  <rect x="6" y="6" width="108" height="108" rx="20" fill="#1F4A2E"></rect>
+  <rect x="84" y="14" width="8" height="92" fill="url(#perf-g)"></rect>
+  <text x="14" y="92" font-family="Bricolage Grotesque, Inter Tight, system-ui, sans-serif" font-weight="700" font-size="92" letter-spacing="-0.04em" style="font-variation-settings:&#39;opsz&#39; 72" fill="#F4F1E8">A</text>
+</svg>
