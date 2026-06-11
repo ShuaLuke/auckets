@@ -121,7 +121,8 @@ export const venueArchitectures = pgTable(
       .references(() => venues.id, { onDelete: "restrict" }),
     version: integer("version").notNull(),
     // Array of row objects per GAE_SPEC §Inputs + VenueBuilder.jsx. Includes
-    // manifest holds (ADA, sound desk). Per-show comp holds live on `shows`.
+    // manifest holds (ADA, sound desk). Per-show holds live in the `holds`
+    // table (§17) and are merged in at allocation time.
     rows: jsonb("rows").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -171,9 +172,12 @@ export const shows = pgTable(
     bleacherEnabled: boolean("bleacher_enabled").notNull().default(false),
     bleacherCapacity: integer("bleacher_capacity").notNull().default(0),
     bleacherPriceCents: integer("bleacher_price_cents"),
-    // Per-show artist comp holds. Distinct from manifest holds, which live in
-    // venue_architectures.rows[].holds. Different lifecycles: manifest holds
-    // are always-true (ADA), show holds are per-show comp lists.
+    // VESTIGIAL — nothing writes or reads this column. Per-show holds
+    // (artist comps, ADA, production) live in the `holds` table (§17),
+    // which the allocation paths merge into the architecture via
+    // mergeShowHoldsIntoArchitecture (src/lib/allocation/translate.ts).
+    // The column predates that table and is kept only to avoid a
+    // migration churn; do not start writing to it — use `holds`.
     showHolds: jsonb("show_holds").notNull().default(sql`'[]'::jsonb`),
     emailCustomization: jsonb("email_customization"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

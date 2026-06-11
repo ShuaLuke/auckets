@@ -10,7 +10,10 @@
 // → assert the venueRowId + seatNumbers are valid for that
 // architecture → insert.
 //
-// The GAE picks up the new hold on the next preview run; no other
+// The hold reaches the GAE on the next allocation compute: run-preview,
+// run-binding, and the live projection route all merge this table into
+// the venue architecture via mergeShowHoldsIntoArchitecture
+// (src/lib/allocation/translate.ts) before building a plan. No other
 // state changes here.
 
 import { auth, currentUser } from "@clerk/nextjs/server";

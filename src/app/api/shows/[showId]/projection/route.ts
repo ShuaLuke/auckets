@@ -25,9 +25,11 @@ import { db } from "@/lib/db";
 import {
   getOfferByShowAndUser,
   getShowById,
+  listHoldsForShow,
   listPoolOffersForShow,
 } from "@/lib/db/repositories";
 import { projectCandidateOffer } from "@/lib/allocation/project-candidate";
+import { mergeShowHoldsIntoArchitecture } from "@/lib/allocation/translate";
 import {
   presentLiveProjection,
   type LiveProjectionView,
@@ -110,14 +112,19 @@ export async function POST(
     return NextResponse.json(hit.value);
   }
 
-  const [poolOffers, existingOffer] = await Promise.all([
+  const [poolOffers, existingOffer, showHolds] = await Promise.all([
     listPoolOffersForShow(db, parsedParams.data.showId),
     getOfferByShowAndUser(db, parsedParams.data.showId, userId),
+    listHoldsForShow(db, parsedParams.data.showId),
   ]);
 
   const projection = projectCandidateOffer(
     show,
-    show.venueArchitecture,
+    // Merge the per-show holds (artist comps, ADA, production) from the
+    // `holds` table into the architecture's manifest holds — the same
+    // merge preview and binding apply — so the dial never projects a fan
+    // into a held seat that binding would refuse.
+    mergeShowHoldsIntoArchitecture(show.venueArchitecture, showHolds),
     poolOffers,
     {
       userId,

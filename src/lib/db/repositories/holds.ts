@@ -1,6 +1,12 @@
-// Read + write helpers for the holds table. The GAE already respects
-// venue_architectures.rows[].holds at allocation time; this table is
-// a per-show addition layered on top.
+// Read + write helpers for the holds table — the LIVE source of
+// per-show holds (artist comps, ADA, production). Building-level
+// manifest holds live in venue_architectures.rows[].holds and the GAE
+// reads those directly; rows from THIS table reach the engine because
+// every allocation path (run-preview, run-binding, the live projection
+// route) merges them into the architecture via
+// mergeShowHoldsIntoArchitecture (src/lib/allocation/translate.ts)
+// before building a plan. The legacy shows.show_holds JSONB column is
+// vestigial — nothing writes or reads it; this table is authoritative.
 //
 // Write-side posture (enforced at the route layer, not here):
 //   - kind='artist' (comps) creatable + deletable by anyone who can
@@ -79,9 +85,11 @@ export async function createHold(
 }
 
 // Hard delete is intentional — holds are operational state, not
-// audit-relevant payment history. The GAE picks up the change on the
-// next preview run. Returns the deleted row (or null when no row
-// matched) so the caller can surface "already gone" cleanly.
+// audit-relevant payment history. The next allocation compute (preview,
+// projection, or binding) re-reads this table and re-merges it into the
+// architecture (see file header), so the freed seats return to the
+// sellable pool. Returns the deleted row (or null when no row matched)
+// so the caller can surface "already gone" cleanly.
 export async function deleteHoldById(
   db: Db,
   holdId: string,
