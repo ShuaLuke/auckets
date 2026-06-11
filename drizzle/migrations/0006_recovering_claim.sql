@@ -1,0 +1,1 @@
+ALTER TABLE "offers" ADD COLUMN "recovering_at" timestamp with time zone;

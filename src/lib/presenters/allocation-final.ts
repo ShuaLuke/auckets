@@ -275,8 +275,13 @@ export function presentAllocationFinal(
 
   // Binding seat held but the capture failed — recovery still open. Lead with
   // "you're in"; the deadline + minutes come from the shared recovery
-  // presenter (null once the window has lapsed).
-  if (offer.status === "card_failure" && seat?.isBinding) {
+  // presenter (null once the window has lapsed). 'recovering' (a recovery
+  // charge is mid-flight, a seconds-long state) renders the same screen so
+  // the page doesn't flash to a 404 while the charge settles.
+  if (
+    (offer.status === "card_failure" || offer.status === "recovering") &&
+    seat?.isBinding
+  ) {
     const recovery = context.cardFailure;
     return {
       ...base,

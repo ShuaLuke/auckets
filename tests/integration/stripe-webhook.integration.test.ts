@@ -172,6 +172,143 @@ describe("processStripeEvent (integration)", () => {
     expect(row?.status).toBe("placed"); // untouched by the redelivery
   });
 
+  it("short-circuits a concurrent duplicate delivery (in-flight 'received' receipt)", async () => {
+    // Two simultaneous deliveries of the same event: the first claims the
+    // receipt row ('received') and is still mid-handlers when the second
+    // arrives. The second must NOT run handlers too (it would double-act —
+    // e.g. send the card-failure email twice).
+    const show = await seedShowRow();
+    const offer = await seedPlacedOffer(show.id, {
+      piId: "pi_inflight",
+      priceCents: 5000,
+      groupSize: 2,
+    });
+
+    // The first delivery's fresh claim, frozen mid-flight.
+    await db.insert(stripeWebhookEvents).values({
+      eventId: "evt_inflight",
+      type: "payment_intent.payment_failed",
+      paymentIntentId: "pi_inflight",
+      status: "received",
+    });
+
+    const second = await processStripeEvent(
+      db,
+      piEvent("evt_inflight", "payment_intent.payment_failed", {
+        id: "pi_inflight",
+      }),
+    );
+    expect(second).toEqual({ processed: false, action: "duplicate" });
+
+    // The handler did not run: the offer is untouched.
+    const [row] = await db.select().from(offers).where(eq(offers.id, offer.id));
+    expect(row?.status).toBe("placed");
+  });
+
+  it("reprocesses a receipt left in 'error' (Stripe's retry of a failed attempt)", async () => {
+    const show = await seedShowRow();
+    const offer = await seedPlacedOffer(show.id, {
+      piId: "pi_retry_err",
+      priceCents: 5000,
+      groupSize: 2,
+    });
+    await db.insert(stripeWebhookEvents).values({
+      eventId: "evt_retry_err",
+      type: "payment_intent.payment_failed",
+      paymentIntentId: "pi_retry_err",
+      status: "error",
+      note: "boom",
+    });
+
+    const retry = await processStripeEvent(
+      db,
+      piEvent("evt_retry_err", "payment_intent.payment_failed", {
+        id: "pi_retry_err",
+      }),
+    );
+    expect(retry).toEqual({ processed: true, action: "card_failure" });
+
+    const [row] = await db.select().from(offers).where(eq(offers.id, offer.id));
+    expect(row?.status).toBe("card_failure");
+  });
+
+  it("reprocesses a stale 'received' receipt (the claimer died mid-handling)", async () => {
+    const show = await seedShowRow();
+    const offer = await seedPlacedOffer(show.id, {
+      piId: "pi_stale",
+      priceCents: 5000,
+      groupSize: 2,
+    });
+    await db.insert(stripeWebhookEvents).values({
+      eventId: "evt_stale",
+      type: "payment_intent.payment_failed",
+      paymentIntentId: "pi_stale",
+      status: "received",
+      createdAt: new Date(Date.now() - 10 * 60_000), // beyond the in-flight bound
+    });
+
+    const retry = await processStripeEvent(
+      db,
+      piEvent("evt_stale", "payment_intent.payment_failed", { id: "pi_stale" }),
+    );
+    expect(retry).toEqual({ processed: true, action: "card_failure" });
+
+    const [row] = await db.select().from(offers).where(eq(offers.id, offer.id));
+    expect(row?.status).toBe("card_failure");
+  });
+
+  it("payment_failed does not clobber an offer mid-recovery ('recovering')", async () => {
+    // A redelivered payment_failed for the old PI must not reset the
+    // recovery's atomic claim — doing so would reopen the double-charge
+    // window the claim exists to close.
+    const show = await seedShowRow();
+    const offer = await seedPlacedOffer(show.id, {
+      piId: "pi_mid_recovery",
+      priceCents: 5000,
+      groupSize: 2,
+    });
+    await db
+      .update(offers)
+      .set({ status: "recovering", recoveringAt: new Date() })
+      .where(eq(offers.id, offer.id));
+
+    const result = await processStripeEvent(
+      db,
+      piEvent("evt_mid_recovery_fail", "payment_intent.payment_failed", {
+        id: "pi_mid_recovery",
+      }),
+    );
+    expect(result).toEqual({ processed: true, action: "ignored" });
+
+    const [row] = await db.select().from(offers).where(eq(offers.id, offer.id));
+    expect(row?.status).toBe("recovering"); // claim intact
+  });
+
+  it("payment_intent.succeeded does not clobber an offer mid-recovery", async () => {
+    const show = await seedShowRow();
+    const offer = await seedPlacedOffer(show.id, {
+      piId: "pi_mid_recovery_ok",
+      priceCents: 5000,
+      groupSize: 2,
+    });
+    await db
+      .update(offers)
+      .set({ status: "recovering", recoveringAt: new Date() })
+      .where(eq(offers.id, offer.id));
+
+    const result = await processStripeEvent(
+      db,
+      piEvent("evt_mid_recovery_ok", "payment_intent.succeeded", {
+        id: "pi_mid_recovery_ok",
+        amount_received: 10000,
+      }),
+    );
+    expect(result).toEqual({ processed: true, action: "ignored" });
+
+    const [row] = await db.select().from(offers).where(eq(offers.id, offer.id));
+    expect(row?.status).toBe("recovering"); // the recovery writes its own outcome
+  });
+
   it("records canceled events without changing state", async () => {
     const show = await seedShowRow();
     const offer = await seedPlacedOffer(show.id, {

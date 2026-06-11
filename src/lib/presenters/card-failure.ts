@@ -18,18 +18,25 @@ export type CardFailureRecoveryView = {
 };
 
 // Returns the recovery view, or null when there's nothing to recover:
-//   - the offer isn't in 'card_failure' (never failed, already recovered, or
-//     released to 'unplaced' once the window lapsed),
+//   - the offer isn't in 'card_failure' / 'recovering' (never failed, already
+//     recovered, or released to 'unplaced' once the window lapsed),
 //   - there's no binding seat assignment / no card_failure_at stamp, or
 //   - the window has already elapsed (the expiry cron will release it; we
 //     don't offer a charge for a seat about to be freed).
+//
+// 'recovering' (a concurrent recovery is mid-charge — a seconds-long state)
+// renders the same banner rather than flashing the page to "no result": if
+// the fan resubmits, the recovery claim rejects the duplicate atomically.
 export function presentCardFailureRecovery(
   offer: Offer | null,
   assignment: Pick<SeatAssignment, "cardFailureAt"> | null,
   now: Date,
   windowMinutes: number,
 ): CardFailureRecoveryView | null {
-  if (!offer || offer.status !== "card_failure") return null;
+  if (!offer) return null;
+  if (offer.status !== "card_failure" && offer.status !== "recovering") {
+    return null;
+  }
   if (!assignment?.cardFailureAt) return null;
 
   const deadline = new Date(

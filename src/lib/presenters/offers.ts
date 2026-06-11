@@ -32,15 +32,20 @@ import type { offers } from "../../../drizzle/schema";
 
 type Offer = typeof offers.$inferSelect;
 
-// Raw status enum from drizzle/schema.ts line 230. Kept as a string union
-// so unknown future values still surface a TS error at the presenter
-// boundary rather than silently rendering "undefined".
+// Raw status enum from the offers table in drizzle/schema.ts. Kept as a
+// string union so unknown future values still surface a TS error at the
+// presenter boundary rather than silently rendering "undefined".
+//
+// 'recovering' is the seconds-long card-failure recovery claim (the fan's
+// replacement card is being charged). For display purposes it's the same
+// situation as 'card_failure' — seat held, payment unsettled.
 export type OfferStatus =
   | "pool"
   | "placed"
   | "unplaced"
   | "charged"
   | "card_failure"
+  | "recovering"
   | "refunded"
   | "resold"
   | "gifted";

@@ -25,6 +25,7 @@ function makeOffer(overrides: Partial<Offer> = {}): Offer {
     stripePaymentIntentId: null,
     status: "placed",
     submittedAt: new Date("2026-05-25T10:00:00Z"),
+    recoveringAt: null,
     revisedAt: null,
     ...overrides,
   };
