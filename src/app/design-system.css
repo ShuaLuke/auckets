@@ -8,10 +8,13 @@
    ============================================================= */
 
 /* --- Webfonts ----------------------------------------------- */
-/* Loaded from Google Fonts CDN. See README — these are
-   placeholder choices flagged for the team to confirm or swap
-   for licensed equivalents. */
-@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+/* Self-hosted via next/font in src/app/layout.tsx (no CDN @import —
+   that was render-blocking and FOUT'd the display face on first
+   paint). layout.tsx binds the loaded faces to --font-bricolage,
+   --font-geist-sans and --font-jetbrains-mono on <html>; the
+   --font-* family tokens below consume them with the original
+   names as fallbacks for any context that renders outside the
+   root layout (design previews, global-error). */
 
 :root {
   /* =========================================================
@@ -103,9 +106,9 @@
   /* =========================================================
      Type — families
      ========================================================= */
-  --font-display: "Bricolage Grotesque", "Söhne Breit", "Inter Tight", system-ui, sans-serif;
-  --font-sans:    "Geist", "Söhne", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono:    "JetBrains Mono", "Geist Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --font-display: var(--font-bricolage, "Bricolage Grotesque"), "Söhne Breit", "Inter Tight", system-ui, sans-serif;
+  --font-sans:    var(--font-geist-sans, "Geist"), "Söhne", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono:    var(--font-jetbrains-mono, "JetBrains Mono"), "Geist Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
 
   /* Type — scale (rem-based, 16px root)
      Optical sizes chosen so display sizes use the variable's
