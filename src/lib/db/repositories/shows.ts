@@ -159,16 +159,24 @@ export async function listShowSummariesByIds(
   return rows.map(narrowSummary);
 }
 
-// Statuses a show can be auto-bound from. Mirrors run-binding's
-// BINDING_ELIGIBLE_STATUSES. 'paused' is excluded on purpose — a halt was
+// Statuses a show can be auto-bound from. Mirrors the statuses
+// claimShowForBinding accepts. 'paused' is excluded on purpose — a halt was
 // requested (ADR-0013), so ops decides whether to bind, not the scheduler.
+//
+// 'closed' stays in the list deliberately: it's both ops' end-early state AND
+// the crash-recovery state. The binding run's step-1 claim flips the show
+// open → closed before reading the pool; if the process dies between that
+// claim and the Phase-1 commit, the show is left 'closed' — still due, so the
+// next 5-minute sweep re-triggers it and the run completes. (A crash AFTER
+// Phase 1 leaves 'allocating', which is intentionally NOT due — money may
+// already be moving; resuming that is the Phase-2 resumability slice.)
 const BINDING_DUE_STATUSES = ["open", "closed"] as const;
 
 // Shows whose announced binding checkpoint (binding_allocation_at) has arrived
 // but that haven't been bound yet — the work list for the scheduled-binding
 // cron. Returns ids only; the sweep loads + binds each via runBindingAllocation
-// (which re-checks eligibility, so a show that flips state between this query
-// and the call is handled safely). Backed by shows_binding_at_idx.
+// (whose two-step CAS gate makes a show that flips state between this query
+// and the call bounce safely). Backed by shows_binding_at_idx.
 export async function listShowIdsDueForBinding(
   db: Db,
   now: Date,
@@ -414,7 +422,7 @@ export async function resumeShow(
 
 // Closes a show's offer window: 'open' or 'paused' → 'closed'. Stops new
 // offers (POST /api/offers is 'open'-only) while keeping the show
-// binding-eligible — BINDING_ELIGIBLE_STATUSES includes 'closed', so the
+// binding-eligible — 'closed' is the claimable status for binding, so the
 // scheduled sweep (and the manual Run-binding button) still seat the room at
 // the checkpoint. This is the "end early" / manual window-close transition; it
 // deliberately does NOT capture cards — binding stays a separate, explicit
@@ -427,4 +435,84 @@ export async function closeShow(
   return transitionShowStatus(db, showId, ["open", "paused"], {
     status: "closed",
   });
+}
+
+// A Drizzle transaction handle is structurally a query-builder like Db but a
+// distinct nominal type. markShowAllocating must run INSIDE the binding run's
+// Phase-1 transaction (its whole point is aborting that transaction when the
+// CAS loses), so it accepts either.
+type DbOrTx = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+// The outcome of the step-1 binding claim (claimShowForBinding).
+export type BindingClaimResult =
+  | { ok: true }
+  | { ok: false; reason: "not_found" }
+  | { ok: false; reason: "not_eligible"; status: string };
+
+// Step 1 of the binding run's two-step compare-and-set gate: close the offer
+// window before the run reads the pool.
+//
+// CAS 'open' → 'closed' — the WHERE-status-guarded UPDATE is the atomic part,
+// same idiom as announceShow / transitionShowStatus. After this lands, POST
+// /api/offers (which is 'open'-only, submissions and revisions alike) rejects,
+// so no offer can join or change the pool between the run's pool read and its
+// Phase-1 commit.
+//
+// A show that's ALREADY 'closed' is claimable too, deliberately and without a
+// status write: 'closed' is reached by ops' end-early (closeShow) or by a
+// previous binding attempt that crashed after this claim but before Phase 1
+// committed — both must stay bindable, and the crash case is exactly the
+// recovery path (the next scheduled sweep re-triggers it). That means two
+// concurrent callers can BOTH pass this step on a closed show; the real
+// mutual-exclusion lock is step 2, markShowAllocating, inside the Phase-1
+// transaction.
+//
+// Every other status refuses: 'paused' (a halt was requested — ADR-0013, ops
+// decides when a halted show binds), 'allocating' (a run's Phase 1 already
+// committed), 'allocated' / 'complete' (done), 'draft' (no offers).
+export async function claimShowForBinding(
+  db: Db,
+  showId: string,
+): Promise<BindingClaimResult> {
+  const rows = await db
+    .update(shows)
+    .set({ status: "closed" })
+    .where(and(eq(shows.id, showId), eq(shows.status, "open")))
+    .returning({ id: shows.id });
+  if (rows[0]) return { ok: true };
+
+  // No row updated — read the row back to tell missing / already-closed /
+  // ineligible apart.
+  const existing = await db
+    .select({ status: shows.status })
+    .from(shows)
+    .where(eq(shows.id, showId))
+    .limit(1);
+  const current = existing[0];
+  if (!current) return { ok: false, reason: "not_found" };
+  if (current.status === "closed") return { ok: true };
+  return { ok: false, reason: "not_eligible", status: current.status };
+}
+
+// Step 2 of the binding gate: CAS 'closed' → 'allocating'. This is the real
+// lock — exactly one caller's UPDATE can match the status='closed' row, so of
+// N concurrent binding attempts that passed the step-1 claim, exactly one
+// proceeds to write placements and capture money. Returns whether THIS caller
+// won; a false return inside the Phase-1 transaction must abort it (throw),
+// leaving zero writes behind.
+//
+// Run it as the FIRST statement of the Phase-1 transaction: under READ
+// COMMITTED a losing concurrent UPDATE blocks on the winner's row lock, then
+// re-evaluates the WHERE against the committed row ('allocating'), matches
+// nothing, and returns false.
+export async function markShowAllocating(
+  db: DbOrTx,
+  showId: string,
+): Promise<boolean> {
+  const rows = await db
+    .update(shows)
+    .set({ status: "allocating" })
+    .where(and(eq(shows.id, showId), eq(shows.status, "closed")))
+    .returning({ id: shows.id });
+  return rows.length > 0;
 }

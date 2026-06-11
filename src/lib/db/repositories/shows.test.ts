@@ -2,11 +2,13 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 
 import {
   announceShow,
+  claimShowForBinding,
   closeShow,
   getShowById,
   listAllShows,
   listOpenShows,
   listShowsForArtist,
+  markShowAllocating,
   pauseShow,
   resumeShow,
   type ShowSummary,
@@ -319,5 +321,74 @@ describe("closeShow", () => {
       reason: "wrong_status",
       status: "allocated",
     });
+  });
+});
+
+// The binding run's two-step CAS gate. The mock db can't evaluate the WHERE
+// status guard, so these verify the decision logic around the conditional
+// UPDATE's rowcount — the guard itself (only 'open' rows match the claim,
+// only 'closed' rows match the allocating CAS) is exercised by
+// tests/integration/binding-allocation.integration.test.ts against real
+// Postgres.
+describe("claimShowForBinding", () => {
+  it("returns ok when the open → closed CAS wins (window atomically closed)", async () => {
+    // Batch 0: the conditional UPDATE matched the open row — no follow-up
+    // SELECT needed.
+    const db = makeQueuedMockDb<Record<string, unknown>>([[{ id: "show-1" }]]);
+    expect(await claimShowForBinding(db, "show-1")).toEqual({ ok: true });
+  });
+
+  it("returns ok for an already-closed show (end-early or crashed prior claim)", async () => {
+    // Batch 0: UPDATE returning [] (not 'open'). Batch 1: the status read
+    // finds 'closed' — claimable; the Phase-1 CAS is the real lock.
+    const db = makeQueuedMockDb<Record<string, unknown>>([
+      [],
+      [{ status: "closed" }],
+    ]);
+    expect(await claimShowForBinding(db, "show-1")).toEqual({ ok: true });
+  });
+
+  it("refuses a paused show — ops' halt holds (ADR-0013)", async () => {
+    const db = makeQueuedMockDb<Record<string, unknown>>([
+      [],
+      [{ status: "paused" }],
+    ]);
+    expect(await claimShowForBinding(db, "show-1")).toEqual({
+      ok: false,
+      reason: "not_eligible",
+      status: "paused",
+    });
+  });
+
+  it("refuses a show whose binding run is already in flight ('allocating')", async () => {
+    const db = makeQueuedMockDb<Record<string, unknown>>([
+      [],
+      [{ status: "allocating" }],
+    ]);
+    expect(await claimShowForBinding(db, "show-1")).toEqual({
+      ok: false,
+      reason: "not_eligible",
+      status: "allocating",
+    });
+  });
+
+  it("returns not_found when the show doesn't exist", async () => {
+    const db = makeQueuedMockDb<Record<string, unknown>>([[], []]);
+    expect(await claimShowForBinding(db, "missing")).toEqual({
+      ok: false,
+      reason: "not_found",
+    });
+  });
+});
+
+describe("markShowAllocating", () => {
+  it("returns true when the closed → allocating CAS wins the row", async () => {
+    const db = makeMockDb([{ id: "show-1" }]);
+    expect(await markShowAllocating(db, "show-1")).toBe(true);
+  });
+
+  it("returns false when the CAS loses (show no longer 'closed')", async () => {
+    const db = makeMockDb<Record<string, unknown>>([]);
+    expect(await markShowAllocating(db, "show-1")).toBe(false);
   });
 });

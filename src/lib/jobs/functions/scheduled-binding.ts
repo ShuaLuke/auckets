@@ -10,8 +10,10 @@ import { stripe } from "@/lib/stripe/client";
  * checkpoint has passed and binds them.
  *
  * - concurrency: 1 — only one sweep at a time. runBindingAllocation also
- *   self-guards (it flips the show to 'allocating' in a transaction, so a
- *   concurrent attempt bails), but this avoids redundant work.
+ *   self-guards with a two-step compare-and-set (claim 'open' → 'closed'
+ *   before reading the pool, then a conditional 'closed' → 'allocating'
+ *   UPDATE that opens the Phase-1 transaction — a concurrent attempt loses
+ *   that CAS and bails with zero writes), but this avoids redundant work.
  * - The sweep runs inside step.run, so an Inngest retry of this cron tick
  *   replays the memoized result rather than re-binding shows already handled.
  * - Binding moves real money; with Stripe unconfigured (local/dev) we skip
