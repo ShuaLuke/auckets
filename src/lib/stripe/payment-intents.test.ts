@@ -10,6 +10,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  bindingCaptureIdempotencyKey,
   cancelOfferPaymentIntent,
   captureOfferPaymentIntent,
   createOfferPaymentIntent,
@@ -255,8 +256,14 @@ describe("cancelOfferPaymentIntent", () => {
 
 function makeCaptureStripe(
   capture: (...args: unknown[]) => unknown,
+  retrieve?: (...args: unknown[]) => unknown,
 ): FakeStripe {
-  return { paymentIntents: { capture: vi.fn(capture) } };
+  return {
+    paymentIntents: {
+      capture: vi.fn(capture),
+      ...(retrieve ? { retrieve: vi.fn(retrieve) } : {}),
+    },
+  };
 }
 
 describe("captureOfferPaymentIntent", () => {
@@ -290,16 +297,86 @@ describe("captureOfferPaymentIntent", () => {
     expect(optsArg).toBeUndefined();
   });
 
-  it("returns ok:false on payment_intent_unexpected_state — NOT a soft success (auth is dead → card_failure)", async () => {
+  it("forwards the binding idempotency key to Stripe as a request option (resume safety)", async () => {
+    const stripe = makeCaptureStripe(async () => ({
+      id: "pi_x",
+      status: "succeeded",
+    }));
+    await captureOfferPaymentIntent(stripe, "pi_x", 16_800, {
+      idempotencyKey: "capture:offer_1:pi_x",
+    });
+    const [, paramsArg, optionsArg] = stripe.paymentIntents.capture.mock.calls[0];
+    expect(paramsArg).toEqual({ amount_to_capture: 16_800 });
+    expect(optionsArg).toEqual({ idempotencyKey: "capture:offer_1:pi_x" });
+  });
+
+  it("omits the request-options object entirely when no idempotency key is given", async () => {
+    const stripe = makeCaptureStripe(async () => ({
+      id: "pi_x",
+      status: "succeeded",
+    }));
+    await captureOfferPaymentIntent(stripe, "pi_x", 16_800);
+    const [, , optionsArg] = stripe.paymentIntents.capture.mock.calls[0];
+    expect(optionsArg).toBeUndefined();
+  });
+
+  it("returns ok:false on payment_intent_unexpected_state when the PI is NOT succeeded (auth is dead → card_failure)", async () => {
     // Unlike cancel, capture must surface this: the auth is no longer
     // capturable, so the offer cannot be charged. Treating it as success
     // would mark the offer 'charged' with no funds collected.
-    const stripe = makeCaptureStripe(async () => {
-      throw {
-        code: "payment_intent_unexpected_state",
-        message: "PI cannot be captured.",
-      };
+    const stripe = makeCaptureStripe(
+      async () => {
+        throw {
+          code: "payment_intent_unexpected_state",
+          message: "PI cannot be captured.",
+        };
+      },
+      async () => ({ id: "pi_dead", status: "canceled" }),
+    );
+    const result = await captureOfferPaymentIntent(stripe, "pi_dead");
+    expect(result).toEqual({
+      ok: false,
+      code: "payment_intent_unexpected_state",
+      message: "PI cannot be captured.",
     });
+  });
+
+  it("treats an already-'succeeded' PI as captured (resume after a crash mid-write)", async () => {
+    // The ambiguous crash window: a previous binding attempt's capture
+    // reached Stripe but the process died before writing 'charged'. The
+    // retry's capture errors unexpected_state; the retrieve disambiguates —
+    // funds moved exactly once, so this IS a success, with Stripe's
+    // amount_received as the ground-truth charged amount.
+    const stripe = makeCaptureStripe(
+      async () => {
+        throw {
+          code: "payment_intent_unexpected_state",
+          message: "PI already captured.",
+        };
+      },
+      async () => ({ id: "pi_done", status: "succeeded", amount_received: 24_000 }),
+    );
+    const result = await captureOfferPaymentIntent(stripe, "pi_done", 24_000);
+    expect(result).toEqual({
+      ok: true,
+      alreadyCaptured: true,
+      amountReceivedCents: 24_000,
+    });
+    expect(stripe.paymentIntents.retrieve).toHaveBeenCalledWith("pi_done");
+  });
+
+  it("falls back to ok:false when the disambiguating retrieve itself fails (never claim unseen funds moved)", async () => {
+    const stripe = makeCaptureStripe(
+      async () => {
+        throw {
+          code: "payment_intent_unexpected_state",
+          message: "PI cannot be captured.",
+        };
+      },
+      async () => {
+        throw new Error("ECONNRESET");
+      },
+    );
     const result = await captureOfferPaymentIntent(stripe, "pi_dead");
     expect(result).toEqual({
       ok: false,
@@ -336,5 +413,24 @@ describe("namespacedStripeIdempotencyKey", () => {
 
   it("returns undefined for an empty header value", () => {
     expect(namespacedStripeIdempotencyKey("user_abc", "")).toBeUndefined();
+  });
+});
+
+describe("bindingCaptureIdempotencyKey", () => {
+  it("is deterministic per (offer, PaymentIntent) pair — retries replay, never double-capture", () => {
+    expect(bindingCaptureIdempotencyKey("offer_123", "pi_abc")).toBe(
+      "capture:offer_123:pi_abc",
+    );
+    // Same inputs, same key: a resumed binding run sends the identical
+    // request Stripe already processed.
+    expect(bindingCaptureIdempotencyKey("offer_123", "pi_abc")).toBe(
+      bindingCaptureIdempotencyKey("offer_123", "pi_abc"),
+    );
+  });
+
+  it("differs per offer and per PI (no cross-offer key collisions)", () => {
+    const a = bindingCaptureIdempotencyKey("offer_1", "pi_x");
+    expect(bindingCaptureIdempotencyKey("offer_2", "pi_x")).not.toBe(a);
+    expect(bindingCaptureIdempotencyKey("offer_1", "pi_y")).not.toBe(a);
   });
 });

@@ -3,34 +3,51 @@
 // offers' card auths are captured (the fan is charged) and unplaced
 // offers' auths are released.
 //
-// Why this is structured in two phases (and not one transaction like
-// preview):
+// Why this is structured in phases (and not one transaction like preview):
 //
-//   Phase 1 — decide & persist, with ZERO Stripe calls, in one DB
-//   transaction. The transaction OPENS with the closed → 'allocating'
-//   compare-and-set (step 2 of the gate below) — if that loses, the whole
-//   transaction aborts with zero writes. Then the GAE result is
-//   materialized into seat_assignments (is_binding=true) and offer.status
-//   transitions (pool → placed / unplaced), the binding allocation_logs
-//   are appended, and the per-fan displacement_events for this compute
-//   (diffed against the last preview projection, ADR-0018 §4) are
-//   written. Once this commits, the placement decision is durable.
+//   Phase 1 (runBindingPhase1) — decide & persist, with ZERO Stripe calls,
+//   in one DB transaction. The transaction OPENS with the closed →
+//   'allocating' compare-and-set (step 2 of the gate below) — if that
+//   loses, the whole transaction aborts with zero writes. Then the GAE
+//   result is materialized into seat_assignments (is_binding=true) and
+//   offer.status transitions (pool → placed / unplaced), the binding
+//   allocation_logs are appended, and the per-fan displacement_events for
+//   this compute (diffed against the last preview projection, ADR-0018 §4)
+//   are written. Once this commits, the placement decision is durable —
+//   and, crucially, it is the COMPLETE input to Phase 2: every later phase
+//   derives its work list from the DB, never from memory.
 //
-//   Phase 2 — move money, OUTSIDE the transaction, per offer. Stripe is
-//   network I/O that can take seconds and partially fail; you can't hold
-//   a Postgres transaction open across N captures, and — worse — a
-//   capture that succeeds while the surrounding tx rolls back would
-//   charge a fan with no record of it. So each offer's capture/cancel
-//   and its resulting terminal write (charged / card_failure) is its own
-//   small transaction. A crash mid-phase leaves a recoverable state
-//   rather than a dual-write inconsistency.
+//   Phase 2 (captureBindingOffers / cancelUnplacedAuths) — move money,
+//   OUTSIDE the transaction, per offer. Stripe is network I/O that can
+//   take seconds and partially fail; you can't hold a Postgres transaction
+//   open across N captures, and — worse — a capture that succeeds while
+//   the surrounding tx rolls back would charge a fan with no record of it.
+//   So each offer's capture/cancel and its resulting terminal write
+//   (charged / card_failure) is its own small transaction.
 //
-//   Phase 3 — flip the show to 'allocated'.
+//   Phase 3 (finalizeBinding) — CAS the show 'allocating' → 'allocated'
+//   and send the outcome emails.
+//
+// Phases 2–3 are RE-ENTRANT. A crash mid-capture (Vercel timeout, deploy,
+// OOM, Stripe outage) leaves the show in 'allocating' with a mix of
+// terminal ('charged' / 'card_failure') and still-'placed' offers. Resume
+// (resumeBindingAllocation, or the scheduled sweep's stuck-show recovery)
+// rebuilds the remaining work from offer statuses:
+//   - 'placed'  → still needs capture. The capture carries a deterministic
+//     Stripe idempotency key (capture:<offerId>:<piId>) and treats an
+//     already-'succeeded' PI as captured, so the ambiguous crash window
+//     (charged at Stripe, terminal write lost) converges to 'charged'
+//     without a double charge.
+//   - 'charged' / 'card_failure' → already settled; skipped.
+//   - 'unplaced' → re-cancel the auth; cancel is idempotent-soft (a PI
+//     that's already canceled counts as success).
+// The 'allocated' flip is a CAS, so exactly one finisher sends the emails.
 //
 // Capture failures (the ~2% card-failure case from ADR-0003: card
 // canceled between auth and capture) are recorded as offer.status
 // 'card_failure' + seat_assignments.card_failure_at; they do NOT abort
-// the run. The downstream card-failure recovery flow is a later slice.
+// the run. The downstream recovery flow (fan adds a new card) lives in
+// src/lib/stripe/card-failure-recovery.ts.
 
 import type Stripe from "stripe";
 import { and, eq, inArray } from "drizzle-orm";
@@ -47,6 +64,7 @@ import {
   markShowAllocating,
 } from "@/lib/db/repositories";
 import {
+  bindingCaptureIdempotencyKey,
   cancelOfferPaymentIntent,
   captureOfferPaymentIntent,
 } from "@/lib/stripe/payment-intents";
@@ -112,9 +130,9 @@ export type RunBindingOutcome =
 //   An already-'closed' show (ops end-early, or a previous attempt that
 //   crashed before Phase 1) passes too; every other status bounces:
 //   'paused' (halt requested, ADR-0013 — ops decides when it binds),
-//   'allocating' (a run's Phase 1 already committed — re-triggering would
-//   risk double-capture), 'allocated' / 'complete' (done), 'draft' (no
-//   offers).
+//   'allocating' (a run's Phase 1 already committed — the RESUME path, not
+//   a fresh run, owns that state), 'allocated' / 'complete' (done),
+//   'draft' (no offers).
 //
 //   Step 2 (first statement of the Phase-1 transaction): markShowAllocating
 //   CAS-es 'closed' → 'allocating'. Exactly one concurrent caller can win
@@ -124,8 +142,8 @@ export type RunBindingOutcome =
 // Crash recovery falls out of the same shape: dying between step 1 and the
 // Phase-1 commit leaves the show 'closed', which is still due for the
 // scheduled sweep — the next tick simply retries. Dying after Phase 1
-// leaves 'allocating', which no trigger will touch (Phase-2 resumability
-// is a separate slice).
+// leaves 'allocating', which the sweep's stuck-show recovery (and the admin
+// Run-binding button) routes into resumeBindingAllocation below.
 class BindingClaimLost extends Error {
   constructor() {
     super("binding claim lost: show was not 'closed' at Phase-1 CAS");
@@ -133,11 +151,31 @@ class BindingClaimLost extends Error {
   }
 }
 
-export async function runBindingAllocation(
+// ---------------------------------------------------------------------------
+// Phase 1 — decide & persist (no Stripe)
+// ---------------------------------------------------------------------------
+
+// JSON-serializable on purpose: the scheduled sweep runs this inside an
+// Inngest step.run, whose return value is memoized as JSON across retries.
+// No Dates, no class instances, plain numbers/strings only.
+export type BindingPhase1Outcome =
+  | {
+      ok: true;
+      value: {
+        showId: string;
+        stats: AllocationPlan["result"]["stats"];
+        assignmentsWritten: number;
+        logsWritten: number;
+        autoRaised: number;
+        displacementEventsWritten: number;
+      };
+    }
+  | { ok: false; error: RunBindingError };
+
+export async function runBindingPhase1(
   db: Db,
-  stripe: Stripe,
   showId: string,
-): Promise<RunBindingOutcome> {
+): Promise<BindingPhase1Outcome> {
   // Step 1: claim the show (close the offer window) BEFORE reading anything.
   const claim = await claimShowForBinding(db, showId);
   if (!claim.ok) {
@@ -188,9 +226,12 @@ export async function runBindingAllocation(
   const placedSet = new Set(placedOfferIds);
   const unplacedOffers = poolOffers.filter((o) => !placedSet.has(o.id));
 
-  // The auto-bid-settled pool the plan was built from. Capture amounts and
-  // the raise persistence below read the RESOLVED price off these (≤ the
-  // offer's cap, which is what we authorized at submission).
+  // The auto-bid-settled pool the plan was built from. The raise
+  // persistence below reads the RESOLVED price off these (≤ the offer's
+  // cap, which is what we authorized at submission). Persisting the
+  // resolved price onto the offer-of-record is what lets Phase 2 derive
+  // the capture amount from the DB alone — the run never has to carry the
+  // raised amount in memory across phases.
   const resolvedOfferById = new Map(plan.resolvedOffers.map((o) => [o.id, o]));
 
   // Only persist raises for offers that actually ENDED placed: an auto-bidder
@@ -229,7 +270,7 @@ export async function runBindingAllocation(
     tierRank: (tier) => (tier ? floors[tier] ?? 0 : 0),
   });
 
-  // ---- Phase 1: decide & persist atomically (no Stripe calls) ----
+  // ---- The Phase-1 transaction: decide & persist atomically ----
   try {
     await db.transaction(async (tx) => {
       // Step 2 of the gate, FIRST statement of the transaction: CAS
@@ -358,30 +399,120 @@ export async function runBindingAllocation(
     throw err;
   }
 
-  // ---- Phase 2: move money (outside the transaction, per offer) ----
-  let captured = 0;
-  let cardFailures = 0;
-  let cancelled = 0;
-  // Collected for the post-run fan emails (placed / card-failure / not-placed).
-  const placedCharged: BindingOutcomeOffer[] = [];
-  const cardFailedFans: { userId: string }[] = [];
+  return {
+    ok: true,
+    value: {
+      showId,
+      stats: plan.result.stats,
+      assignmentsWritten: plan.assignmentRows.length,
+      logsWritten: plan.logRows.length,
+      autoRaised: placedRaises.length,
+      displacementEventsWritten: displacementEventRows.length,
+    },
+  };
+}
 
-  // Source placed offers from the RESOLVED pool so the capture amount is the
-  // auto-raised price (when raised) — always ≤ the cap we authorized.
-  for (const row of plan.assignmentRows) {
-    const offer = resolvedOfferById.get(row.offerId);
-    if (!offer) continue; // plan rows derive from the resolved pool; defensive
+// ---------------------------------------------------------------------------
+// Phase 2/3 — settlement, derived entirely from DB state (re-entrant)
+// ---------------------------------------------------------------------------
+
+// The capture work list: offers still awaiting their terminal Phase-2 write.
+// 'placed' is set only by Phase 1 and resolved only by captureBindingOffers
+// (→ 'charged' / 'card_failure'), so "status = 'placed'" IS the resume set:
+// already-settled offers ('charged', 'card_failure', and anything the
+// card-failure recovery flow moved them to) drop out by construction.
+// Ordered by id so retries and batch chunking are deterministic.
+export async function listBindingSettlementWorklist(
+  db: Db,
+  showId: string,
+): Promise<string[]> {
+  const rows = await db
+    .select({ id: offers.id })
+    .from(offers)
+    .where(and(eq(offers.showId, showId), eq(offers.status, "placed")))
+    .orderBy(offers.id);
+  return rows.map((r) => r.id);
+}
+
+export type CaptureBatchResult = {
+  // Offers charged by (or discovered already-charged during) this call.
+  captured: number;
+  // Offers whose capture failed → flagged card_failure.
+  cardFailures: number;
+  // Offers left 'placed' because another worker holds the capture in
+  // flight right now (Stripe idempotency_key_in_use). A later resume pass
+  // settles them; the caller must NOT finalize the show while skipped > 0.
+  skipped: number;
+};
+
+// Capture the given placed offers' auths and write each terminal state in
+// its own small transaction. Idempotent by construction:
+//   - Offers no longer 'placed' (a concurrent/previous worker settled them)
+//     are skipped without touching Stripe.
+//   - The capture carries a deterministic idempotency key, and an already-
+//     'succeeded' PI counts as captured — so the crash window between a
+//     successful capture and its terminal write converges on retry instead
+//     of double-charging or flagging a paid fan as card_failure.
+//   - The terminal write itself is a CAS ('placed' → terminal), so two
+//     racing workers can't both count the same offer.
+export async function captureBindingOffers(
+  db: Db,
+  stripe: Stripe,
+  showId: string,
+  offerIds: readonly string[],
+): Promise<CaptureBatchResult> {
+  const result: CaptureBatchResult = { captured: 0, cardFailures: 0, skipped: 0 };
+  if (offerIds.length === 0) return result;
+
+  const rows = await db
+    .select()
+    .from(offers)
+    .where(and(eq(offers.showId, showId), inArray(offers.id, [...offerIds])))
+    .orderBy(offers.id);
+
+  for (const offer of rows) {
+    // Re-check under current state: a previous attempt (or a concurrent
+    // resume) may have already settled this offer. Settled = skip silently.
+    if (offer.status !== "placed") continue;
+
+    // Phase 1 persisted any auto-bid raise onto the offer-of-record, so
+    // price × group_size here IS the resolved amount — always ≤ the cap we
+    // authorized at submission.
     const amountCents = offer.pricePerTicketCents * offer.groupSize;
 
     let charged = false;
+    let chargedAmountCents = amountCents;
     if (offer.stripePaymentIntentId) {
       const res = await captureOfferPaymentIntent(
         stripe,
         offer.stripePaymentIntentId,
         amountCents,
+        {
+          idempotencyKey: bindingCaptureIdempotencyKey(
+            offer.id,
+            offer.stripePaymentIntentId,
+          ),
+        },
       );
-      charged = res.ok;
-      if (!res.ok) {
+      if (res.ok) {
+        charged = true;
+        if (res.alreadyCaptured && res.amountReceivedCents !== undefined) {
+          // A previous attempt captured this PI; record what Stripe says
+          // actually moved (ground truth) rather than our recomputation.
+          chargedAmountCents = res.amountReceivedCents;
+        }
+      } else if (res.code === "idempotency_key_in_use") {
+        // Another worker's capture for this exact (offer, PI) is in flight
+        // right now (e.g. an admin resume racing the sweep). Don't guess an
+        // outcome — leave the offer 'placed'; whichever pass runs next will
+        // see the settled state or retry cleanly.
+        logger.warn(
+          { offerId: offer.id, showId },
+          "Binding capture in flight elsewhere — leaving offer placed",
+        );
+        result.skipped++;
+        continue;
+      } else {
         logger.warn(
           { offerId: offer.id, showId, code: res.code },
           "Binding capture failed — flagging card_failure",
@@ -399,42 +530,54 @@ export async function runBindingAllocation(
     }
 
     await db.transaction(async (tx) => {
+      // CAS 'placed' → terminal so a racing worker can't double-write (and
+      // so we never stomp a state the card-failure recovery flow owns).
+      const won = await tx
+        .update(offers)
+        .set({ status: charged ? "charged" : "card_failure" })
+        .where(and(eq(offers.id, offer.id), eq(offers.status, "placed")))
+        .returning({ id: offers.id });
+      if (won.length === 0) return;
+
       if (charged) {
         await tx
-          .update(offers)
-          .set({ status: "charged" })
-          .where(eq(offers.id, offer.id));
-        await tx
           .update(seatAssignments)
-          .set({ chargedAmountCents: amountCents })
+          .set({ chargedAmountCents })
           .where(eq(seatAssignments.offerId, offer.id));
+        result.captured++;
       } else {
-        await tx
-          .update(offers)
-          .set({ status: "card_failure" })
-          .where(eq(offers.id, offer.id));
         await tx
           .update(seatAssignments)
           .set({ cardFailureAt: new Date() })
           .where(eq(seatAssignments.offerId, offer.id));
+        result.cardFailures++;
       }
     });
-
-    if (charged) {
-      captured++;
-      placedCharged.push({
-        userId: offer.userId,
-        tier: row.tier,
-        chargedAmountCents: amountCents,
-      });
-    } else {
-      cardFailures++;
-      cardFailedFans.push({ userId: offer.userId });
-    }
   }
 
-  // Release the auths on unplaced offers — the fan pays nothing.
-  for (const offer of unplacedOffers) {
+  return result;
+}
+
+// Release the auths on unplaced offers — the fan pays nothing. Idempotent:
+// cancelOfferPaymentIntent treats an already-canceled (or otherwise
+// terminal) PI as success, so a resume re-walking the full unplaced set
+// converges without tracking which cancels already happened.
+export async function cancelUnplacedAuths(
+  db: Db,
+  stripe: Stripe,
+  showId: string,
+): Promise<{ cancelled: number }> {
+  const rows = await db
+    .select({
+      id: offers.id,
+      stripePaymentIntentId: offers.stripePaymentIntentId,
+    })
+    .from(offers)
+    .where(and(eq(offers.showId, showId), eq(offers.status, "unplaced")))
+    .orderBy(offers.id);
+
+  let cancelled = 0;
+  for (const offer of rows) {
     if (!offer.stripePaymentIntentId) continue;
     const res = await cancelOfferPaymentIntent(
       stripe,
@@ -451,22 +594,66 @@ export async function runBindingAllocation(
       );
     }
   }
+  return { cancelled };
+}
 
-  // ---- Phase 3: run complete ----
-  // Unconditional on purpose: only the Phase-1 CAS winner reaches this line,
-  // and no other transition touches an 'allocating' show (pause needs 'open',
-  // close needs 'open'/'paused', a rival binding run needs 'closed').
-  await db
+// Phase 3: CAS the show 'allocating' → 'allocated', then send the outcome
+// emails. The CAS makes finalization exactly-once under concurrent
+// settlement passes — only the winner notifies, so fans don't get duplicate
+// "you're in" emails when a manual resume races the sweep. (No transition
+// other than this one touches an 'allocating' show: pause needs 'open',
+// close needs 'open'/'paused', a rival binding run needs 'closed'.)
+export async function finalizeBinding(
+  db: Db,
+  showId: string,
+): Promise<{ finalized: boolean }> {
+  const won = await db
     .update(shows)
     .set({ status: "allocated" })
-    .where(eq(shows.id, showId));
+    .where(and(eq(shows.id, showId), eq(shows.status, "allocating")))
+    .returning({ id: shows.id });
+  if (won.length === 0) {
+    return { finalized: false };
+  }
 
   // ---- Post-run: fan emails (best-effort, never fails the run) ----
   // Placed-and-charged → "you're in"; placed-but-card-failed → "add a card";
-  // unplaced → "not placed, nothing charged". sendEmail no-ops without
-  // RESEND_API_KEY, so this is safe in dev/CI. Wrapped so an email/DB hiccup
-  // can't undo a completed allocation.
+  // unplaced → "not placed, nothing charged". All three lists are derived
+  // from the DB so a resumed run emails the fans charged BEFORE the crash
+  // too — the crashed attempt never reached this point, so nobody has been
+  // emailed yet. sendEmail no-ops without RESEND_API_KEY, so this is safe in
+  // dev/CI. Wrapped so an email/DB hiccup can't undo a completed allocation.
   try {
+    const show = await getShowById(db, showId);
+    if (!show) return { finalized: true }; // defensive; FK makes this near-impossible
+
+    const chargedRows = await db
+      .select({
+        userId: offers.userId,
+        tier: seatAssignments.tier,
+        chargedAmountCents: seatAssignments.chargedAmountCents,
+        pricePerTicketCents: offers.pricePerTicketCents,
+        groupSize: offers.groupSize,
+      })
+      .from(offers)
+      .innerJoin(seatAssignments, eq(seatAssignments.offerId, offers.id))
+      .where(and(eq(offers.showId, showId), eq(offers.status, "charged")));
+    const placedCharged: BindingOutcomeOffer[] = chargedRows.map((r) => ({
+      userId: r.userId,
+      tier: r.tier,
+      chargedAmountCents:
+        r.chargedAmountCents ?? r.pricePerTicketCents * r.groupSize,
+    }));
+
+    const cardFailedRows = await db
+      .select({ userId: offers.userId })
+      .from(offers)
+      .where(and(eq(offers.showId, showId), eq(offers.status, "card_failure")));
+    const unplacedRows = await db
+      .select({ userId: offers.userId })
+      .from(offers)
+      .where(and(eq(offers.showId, showId), eq(offers.status, "unplaced")));
+
     await notifyBindingOutcomes(db, {
       ctx: {
         showId,
@@ -475,8 +662,8 @@ export async function runBindingAllocation(
         doorsAt: show.doorsAt,
       },
       placed: placedCharged,
-      cardFailed: cardFailedFans,
-      unplaced: unplacedOffers.map((o) => ({ userId: o.userId })),
+      cardFailed: cardFailedRows,
+      unplaced: unplacedRows,
     });
   } catch (err) {
     logger.error(
@@ -485,20 +672,192 @@ export async function runBindingAllocation(
     );
   }
 
+  return { finalized: true };
+}
+
+// Executes a unit of settlement work under a caller-supplied wrapper. The
+// scheduled sweep passes Inngest's step.run so each unit becomes its own
+// durable, retryable step (and a completed unit is memoized across function
+// retries); everywhere else the default just invokes the function. Step ids
+// must be deterministic for a given show so Inngest's replay matches them up.
+//
+// Every wrapped return value must be JSON-serializable (Inngest memoizes
+// step results as JSON) — see the result types above: plain counts and ids.
+export type BindingStepRunner = <T>(
+  id: string,
+  fn: () => Promise<T>,
+) => Promise<T>;
+
+const directRunner: BindingStepRunner = (_id, fn) => fn();
+
+// How many captures share one settlement step. Small enough that a single
+// step stays well inside a serverless invocation (~10 × a couple seconds of
+// Stripe latency), large enough that a big show doesn't explode into
+// hundreds of steps.
+const CAPTURE_BATCH_SIZE = 10;
+
+export type SettleBindingResult = {
+  captured: number;
+  cardFailures: number;
+  cancelled: number;
+  // See CaptureBatchResult.skipped — non-zero means another worker held a
+  // capture in flight, so the show was deliberately left 'allocating' for
+  // a later pass.
+  skipped: number;
+  // Whether THIS pass won the 'allocating' → 'allocated' CAS (and so sent
+  // the emails). False when a concurrent pass finalized first, or when
+  // skipped > 0 kept the show open for another pass.
+  finalized: boolean;
+};
+
+// Phases 2+3 end-to-end, from DB state alone. Safe to call any number of
+// times on a show whose Phase 1 committed; each call settles whatever work
+// remains and finishes by finalizing the show iff everything settled.
+export async function settleBinding(
+  db: Db,
+  stripe: Stripe,
+  showId: string,
+  run: BindingStepRunner = directRunner,
+): Promise<SettleBindingResult> {
+  const worklist = await run(`binding-worklist-${showId}`, () =>
+    listBindingSettlementWorklist(db, showId),
+  );
+
+  let captured = 0;
+  let cardFailures = 0;
+  let skipped = 0;
+  for (let i = 0; i < worklist.length; i += CAPTURE_BATCH_SIZE) {
+    const batch = worklist.slice(i, i + CAPTURE_BATCH_SIZE);
+    const batchResult = await run(`binding-capture-${showId}-${i}`, () =>
+      captureBindingOffers(db, stripe, showId, batch),
+    );
+    captured += batchResult.captured;
+    cardFailures += batchResult.cardFailures;
+    skipped += batchResult.skipped;
+  }
+
+  const { cancelled } = await run(`binding-cancel-unplaced-${showId}`, () =>
+    cancelUnplacedAuths(db, stripe, showId),
+  );
+
+  // Don't finalize past in-flight captures: an offer left 'placed' because
+  // another worker holds its idempotency key must be settled before the
+  // show flips 'allocated' (nothing sweeps an 'allocated' show's stragglers).
+  let finalized = false;
+  if (skipped === 0) {
+    const fin = await run(`binding-finalize-${showId}`, () =>
+      finalizeBinding(db, showId),
+    );
+    finalized = fin.finalized;
+  } else {
+    logger.warn(
+      { showId, skipped },
+      "Binding settlement left in-flight captures — show stays 'allocating' for the next pass",
+    );
+  }
+
+  return { captured, cardFailures, cancelled, skipped, finalized };
+}
+
+// ---------------------------------------------------------------------------
+// Entry points
+// ---------------------------------------------------------------------------
+
+// The fresh, end-to-end binding run: Phase 1 (claim + decide + persist) then
+// settlement. The default path for the admin button and the scheduled sweep.
+export async function runBindingAllocation(
+  db: Db,
+  stripe: Stripe,
+  showId: string,
+): Promise<RunBindingOutcome> {
+  const phase1 = await runBindingPhase1(db, showId);
+  if (!phase1.ok) {
+    return phase1;
+  }
+
+  const settle = await settleBinding(db, stripe, showId);
+
   return {
     ok: true,
     value: {
       showId,
       mode: "binding",
       ranAt: new Date(),
-      stats: plan.result.stats,
-      assignmentsWritten: plan.assignmentRows.length,
-      logsWritten: plan.logRows.length,
-      captured,
-      cardFailures,
-      cancelled,
-      autoRaised: placedRaises.length,
-      displacementEventsWritten: displacementEventRows.length,
+      stats: phase1.value.stats,
+      assignmentsWritten: phase1.value.assignmentsWritten,
+      logsWritten: phase1.value.logsWritten,
+      captured: settle.captured,
+      cardFailures: settle.cardFailures,
+      cancelled: settle.cancelled,
+      autoRaised: phase1.value.autoRaised,
+      displacementEventsWritten: phase1.value.displacementEventsWritten,
+    },
+  };
+}
+
+export type ResumeBindingResult = {
+  showId: string;
+  mode: "binding";
+  resumed: true;
+  ranAt: Date;
+  captured: number;
+  cardFailures: number;
+  cancelled: number;
+  finalized: boolean;
+};
+
+export type ResumeBindingOutcome =
+  | { ok: true; value: ResumeBindingResult }
+  | { ok: false; error: RunBindingError };
+
+// Resume a binding run whose Phase 1 committed but whose settlement died
+// mid-flight (the show is stuck in 'allocating'). Rebuilds the remaining
+// work from offer statuses and settles it — see the module header for why
+// every step is idempotent. Reached two ways:
+//   - the scheduled sweep's stuck-show recovery (automatic, ~10 min after
+//     the checkpoint), and
+//   - the admin Run-binding button on an 'allocating' show (the allocate
+//     route routes 'allocating' here instead of bouncing 409).
+//
+// The status check is read-then-act on purpose — settlement is safe to run
+// concurrently (capture CAS + idempotency keys, cancel soft-idempotency,
+// finalize CAS), so a racing fresh run or second resume can't double-move
+// money; at worst a pass does redundant no-op work.
+export async function resumeBindingAllocation(
+  db: Db,
+  stripe: Stripe,
+  showId: string,
+): Promise<ResumeBindingOutcome> {
+  const rows = await db
+    .select({ status: shows.status })
+    .from(shows)
+    .where(eq(shows.id, showId))
+    .limit(1);
+  const current = rows[0];
+  if (!current) {
+    return { ok: false, error: { kind: "show_not_found", showId } };
+  }
+  if (current.status !== "allocating") {
+    return {
+      ok: false,
+      error: { kind: "show_not_eligible", status: current.status },
+    };
+  }
+
+  logger.info({ showId }, "Resuming binding settlement for 'allocating' show");
+  const settle = await settleBinding(db, stripe, showId);
+
+  return {
+    ok: true,
+    value: {
+      showId,
+      mode: "binding",
+      resumed: true,
+      ranAt: new Date(),
+      captured: settle.captured,
+      cardFailures: settle.cardFailures,
+      cancelled: settle.cancelled,
+      finalized: settle.finalized,
     },
   };
 }

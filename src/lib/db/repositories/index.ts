@@ -120,6 +120,7 @@ export {
   listShowSummariesByIds,
   listShowIdsDueForBinding,
   listShowIdsDueForTicketIssuance,
+  listShowIdsStuckInAllocating,
   listShowsForArtist,
   markShowAllocating,
   pauseShow,
