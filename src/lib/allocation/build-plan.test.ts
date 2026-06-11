@@ -11,6 +11,7 @@ import {
   buildBindingAllocationPlan,
   buildPreviewAllocationPlan,
 } from "./build-plan";
+import { mergeShowHoldsIntoArchitecture } from "./translate";
 
 type Offer = typeof offers.$inferSelect;
 type Show = typeof shows.$inferSelect;
@@ -320,5 +321,123 @@ describe("buildBindingAllocationPlan", () => {
     expect(
       plan.resolvedOffers.find((o) => o.id === "offer_a")?.pricePerTicketCents,
     ).toBe(6200);
+  });
+});
+
+describe("per-show holds reach the allocation (the comp-seat bug)", () => {
+  // Regression for the launch-critical bug where holds filed in the
+  // `holds` table never reached the GAE: the engine only saw the
+  // building-level holds baked into the architecture JSONB, so a
+  // binding run would sell — and capture money for — the exact seats
+  // the artist had comped. These tests run the same pure path binding
+  // uses (mergeShowHoldsIntoArchitecture → buildBindingAllocationPlan)
+  // and prove held seats are never assigned even when the offer pool
+  // would otherwise fill the room.
+
+  function allAssignedSeats(plan: ReturnType<typeof buildBindingAllocationPlan>) {
+    return plan.assignmentRows.flatMap((r) =>
+      r.seatNumbers.map((s) => `${r.venueRowId}:${s}`),
+    );
+  }
+
+  it("binding never sells per-show-held seats, even with a pool that would fill the room", () => {
+    // Row of 8. Building hold on seat 1, artist comp (per-show) on 4+5.
+    // Pool: eight singles — absent holds they'd fill all 8 seats. With
+    // the merge, only 2,3,6,7,8 are sellable.
+    const show = makeShow({ activeRowIds: ["row_a"] });
+    const arch = mergeShowHoldsIntoArchitecture(
+      makeArch([makeRow({ holds: ["1"] })]),
+      [{ venueRowId: "row_a", seatNumbers: ["4", "5"] }],
+    );
+    const pool = Array.from({ length: 8 }, (_, i) =>
+      makeOffer({
+        id: `offer_${i + 1}`,
+        groupSize: 1,
+        pricePerTicketCents: 9000 - i * 100,
+        rankKey: BigInt((9000 - i * 100) * 1000 + 1),
+        stripePaymentIntentId: `pi_${i + 1}`,
+      }),
+    );
+
+    const plan = buildBindingAllocationPlan(show, arch, pool);
+
+    const seats = allAssignedSeats(plan);
+    expect(seats).not.toContain("row_a:1");
+    expect(seats).not.toContain("row_a:4");
+    expect(seats).not.toContain("row_a:5");
+    // Exactly the 5 unheld seats are sold.
+    expect(seats.sort()).toEqual([
+      "row_a:2",
+      "row_a:3",
+      "row_a:6",
+      "row_a:7",
+      "row_a:8",
+    ]);
+    expect(plan.result.stats.placedSeats).toBe(5);
+  });
+
+  it("a hold splitting the row blocks groups larger than the biggest remaining run", () => {
+    // Comp on 4+5 splits the 8-seat row into runs of 3 (1-3) and 3 (6-8):
+    // a group of 4 can no longer fit anywhere and must be unplaced —
+    // not seated across the held seats.
+    const show = makeShow({ activeRowIds: ["row_a"] });
+    const arch = mergeShowHoldsIntoArchitecture(makeArch([makeRow()]), [
+      { venueRowId: "row_a", seatNumbers: ["4", "5"] },
+    ]);
+    const plan = buildBindingAllocationPlan(show, arch, [
+      makeOffer({ id: "offer_g4", groupSize: 4, stripePaymentIntentId: "pi_g4" }),
+    ]);
+
+    expect(plan.assignmentRows).toHaveLength(0);
+    expect(plan.result.unplaced.map((u) => u.offerId)).toEqual(["offer_g4"]);
+  });
+
+  it("preview and binding place identically with per-show holds merged (no divergence)", () => {
+    const show = makeShow({ activeRowIds: ["row_a"] });
+    const arch = mergeShowHoldsIntoArchitecture(makeArch([makeRow()]), [
+      { venueRowId: "row_a", seatNumbers: ["3", "6"] },
+    ]);
+    const pool = [
+      makeOffer({
+        id: "offer_1",
+        groupSize: 2,
+        pricePerTicketCents: 7000,
+        rankKey: BigInt(7000 * 1000 + 2),
+        stripePaymentIntentId: "pi_1",
+      }),
+      makeOffer({
+        id: "offer_2",
+        groupSize: 2,
+        pricePerTicketCents: 6000,
+        rankKey: BigInt(6000 * 1000 + 2),
+        stripePaymentIntentId: "pi_2",
+      }),
+    ];
+
+    const preview = buildPreviewAllocationPlan(show, arch, pool);
+    const binding = buildBindingAllocationPlan(show, arch, pool);
+
+    const key = (rows: typeof preview.assignmentRows) =>
+      rows
+        .map((r) => `${r.offerId}@${r.venueRowId}:${r.seatNumbers.join(",")}`)
+        .sort();
+    expect(key(binding.assignmentRows)).toEqual(key(preview.assignmentRows));
+    for (const r of [...preview.assignmentRows, ...binding.assignmentRows]) {
+      expect(r.seatNumbers).not.toContain("3");
+      expect(r.seatNumbers).not.toContain("6");
+    }
+  });
+
+  it("holds on inactive rows change nothing (the GAE never places there)", () => {
+    const show = makeShow({ activeRowIds: ["row_a"] });
+    const arch = mergeShowHoldsIntoArchitecture(
+      makeArch([makeRow({ id: "row_a" }), makeRow({ id: "row_b" })]),
+      [{ venueRowId: "row_b", seatNumbers: ["1", "2"] }],
+    );
+    const plan = buildBindingAllocationPlan(show, arch, [
+      makeOffer({ id: "offer_1", groupSize: 4, stripePaymentIntentId: "pi_1" }),
+    ]);
+    expect(plan.assignmentRows).toHaveLength(1);
+    expect(plan.assignmentRows[0]?.venueRowId).toBe("row_a");
   });
 });
