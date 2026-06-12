@@ -32,13 +32,18 @@ session from here. Target launch: ~2026-06-21.
 
 ## 🔴 Tier 0 — ops, minutes of work, gates everything (Josh)
 
+- [ ] **CRITICAL (found 2026-06-12): production runs Clerk DEVELOPMENT keys** (`pk_test_…trusty-koala-1.clerk.accounts.dev`). Dev instances are rate-limited and handshake-redirect on a real domain — this is the prime suspect for auckets.com's recurring zero-byte hangs (clerkMiddleware stalls before any byte is sent; bursts of 307s in the logs are the handshake loop) and for the artist being unable to sign in/create a show. Fix: create a Clerk **production instance** for auckets.com (Clerk dashboard → clone dev instance), add the DNS records it asks for (Vercel DNS), set `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_…` + `CLERK_SECRET_KEY=sk_live_…` in Vercel prod, redeploy. **Then re-seed identity**: prod-instance user IDs are NEW — after Josh/Julia/Cope first sign in, re-grant `AUCKETS_ADMIN` roles in `users` and re-create Cope's `artist_members` row (the one added 2026-06-12 points at his dev-instance ID).
+- [ ] `favicon.ico` 404s on auckets.com (console noise on every page; #119 shipped the icon set but the root favicon isn't being served).
+
 - [x] **Set 3 Vercel production env vars** *(done 2026-06-11 — production deploys READY, all 11 PRs live)*: `STRIPE_WEBHOOK_SECRET`, `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`, then redeploy. Production deploys fail loudly-by-design (#116) until these exist — **all eleven merged PRs are queued behind this**. Full checklist in PR #116's body.
 - [x] Rename Clerk app "My Application" → **AUCKETS** (Clerk dashboard; the sign-in headline reads from it).
 - [x] Resend: verify `auckets.com` + set `RESEND_API_KEY` in prod (all fan lifecycle emails are wired but dormant).
 - [x] Set `NEXT_PUBLIC_SENTRY_DSN` in prod (Sentry is fully wired, dormant without it).
-- [ ] Pre-beta ops from CLAUDE.md: separate prod Supabase project; revoke HFC's Stripe access.
+- [ ] Pre-beta ops from CLAUDE.md *(in progress 2026-06-11)*: separate prod Supabase project — **created**, confirm prod env vars point at it; revoke HFC's Stripe access — **Julia revoking now**, confirm done.
 
 ## 🟠 Tier 1 — code, before real money (security/reliability)
+
+- [ ] **Wedged-DB-connection hangs (diagnosed 2026-06-12, recurring in prod)**: a warm lambda's postgres connection gets stuck mid-protocol (`pg_stat_activity` shows Supavisor connection `active` + `ClientRead` for minutes), and because routes map to a handful of lambdas, *whichever routes that lambda serves hang with zero bytes* while the rest of the site works — observed twice today (`/` + artist pages hung while `/shows` + `/api/offers` worked; killing the backend via `pg_terminate_backend` instantly fixed it, then it wedged again within the hour). Likely a lambda freeze/suspend with in-flight protocol bytes (check for un-awaited DB work after the response is sent). Code fix in `src/lib/db/index.ts`: add `max_lifetime` (e.g. 300s) and a statement/query timeout (e.g. `connection: { statement_timeout: 15000 }`) so a wedged socket self-heals in seconds instead of pinning its lambda forever; audit for fire-and-forget `db.*` calls and nested-transaction pool deadlocks (CONVENTIONS.md warns about exactly this with `max: 1`). Ops half while unfixed: the kill-query one-liner is in the 2026-06-12 session transcript.
 
 - [ ] **Rate limiting** on `POST /api/offers`, `/api/offers/[id]/recover`, `/api/scan` (offers returns granular decline codes → card-testing oracle) + enable **Stripe Radar** card-testing rules (ops half).
 - [ ] **Job-failure alerting**: `onFailure` handlers on the 5 Inngest functions → Slack webhook; today a failed binding sweep is a pino warn nobody reads.
@@ -63,6 +68,7 @@ session from here. Target launch: ~2026-06-21.
 - [ ] **NEW-15 imagery**: artist photo enough for show #1, or per-show poster override?
 - [ ] **Geo-gating posture ADR**: the QR geo-gate is client-trusted only (no server-side geo check exists; a stale comment in TicketViewer claims otherwise — fix the comment with the ADR). Decide if v1 accepts this.
 - [ ] Dark "stage light" show-page header direction (mock first); font pairing confirm (recommend keeping Bricolage/Geist).
+- [ ] **Composer direction feedback (Josh, 2026-06-12)**: (a) tapping a seat on the map should show what that seat is currently going for (what its occupant is being charged right now) — natural fit with UI-5's polling endpoint, but needs a privacy/comfort call on exposing another fan's live price per seat vs. a per-section/tier figure; (b) Josh doesn't love the slider — revisit the dial's input mechanism (UI-4 shipped a custom range slider; consider direct seat-tap-to-offer as the primary gesture, with the dial secondary).
 
 ## ⚪ Known-accepted risks (documented, not blocking)
 

@@ -16,7 +16,7 @@ referenced inline below.
 | Status              | Count |
 |---|---|
 | Open blocker        | 4     |
-| Open high-priority  | 10    |
+| Open high-priority  | 14    |
 | Phase 2 (deferred)  | 7     |
 | Resolved in v2      | 24    |
 
@@ -24,6 +24,10 @@ Last full revision: **2026-05-25**, based on Julia + Cope answers in
 `AUCKETS_Open_Questions_v2.docx`. NEW-9–NEW-13 added **2026-05-28** from the
 persona audit ([PERSONAS.md](PERSONAS.md)) + Julia's group cost-split and
 functional-auto-bid/alerts requests. NEW-10 decided (ops-only + auto-run).
+NEW-15–NEW-18 added **2026-06-04** from Cope's super-fan feedback (show imagery,
+fan-facing venue seat map, ticket manifest, merch drops); merch is captured as
+[ADR-0019](DECISIONS.md#adr-0019--merch--limited-edition-drops-storefront-approach)
+(Proposed — direction not yet chosen).
 
 ---
 
@@ -119,6 +123,51 @@ functional-auto-bid/alerts requests. NEW-10 decided (ops-only + auto-run).
 
 ---
 
+## Cope super-fan feedback (2026-06-04) — design needed
+
+Four asks from Cope, framed as "things a super fan would appreciate." None blocks
+beta. Two are mostly *surfacing existing data* (venue seating, manifest); two are
+*net-new builds* (imagery, merch). Slice plan in
+[REMAINING_WORK.md](REMAINING_WORK.md) ("Cope super-fan feedback" section).
+
+### NEW-15 — Show / artist imagery (poster + artist photo)
+**Source:** Cope, 2026-06-04 ("add image of show — picture of artist or poster for the show").
+**Affects:** `artists` + `shows` schema (new image-URL columns), a new file-upload
+path + object storage, ShowCreate / artist-profile UI, and every place a show is
+rendered (`/shows` index, fan show detail, the ticket stub, the artist page).
+**Today:** zero image support anywhere — no columns, no upload route, no storage client.
+**Working assumption (to confirm):**
+- **Both levels.** An **artist photo** stored on `artists` (reused across that artist's shows) *and* an optional **per-show poster** on `shows` that overrides it. Render fallback chain: show poster → artist photo → text placeholder.
+- **Storage:** Supabase Storage (we're already on Supabase) — a public-read bucket, server-side authenticated writes via the service role key. The provider choice (Supabase Storage vs. Vercel Blob vs. S3) gets a short ADR when the slice is greenlit.
+- **Who uploads:** artist self-serve (on ShowCreate + an artist-profile editor) and admin always. No image moderation for MVP (trusted artists).
+**Open for Cope/Julia:** is the per-show poster override needed for the first show, or is an artist photo enough to start? Any aspect-ratio / brand constraints?
+**Status:** Open. Contained build; the only real decision is storage provider (deferred to a build-time ADR).
+
+### NEW-16 — Fan-facing venue seat map ("load venue seating")
+**Source:** Cope, 2026-06-04 ("you should be able to load venue seating … ticket manifest").
+**Affects:** the fan show-detail view (extends the existing `VenuePreview`), the ticket stub / `AllocationFinal` ("your seat" highlight).
+**Today:** the full venue model is live (`venues`, `venue_architectures` rows/sections/tiers/GA/capacity, partial-venue activation via `shows.activeRowIds`). Fans already see a `VenuePreview` and artists see a provisional-placement seat map — so the *data* is loaded; the question is how much of the room to **show the fan** and where.
+**⚠️ Needs Cope clarification — "load venue seating" is ambiguous:** (a) a richer fan-facing interactive seat map on the show page ("see the room before I bid"); (b) "your seat" shown on the ticket / result page so the fan knows where they'll sit; or (c) importing a venue's real seating chart into the system (that's the VenueBuilder / importer work already tracked — Q23/Q24 + REMAINING_WORK item 12). Most likely (a)+(b) given the "super fan" framing.
+**Status:** Open pending Cope's clarification on which of (a)/(b)/(c) he means. (a)/(b) are surfacing work; (c) is the existing VenueBuilder track.
+
+### NEW-17 — Ticket manifest (per-fan, who's seated where)
+**Source:** Cope, 2026-06-04 ("ticket manifest").
+**Affects:** the admin command center (a new Tickets/Manifest section) and the artist ShowAdmin "Fans · data" tab (the deliberate placeholder at `ShowAdminTabs.tsx`).
+**Today:** the data is all present — `seat_assignments` + `tickets` (+ `ticketScans`) say exactly who holds which seat and whether they've scanned in. The artist "Fans · data" tab is a placeholder pending a privacy review.
+**The split that matters:**
+- **Admin/ops manifest is UNBLOCKED.** Q30 already decided "Auckets sees everything," so an admin-facing full manifest (per-fan rows: email/phone/group/offer/seats/ticket+scan status, CSV export) needs no new product decision — just build.
+- **Artist manifest needs the privacy scope.** Q30 says the artist sees "totals + averages per section," not per-fan PII. ADR-0017 keeps private-offer fields server-only. So what an *artist* may see per-fan (de-identified rows? names only? full contact?) is the open decision — reconcile with Cope before building the artist-facing version.
+**Status:** Admin manifest open-but-unblocked (build any time). Artist manifest blocked on the per-fan-visibility decision (Cope/Julia; ties to Q30 + ADR-0017).
+
+### NEW-18 — Merch / limited-edition drops
+**Source:** Cope, 2026-06-04 ("a merch purchase should be an option … limited edition merch drops or merch for shows").
+**Affects:** a net-new commerce subsystem — schema (products/variants/inventory/orders), a storefront UI, payments (a straight charge, *not* the auth-hold offer model), and artist payout via Stripe Connect.
+**Today:** nothing — zero product/store/inventory/SKU anywhere.
+**Captured as [ADR-0019](DECISIONS.md#adr-0019--merch--limited-edition-drops-storefront-approach) (Proposed).** The ADR lays out the two directions (native-on-our-Stripe vs. Shopify integration) with tradeoffs and the full list of product questions for Cope (drop mechanics, inventory/variants, fulfillment ship-vs-pickup, super-fan gating, payout/fees, refunds, sales tax). **Direction not yet chosen** — Julia asked to decide it in the ADR.
+**Status:** Open. No code until the ADR direction + Cope's product answers land.
+
+---
+
 ## New product concepts from v2 — confirmed, design needed
 
 These came in via Cope's and Julia's v2 notes. They're real features, not "maybe-someday." Each gets its own ADR as the design firms up. None of them blocks the GAE spike (Week 2).
@@ -162,6 +211,10 @@ Defer. Likely tier names not raw scores.
 ### Q44 — Customizable per-fan outbid triggers
 **Source:** Q12 note ("Would be cool if they could customize these triggers").
 Defer. Auto-bid (ADR-0017) is the bigger lever; customization can come later.
+
+### NEW-19 — Background-jobs vendor: Inngest is provisional
+**Source:** Josh, 2026-06-11, while wiring production env (the #116 deploy guard).
+Inngest Cloud is the production background-jobs service (binding sweep, card-failure expiry, ticket issuance, imminent emails — see `src/app/api/inngest/route.ts`). Adopted on the free Hobby tier (50k executions/mo; our baseline is ~20k) because it was already wired in and the closest competitor (Trigger.dev) is near-identical. **Josh explicitly flagged we may want to change vendors later.** Revisit triggers: pricing (Pro is $75/mo past 50k executions or 5 concurrent), reliability incidents, or beta-scale concurrency. The switching seam is intentionally thin — job logic lives in our own functions under `src/lib/jobs/functions/`, with Inngest as a wrapper; a port to Trigger.dev or Vercel Cron + queue is roughly one PR.
 
 ---
 

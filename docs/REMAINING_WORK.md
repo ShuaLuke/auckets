@@ -10,11 +10,11 @@ Updated 2026-05-31 after PRs #68–#98 merged (TicketViewer + T-48h issuance, do
 
 **The read side, the full money path, and the full attend-path are shipped.** Real offer submission (Stripe manual-capture auth) → preview/binding allocation → capture-on-placement → ticket issuance → door scan all work end-to-end. We are **essentially beta-ready** — only soft gaps remain.
 
-The road to **beta** is now down to a single ops task (turn fan email on) plus one product decision (group cost-split):
+The road to **beta** is now down to one product decision (group cost-split) — the last ops blocker (fan email) closed 2026-06-11:
 
 - 🔴 ~~**Hard blockers**~~ — **all shipped.** ~~TicketViewer~~ (front-end #68, signed rotating-token endpoint #69, T-48h issuance) and ~~Scanner~~ (VENUE_STAFF-gated `/scan` + `/api/scan` validating the rotating QR into the `ticket_scans` log). A beta fan can now get a ticket and through the door.
 - 🟠 ~~**Strong blockers**~~ — **all shipped.** ~~Stripe webhook handler~~ (signed + idempotent `/api/stripe/webhook`), ~~CardFailure recovery~~ (backend + UI + the fan/ops failure email, #90), ~~scheduled binding~~ (Inngest cron sweeps due checkpoints).
-- 🟡 **Soft gaps** — **all fan-journey screens now shipped.** ~~AllocationFinal~~ shipped (#96, `/allocation/[showId]`). The only remaining beta task is **turning fan email on** (the templates shipped in #90 but don't send until `auckets.com` is verified in Resend + `RESEND_API_KEY` is set — an ops task, not code). **ShowCreate UI** (#86) and the **fan email templates** (#90) are done.
+- 🟡 **Soft gaps** — **all fan-journey screens now shipped.** ~~AllocationFinal~~ shipped (#96, `/allocation/[showId]`). ~~Turning fan email on~~ — **done 2026-06-11**: `auckets.com` is verified in Resend (DNS records re-created on Vercel DNS during the domain move) and `RESEND_API_KEY` + `RESEND_FROM_EMAIL` are set in the Vercel prod env. **ShowCreate UI** (#86) and the **fan email templates** (#90) are done.
 
 **ADR-0003 (2026-05-27):** ≤6-day offer windows + auth-based hold is still a working assumption (Julia), **not yet Cope-confirmed**. The money path is built against it; if his research lands on windows >6 days, revisit the PaymentIntent path. See the 2026-05-27 note in [DECISIONS.md ADR-0003](DECISIONS.md#adr-0003--stripe-setupintent--charge-on-acceptance).
 
@@ -71,7 +71,7 @@ Located at `src/components/ui/`. Most are ported; two notable gaps:
 | `allocation-imminent.html` | ✅ AllocationImminent.tsx (#90) | ✅ `allocation-imminent` job |
 | _card-failure_ | ✅ CardFailure.tsx (#90) | ✅ `runBindingAllocation` (card-failure branch) |
 
-`sendEmail()` (`src/lib/email/client.ts`) no-ops without `RESEND_API_KEY`, so the lifecycle senders in `src/lib/notifications/fan.ts` are wired but **dormant until the key is set**. **Remaining is an ops task, not code:** verify `auckets.com` in Resend + set `RESEND_API_KEY` in the Vercel prod env. Until then, beta fans get no status emails.
+`sendEmail()` (`src/lib/email/client.ts`) no-ops without `RESEND_API_KEY`. **As of 2026-06-11 the senders are LIVE in production:** `auckets.com` is verified in Resend and `RESEND_API_KEY` + `RESEND_FROM_EMAIL` are set in the Vercel prod env. (During the GoDaddy→Vercel DNS move the Resend DKIM/SPF records were re-created on Vercel DNS — they only existed in the old GoDaddy zone.)
 
 ---
 
@@ -80,13 +80,33 @@ Located at `src/components/ui/`. Most are ported; two notable gaps:
 | System | Status | Notes |
 |---|---|---|
 | **Stripe / payments** | ✅ Live (real path) | Stripe SDK + `src/lib/stripe/` (client, `customers.ts`, `payment-intents.ts`, `webhook.ts`, `card-failure-recovery.ts`). `POST /api/offers` ensures a Customer and creates a manual-capture `PaymentIntent` to hold the auth (≤6-day window, ADR-0003). Elements card collection wired. Revision cancels prior intent + recreates. **Signed, idempotent webhook** at `/api/stripe/webhook` (receipts in `stripe_webhook_events`): `payment_intent.payment_failed` → `card_failure`, `succeeded` → `charged` backstop, `canceled` recorded. **Card-failure recovery (backend):** `POST /api/offers/[id]/recover` charges a new card within the 4h window (`recoverCardFailure`); the `card-failure-expiry` cron releases lapsed seats. **Gaps:** the recovery *UI modal* + fan/ops failure notification, no app-level offer-idempotency-table writes, dev stub remains as fallback only. |
-| **Notifications — Resend (email)** | ⚠️ Wired, dormant until domain verified | `welcome` + `RequestActioned` + all 4 fan-lifecycle templates + card-failure now built and wired (#90, `src/lib/notifications/fan.ts`). Senders are best-effort (each catches its own errors). **Blocked only on ops:** `auckets.com` not yet verified in Resend + `RESEND_API_KEY` not set in prod, so nothing actually sends yet. |
+| **Notifications — Resend (email)** | ✅ Live (2026-06-11) | `welcome` + `RequestActioned` + all 4 fan-lifecycle templates + card-failure built and wired (#90, `src/lib/notifications/fan.ts`). Senders are best-effort (each catches its own errors). Domain verified in Resend, `RESEND_API_KEY` + `RESEND_FROM_EMAIL` set in prod. **Watch the free-tier 100-emails/day cap** (see Platform plans & costs below). |
 | **Notifications — Slack** | ⚠️ Scaffold wired (#50) | Ops alerts on request actions go out; broader coverage (card-failure, allocation-run) not wired. |
 | **Notifications — Twilio / SMS** | ❌ Not built (post-beta) | ADR-0016 moved SMS to MVP. No Twilio SDK, no 10DLC registration. **Long pole** — 1–2 week carrier turnaround; can start registration anytime. |
 | **Tickets** | ✅ Issuance + viewer + scanner live | `tickets` table + repo; **T-48h issuance** (`issueTicketsForDueShows`, `ticket-issuance` cron) mints a ticket + server-only `totp_secret` per paid seat of a bound show; the signed rotating-QR endpoint (#69) + geo-gated TicketViewer (#68) consume it; the door **Scanner** (#82) validates and admits it (`ticketScans` now written on every scan). Attend-path complete end-to-end. |
 | **Scanner** | ✅ Live | `/scan` (VENUE_STAFF / AUCKETS_ADMIN gated via `userCanScan`) → `POST /api/scan` → `processTicketScan` verifies the rotating QR (`verifyTicketToken`), admits the ticket (status → `scanned`), and appends every scan to `ticketScans` (ok / replay / expired_token / invalid). Camera (BarcodeDetector) + manual fallback. |
 | **Resales** | ❌ Not built (post-beta) | `resales` table exists; no refund logic, no artist-uplift routing, no Miracle Tickets gift flow. |
 | **Binding allocation** | ✅ Live (#62) | `mode=binding` on the allocate route (`src/lib/allocation/run-binding.ts`) captures placed offers' PaymentIntents, cancels unplaced auths, transitions statuses. Triggered by an admin "Run binding" button (#65) **and** an Inngest cron (`scheduled-binding`, every 5 min) that sweeps shows whose `binding_allocation_at` has passed (`sweepDueBindings`). Paused shows are excluded — ops decides. |
+
+---
+
+## Platform plans & costs — audited 2026-06-11
+
+Everything runs on free tiers today. Expected spend at beta: **~$65/mo + Stripe's per-transaction cut.** Three items are compliance/correctness issues disguised as billing, not optional upgrades. Pricing re-checked against each vendor's pricing page on the audit date.
+
+| Platform | Plan today | Free ceiling that matters | Pay when / why |
+|---|---|---|---|
+| **Vercel** | Hobby | 100 GB transfer, 1M invocations, **4 CPU-hr/mo**, **non-commercial only** | **Pro $20/mo BEFORE public beta** — Hobby's ToS prohibits commercial use (selling tickets qualifies); the projection endpoint (in-memory GAE per dial move) will also burn the CPU allowance under real traffic |
+| **Supabase** | Free (DB 11 MB / 500 MB) | 5 GB egress; **no automatic backups**; pauses after 1 wk inactivity (crons prevent this) | **Pro $25/mo BEFORE real money** — backups for the offers/charges/seats DB are the cheapest insurance in this table. Free tier allows 2 active projects, so the standing "separate prod project" split costs nothing extra |
+| **Resend** | Free (domain verified, key set) | 3,000/mo and **100 emails/day**, 1 domain | **Pro $20/mo before the first show with >100 fans** — one "window closing" send to a 300-fan show hits the daily cap mid-send |
+| **Clerk** | Free, **DEV instance** | 50k monthly users free | **$0** — but create the **production instance** before beta (dev instances lack production security features per Clerk's docs). Needs DNS records on auckets.com (now on Vercel DNS, CLI-addable) + `pk_live`/`sk_live` swap in Vercel. Pro ($25/mo) only if MFA/passkeys wanted |
+| **Inngest** | Free (Hobby) | 50k executions/mo, 5 concurrent | Probably $0: the two 5-min crons are ~17k runs/mo baseline, but **steps count as executions** — check the usage dashboard after the first live week. Pro is $75/mo. Vendor is provisional per [OPEN_QUESTIONS NEW-19](OPEN_QUESTIONS.md) |
+| **Stripe** | Test mode ($0) | n/a | **2.9% + 30¢ per successful charge** once live keys go in. No monthly fee. Stripe keeps its fee on refunds |
+| **Sentry** | **DSN not set — errors go nowhere** | 5k errors/mo free | $0 — but `NEXT_PUBLIC_SENTRY_DSN` is absent from the Vercel prod env, contradicting NEW-7 ("high observability from day one"). Set it; free tier suffices |
+| **Twilio** (future, ADR-0016) | Not started | n/a | ~$5–10/mo (number + A2P 10DLC campaign) + ~$0.008/SMS. The 10DLC carrier registration (1–2 wk) is the long pole, independent of cost |
+| **GoDaddy** | Registrar only (~$20/yr renewal) | n/a | DNS now lives on Vercel (free). **Check whether the "Websites + Marketing" product that was squatting on the DNS is billing — it does nothing now; cancel it** |
+
+Pre-beta upgrade order: **Vercel Pro** (ToS) → **Supabase Pro** (backups) → **Clerk production instance** ($0, work not money) → **Sentry DSN** ($0) → **Resend Pro** (the week before the first >100-fan show).
 
 ---
 
@@ -131,7 +151,7 @@ Beta = real fans, real money, real attendance. The money path is done; the chain
 
 ### 🟡 Soft gaps — every fan-journey screen now shipped; remaining is ops + polish
 
-6. ~~**Fan email templates**~~ — ✅ **shipped (#90).** All 4 (offer-received, placed, not-placed, allocation-imminent) + card-failure built and wired in `src/lib/notifications/fan.ts`. **Remaining is ops, not code:** verify `auckets.com` in Resend + set `RESEND_API_KEY` in the Vercel prod env so they actually send. Until then beta fans get no status emails.
+6. ~~**Fan email templates**~~ — ✅ **shipped (#90) and sending (2026-06-11).** All 4 (offer-received, placed, not-placed, allocation-imminent) + card-failure built and wired in `src/lib/notifications/fan.ts`. The ops half is done: `auckets.com` verified in Resend, `RESEND_API_KEY` + `RESEND_FROM_EMAIL` set in the Vercel prod env.
 7. ~~**AllocationFinal**~~ — ✅ **shipped (#96).** Fan "placed / not placed" result page at `/allocation/[showId]`, with `presentAllocationFinal`. **Every fan-journey screen is now built.**
 8. ~~**ShowCreate UI**~~ — ✅ **shipped (#86, #89).** Full row/tier control form + `POST /api/shows` + `createShow` repo; inline "create venue" path generates a venue + seat map without leaving the form.
 9. **Fans · data export tab** on ShowAdmin — per-fan rows + CSV + "Email all N". **Needs a privacy review first** per ADR-0017 (private offer fields are server-only). Manual export is the interim workaround.
@@ -150,6 +170,46 @@ Beta = real fans, real money, real attendance. The money path is done; the chain
 14. **Allocation confirmation page** ("You're in the room" after submit) + **DisplacementToast** (needs polling/push).
 15. **Header/nav** design-system polish, **Icon** system consolidation, **Sentry** DSN, **Stripe Connect Express** confirmation.
 16. **Bond Phase 2** — `bond_events` ledger + auto-accept + rewards + fan profiles. Out of MVP scope per ROADMAP.
+
+---
+
+## Cope super-fan feedback (2026-06-04) — slice plan
+
+Four asks from Cope, framed as "things a super fan would appreciate." **None blocks beta** — these are enhancements layered on the shipped attend-path. Full design notes in [OPEN_QUESTIONS.md NEW-15–NEW-18](OPEN_QUESTIONS.md#cope-super-fan-feedback-2026-06-04--design-needed); merch direction in [DECISIONS.md ADR-0019](DECISIONS.md#adr-0019--merch--limited-edition-drops-storefront-approach).
+
+Two of the four are mostly *surfacing data we already have*; two are *net-new builds*. Suggested order is cheapest-and-highest-payoff first.
+
+### A. Show / artist imagery (NEW-15) — net-new, contained · **suggested first**
+
+Highest visual payoff, smallest build. Makes a poster appear on the `/shows` index, the show page, *and* the ticket stub.
+
+- **Slice A1 — storage + schema + upload.** Pick storage in a short ADR (lean: Supabase Storage, public-read bucket, server-side writes via service role). Add `artists.imageUrl` + `shows.posterUrl` (nullable). New authenticated upload route (validate type/size). Wire upload UI into ShowCreate + a small artist-profile editor; admin can always upload.
+- **Slice A2 — render everywhere.** Fallback chain show poster → artist photo → text placeholder, applied to: `/shows` index cards, fan show-detail hero, the ticket stub, the artist page header. (Could fold into A1 if small.)
+- **Decision needed:** is the per-show poster override needed for show #1, or is an artist photo enough to start? (NEW-15.)
+
+### B. Fan-facing venue seat map (NEW-16) — mostly surfacing · **needs Cope clarification**
+
+The venue model + a `VenuePreview` already exist. ⚠️ "Load venue seating" is ambiguous — confirm with Cope which he means before building:
+
+- **(a)** richer fan-facing interactive seat map on the show page — *Slice B1: extend `VenuePreview` to render the full active architecture with tiers.*
+- **(b)** "your seat" highlighted on the ticket / `AllocationFinal` — *Slice B2: seat-highlight on the ticket stub + result page.*
+- **(c)** importing a venue's real chart — that's the **existing VenueBuilder track** (post-beta item 12 + Q23/Q24), not new work.
+
+Most likely (a)+(b). Hold slices until Cope confirms.
+
+### C. Ticket manifest (NEW-17) — surfacing; admin half is unblocked
+
+Data is all present (`seat_assignments` + `tickets` + `ticketScans`).
+
+- **Slice C1 — admin/ops manifest. UNBLOCKED (Q30 = "Auckets sees everything").** A Tickets/Manifest section in the admin command center: per-fan rows (email/phone/group/offer/seats/ticket+scan status) + CSV export. Builds on the command-center initiative above. No new product decision.
+- **Slice C2 — artist manifest. BLOCKED on a privacy decision.** Q30 limits the artist to "totals + averages per section," and ADR-0017 keeps private-offer fields server-only — so what an *artist* sees per-fan (de-identified? names only? full contact?) must be settled with Cope first. This is the long-deferred "Fans · data" tab (item 9 above).
+
+### D. Merch / limited-edition drops (NEW-18) — net-new commerce subsystem · **biggest, needs ADR decision**
+
+Captured as **[ADR-0019](DECISIONS.md#adr-0019--merch--limited-edition-drops-storefront-approach) (Proposed)**. No slices until the direction (native-on-Stripe vs. Shopify) and Cope's product answers (drop mechanics, super-fan gating, inventory/variants, fulfilment, payout/fees, tax) land. Sketch once decided:
+
+- **If native (Direction A), scoped tiny for drop #1:** *Slice D1* — products/variants/inventory/orders schema + immediate-capture PaymentIntent with Connect application fee. *Slice D2* — storefront + cart + checkout UI, gated to ticket-holders, pickup-at-show (no shipping/tax) using the existing door scanner. *Slice D3+* — shipping/addresses/tax if/when merch grows into a shipped catalog.
+- **If Shopify (Direction B):** ops stands up the store; *Slice D1* — identity bridge for super-fan gating + embed-vs-link-out; minimal `show ↔ shopify_collection` link.
 
 ---
 
