@@ -44,6 +44,10 @@ export async function postRequestActioned(
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ text: buildSlackText(payload) }),
+      // A hung Slack endpoint must not pin the request that triggered the
+      // notification — same family as the DB wedge (#128/#129): every
+      // awaited external call needs a client-side deadline.
+      signal: AbortSignal.timeout(5_000),
     });
     if (!res.ok) {
       logger.warn(
