@@ -16,27 +16,43 @@ import { createDeadlineClient, DbDeadlineError } from "./deadline-client";
 const AUTH_OK = Buffer.from([0x52, 0, 0, 0, 8, 0, 0, 0, 0]);
 // ReadyForQuery: 'Z' + len 5 + 'I' (idle)
 const READY_FOR_QUERY = Buffer.from([0x5a, 0, 0, 0, 5, 0x49]);
+// CommandComplete: 'C' + len 13 + "SELECT 1\0" — enough to resolve a simple
+// ('Q') protocol query, which is what postgres.js sends for an unsafe()
+// call with no params and prepare:false.
+const COMMAND_COMPLETE = Buffer.concat([
+  Buffer.from([0x43, 0, 0, 0, 13]),
+  Buffer.from("SELECT 1\0", "latin1"),
+]);
 
 describe("createDeadlineClient against a wedged socket", () => {
   let server: Server;
   let port: number;
   const sockets = new Set<Socket>();
   // Everything clients write after connecting, decoded loosely — query text
-  // appears verbatim inside Parse messages, so tests can assert what reached
-  // the wire (and, for the no-pipelining test, what didn't).
+  // appears verbatim inside simple-protocol messages, so tests can assert
+  // what reached the wire (and, for the no-pipelining test, what didn't).
   let wireLog = "";
+  // When true, the server answers the FIRST query on a new connection
+  // successfully before going silent — so a test can get a warm, established
+  // connection and then wedge it mid-flight (the prod shape: warm lambda).
+  let warmFirstQuery = false;
 
   beforeAll(async () => {
     server = createServer((socket) => {
       sockets.add(socket);
       socket.on("error", () => {});
+      // 0 = awaiting startup, 1 = answer one query, 2 = silent forever
+      let stage = 0;
       socket.on("data", (chunk) => {
         wireLog += chunk.toString("latin1");
-      });
-      // Answer the StartupMessage so the client believes it's connected,
-      // then never send another byte no matter what arrives.
-      socket.once("data", () => {
-        socket.write(Buffer.concat([AUTH_OK, READY_FOR_QUERY]));
+        if (stage === 0) {
+          stage = warmFirstQuery ? 1 : 2;
+          socket.write(Buffer.concat([AUTH_OK, READY_FOR_QUERY]));
+        } else if (stage === 1) {
+          stage = 2;
+          socket.write(Buffer.concat([COMMAND_COMPLETE, READY_FOR_QUERY]));
+        }
+        // stage 2: the wedge — never send another byte no matter what arrives.
       });
     });
     await new Promise<void>((resolve) => {
@@ -114,22 +130,34 @@ describe("createDeadlineClient against a wedged socket", () => {
 
   it("issues one statement at a time — never pipelines onto the wire", async () => {
     wireLog = "";
-    const onDeadline = vi.fn();
-    const { client, raw } = makeClient({ queryDeadlineMs: 5_000, onDeadline });
+    warmFirstQuery = true;
+    try {
+      const onDeadline = vi.fn();
+      const { client, raw } = makeClient({ queryDeadlineMs: 5_000, onDeadline });
 
-    // Issue two queries concurrently, the way a page's Promise.all does.
-    // Without serialization postgres.js writes the second one to the socket
-    // while the first is still unanswered — the pipelining that desyncs a
-    // transaction-mode pooler and wedges the backend.
-    const q1 = Promise.resolve(client.unsafe("select 111")).catch(() => {});
-    const q2 = Promise.resolve(client.unsafe("select 222")).catch(() => {});
-    await new Promise((resolve) => setTimeout(resolve, 500));
+      // Establish the connection with a query the server answers — the warm
+      // lambda state. postgres.js only pipelines onto a connection that is
+      // already established and busy (cold dispatch just queues client-side),
+      // so the warm-up is what makes this test able to catch regressions.
+      await client.unsafe("select 0");
 
-    expect(wireLog).toContain("select 111");
-    expect(wireLog).not.toContain("select 222");
+      // Now the server is silent. Issue two queries concurrently, the way a
+      // page's Promise.all does. Without serialization postgres.js writes the
+      // second onto the socket while the first is still unanswered — the
+      // pipelining that desyncs a transaction-mode pooler and wedges the
+      // backend.
+      const q1 = Promise.resolve(client.unsafe("select 111")).catch(() => {});
+      const q2 = Promise.resolve(client.unsafe("select 222")).catch(() => {});
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
-    await raw.end({ timeout: 0 });
-    await Promise.all([q1, q2]);
+      expect(wireLog).toContain("select 111");
+      expect(wireLog).not.toContain("select 222");
+
+      await raw.end({ timeout: 0 });
+      await Promise.all([q1, q2]);
+    } finally {
+      warmFirstQuery = false;
+    }
   });
 
   it("does not start the deadline clock until the query is awaited", async () => {
