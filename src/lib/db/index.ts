@@ -51,6 +51,13 @@ import { createDeadlineClient } from "./deadline-client";
  * no built-in query timeout. So the client is wrapped with CLIENT-SIDE
  * deadlines (see ./deadline-client.ts):
  *
+ *   - queries are issued strictly ONE AT A TIME per client — no pipelining.
+ *     postgres.js otherwise writes concurrently-issued queries (a page's
+ *     Promise.all) onto the wire while one is still in flight, and pipelined
+ *     extended-protocol traffic through transaction-mode Supavisor is the
+ *     suspected wedge trigger: the 2026-06-12 recurrence wedged on exactly
+ *     the second query of /shows/new's Promise.all. Costs ~1-2ms per query
+ *     (same-region pooler); removes the trigger instead of just surviving it;
  *   - every query rejects after 15s instead of hanging forever;
  *   - a whole transaction rejects after 60s (covers BEGIN/COMMIT, which
  *     postgres.js issues internally where the per-query wrap can't see them);

@@ -63,6 +63,32 @@ export function createDeadlineClient(
   const queryMs = options.queryDeadlineMs ?? 15_000;
   const txMs = options.transactionDeadlineMs ?? 60_000;
   const onDeadline = options.onDeadline;
+  const noop = () => undefined;
+
+  // One statement on the wire at a time — NO pipelining. postgres.js writes
+  // concurrently-issued queries (a page's Promise.all) onto the single
+  // connection while one is still in flight (execute() pushes to `sent` and
+  // writes immediately), and pipelined extended-protocol traffic through a
+  // TRANSACTION-MODE pooler (Supavisor :6543) is the suspected trigger for
+  // the prod wedges: the pooler routes each statement-transaction to a
+  // server connection, so a statement pipelined behind an unfinished one can
+  // strand the backend mid-message (`active` + `ClientRead`). The 2026-06-12
+  // recurrence wedged on exactly the second query of a Promise.all
+  // ("Promise.all (index 1)" in the stack). Serializing costs one pooler RTT
+  // per query (same-region, ~1-2ms); correctness wins.
+  //
+  // The mutex is held for a whole transaction (BEGIN..COMMIT), so a `db.*`
+  // call nested inside a `db.transaction` callback deadlocks the mutex the
+  // same way it already deadlocked the max:1 pool — CONVENTIONS.md forbids
+  // that pattern. Queries inside the callback (`tx.*`) run on the reserved
+  // connection without re-acquiring: an open transaction is pinned to one
+  // backend by the pooler, so within-transaction traffic can't desync.
+  let chain: Promise<unknown> = Promise.resolve();
+  function serialize<T>(task: () => Promise<T>): Promise<T> {
+    const result = chain.then(task);
+    chain = result.then(noop, noop);
+    return result;
+  }
 
   function withDeadline<T>(
     pending: PromiseLike<T>,
@@ -92,7 +118,8 @@ export function createDeadlineClient(
    */
   function wrapQuery<T extends PromiseLike<unknown>>(query: T): T {
     let raced: Promise<unknown> | undefined;
-    const start = () => (raced ??= withDeadline(query, "query", queryMs));
+    const start = () =>
+      (raced ??= serialize(() => withDeadline(query, "query", queryMs)));
     return new Proxy(query as object, {
       get(target, prop) {
         if (prop === "then")
@@ -157,13 +184,17 @@ export function createDeadlineClient(
           const fn = args[args.length - 1];
           if (typeof fn !== "function")
             return (value as AnyFn).apply(target, args);
-          return withDeadline(
-            (value as AnyFn).apply(target, [
-              ...args.slice(0, -1),
-              (scoped: object) => (fn as AnyFn)(wrapTxSql(scoped)),
-            ]) as PromiseLike<unknown>,
-            "transaction",
-            txMs,
+          // The begin() call happens INSIDE the serialized task so BEGIN
+          // isn't written to the wire until the mutex is acquired.
+          return serialize(() =>
+            withDeadline(
+              (value as AnyFn).apply(target, [
+                ...args.slice(0, -1),
+                (scoped: object) => (fn as AnyFn)(wrapTxSql(scoped)),
+              ]) as PromiseLike<unknown>,
+              "transaction",
+              txMs,
+            ),
           );
         };
       }

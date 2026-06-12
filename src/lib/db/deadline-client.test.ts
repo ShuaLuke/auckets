@@ -21,11 +21,18 @@ describe("createDeadlineClient against a wedged socket", () => {
   let server: Server;
   let port: number;
   const sockets = new Set<Socket>();
+  // Everything clients write after connecting, decoded loosely — query text
+  // appears verbatim inside Parse messages, so tests can assert what reached
+  // the wire (and, for the no-pipelining test, what didn't).
+  let wireLog = "";
 
   beforeAll(async () => {
     server = createServer((socket) => {
       sockets.add(socket);
       socket.on("error", () => {});
+      socket.on("data", (chunk) => {
+        wireLog += chunk.toString("latin1");
+      });
       // Answer the StartupMessage so the client believes it's connected,
       // then never send another byte no matter what arrives.
       socket.once("data", () => {
@@ -103,6 +110,26 @@ describe("createDeadlineClient against a wedged socket", () => {
     expect(Date.now() - started).toBeLessThan(3_000);
     expect(onDeadline).toHaveBeenCalledWith({ scope: "transaction", ms: 500 });
     await raw.end({ timeout: 0 });
+  });
+
+  it("issues one statement at a time — never pipelines onto the wire", async () => {
+    wireLog = "";
+    const onDeadline = vi.fn();
+    const { client, raw } = makeClient({ queryDeadlineMs: 5_000, onDeadline });
+
+    // Issue two queries concurrently, the way a page's Promise.all does.
+    // Without serialization postgres.js writes the second one to the socket
+    // while the first is still unanswered — the pipelining that desyncs a
+    // transaction-mode pooler and wedges the backend.
+    const q1 = Promise.resolve(client.unsafe("select 111")).catch(() => {});
+    const q2 = Promise.resolve(client.unsafe("select 222")).catch(() => {});
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    expect(wireLog).toContain("select 111");
+    expect(wireLog).not.toContain("select 222");
+
+    await raw.end({ timeout: 0 });
+    await Promise.all([q1, q2]);
   });
 
   it("does not start the deadline clock until the query is awaited", async () => {
