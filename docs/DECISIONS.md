@@ -429,6 +429,88 @@ Auto-bid is the standard "eBay sniping prevention" mechanic, ported to a fairnes
 
 ---
 
+## ADR-0019 — Merch / limited-edition drops: storefront approach
+
+**Status:** **Proposed** — direction not yet chosen. Drafted 2026-06-04 from Cope's
+super-fan feedback ("a merch purchase should be an option … limited edition merch
+drops or merch for shows"). Julia asked to lay out both directions here and decide
+in the ADR rather than assume. **No code until a direction + the product answers
+below land.** See [OPEN_QUESTIONS.md NEW-18](OPEN_QUESTIONS.md#new-18--merch--limited-edition-drops).
+**Date:** 2026-06-04
+
+**Context:** There is no commerce subsystem today — zero product/store/inventory/SKU
+anywhere. Merch is a *straight purchase* (charge now, fulfil later), which is a
+different money model from the offer flow's manual-capture auth-hold ([ADR-0003](#adr-0003--stripe-setupintent--charge-on-acceptance)).
+We already have Stripe + Stripe Connect (`artists.stripeConnectId`) and a door
+scanner, both of which a merch flow can lean on. The strategic point Cope is making
+is "super fan" — merch tied to *who showed up* is the differentiator, not a generic
+store.
+
+**The decision to make:** how do we stand up the storefront — **native on our own
+Stripe**, or **integrate Shopify**?
+
+### Direction A — Native storefront on our Stripe + Connect
+
+Build products, inventory, cart, and checkout in-app; charge via Stripe (a normal
+PaymentIntent, captured immediately); route revenue to the artist's Connect account
+with an application fee (Q20).
+
+- **Pros:** full control; merch lives *next to shows* so super-fan gating (drops
+  limited to ticket-holders / attendees) is trivial — it's the same DB; one payout
+  path (the Connect account we already have); one checkout brand; the door scanner
+  can double as merch pickup. Coherent with "one Next.js app, one DB" ([ADR-0001](#adr-0001--single-nextjs-app-not-microservices)).
+- **Cons:** most to build — products/variants/inventory/orders schema, a storefront
+  + cart UI, oversell-safe stock decrements, refund/return handling, and (if we ship
+  physical) addresses + shipping rates + sales tax. We become responsible for
+  fulfilment tooling.
+
+### Direction B — Integrate Shopify
+
+Stand up a Shopify store; link out or embed (Buy Button / Storefront API); let
+Shopify own catalog, inventory, checkout, fulfilment, and tax.
+
+- **Pros:** fastest path to a real catalog with shipping + tax + fulfilment handled;
+  battle-tested checkout; off-the-shelf inventory and order management.
+- **Cons:** a second system and second payout path (Shopify Payments, separate from
+  the Connect account); weak coupling to shows — super-fan gating (drops exclusive to
+  ticket-holders) means bridging AUCKETS identity ↔ Shopify (customer tags / discount
+  codes / a headless gate), which erodes the "fastest" advantage exactly where Cope's
+  value is; a second brand/checkout surface; ongoing Shopify cost.
+
+**Leaning (not decided):** for the *first* drop, **Direction A scoped tiny** —
+pickup-at-show only (no shipping/tax), one product, fixed quantity, gated to
+ticket-holders — leans on Stripe Connect + the scanner we already have and proves the
+super-fan mechanic with the least surface area. Shopify becomes attractive once merch
+grows into a real shipped catalog. But this is Cope's call; the questions below decide it.
+
+### Open product questions for Cope (decide before scoping slices)
+
+1. **Build vs. buy:** native-on-our-Stripe (A) or Shopify (B)? Drives everything below.
+2. **Drop mechanics:** limited-edition = time-boxed window + capped quantity? First-come or
+   allocated? Standing per-show merch alongside, or drops only?
+3. **Super-fan gating:** are drops exclusive to fans who *attended* / were *placed* / hold a
+   *ticket* — or open to anyone? (This is the differentiator; likely yes.)
+4. **Inventory & variants:** sizes/colours? Hard stock counts? What happens on oversell?
+5. **Fulfilment:** ship-to-fan (needs addresses + shipping rates + labels), pickup-at-show
+   (scan at door, no shipping), or digital? Different builds.
+6. **Payout & fees:** revenue to the artist via Connect with an application fee (ties to Q20,
+   platform fee model)? Refund / return policy?
+7. **Sales tax:** physical goods trigger sales-tax obligations — Stripe Tax / Shopify Tax, or
+   out of scope for the first drop?
+
+**Consequences (once a direction is chosen):**
+- **Direction A:** new schema (`products`, `product_variants`, `inventory`, `orders`,
+  `order_items`), a new `POST` checkout path creating an immediate-capture PaymentIntent
+  with `transfer_data`/application fee to the artist, oversell-safe stock decrements
+  (row locks), and a storefront + order-history UI. New ADR(s) likely for the inventory
+  model and (if shipped) the tax/shipping approach.
+- **Direction B:** a Shopify account (ops, like the Resend/Twilio long poles), the
+  identity bridge for gating, and a decision on embed vs. link-out. Minimal AUCKETS schema
+  (maybe just a `show ↔ shopify_collection` link).
+- Either way, merch is **post-beta** — it does not gate the beta attend-path.
+
+---
+
 ## How to add a new ADR
 
 1. Pick the next sequential number.
