@@ -116,10 +116,17 @@ export function createDeadlineClient(
    * at build time. Chainable modifiers (`.values()` — the one Drizzle uses)
    * are re-wrapped so the eventual await still goes through the deadline.
    */
-  function wrapQuery<T extends PromiseLike<unknown>>(query: T): T {
+  function wrapQuery<T extends PromiseLike<unknown>>(
+    query: T,
+    // Root-client queries acquire the wire mutex; queries inside a
+    // begin/savepoint callback MUST NOT — the enclosing transaction already
+    // holds it (acquiring again would deadlock every transaction on its
+    // first inner query).
+    serialized: boolean,
+  ): T {
     let raced: Promise<unknown> | undefined;
-    const start = () =>
-      (raced ??= serialize(() => withDeadline(query, "query", queryMs)));
+    const run = () => withDeadline(query, "query", queryMs);
+    const start = () => (raced ??= serialized ? serialize(run) : run());
     return new Proxy(query as object, {
       get(target, prop) {
         if (prop === "then")
@@ -132,6 +139,7 @@ export function createDeadlineClient(
           return (...args: unknown[]) =>
             wrapQuery(
               (value as AnyFn).apply(target, args) as PromiseLike<unknown>,
+              serialized,
             );
         }
         return typeof value === "function"
@@ -150,6 +158,7 @@ export function createDeadlineClient(
           return (...args: unknown[]) =>
             wrapQuery(
               (value as AnyFn).apply(target, args) as PromiseLike<unknown>,
+              false,
             );
         }
         if (prop === "savepoint") {
@@ -177,6 +186,7 @@ export function createDeadlineClient(
         return (...args: unknown[]) =>
           wrapQuery(
             (value as AnyFn).apply(target, args) as PromiseLike<unknown>,
+            true,
           );
       }
       if (prop === "begin") {

@@ -32,27 +32,30 @@ describe("createDeadlineClient against a wedged socket", () => {
   // appears verbatim inside simple-protocol messages, so tests can assert
   // what reached the wire (and, for the no-pipelining test, what didn't).
   let wireLog = "";
-  // When true, the server answers the FIRST query on a new connection
-  // successfully before going silent — so a test can get a warm, established
-  // connection and then wedge it mid-flight (the prod shape: warm lambda).
-  let warmFirstQuery = false;
+  // The NEXT connection answers this many queries successfully before going
+  // silent — so a test can get a warm, established connection (the prod
+  // shape: warm lambda) or a successfully-opened transaction, then wedge it.
+  // Latched per-socket at startup: leftover sockets from earlier tests (a
+  // client teardown flushes a Terminate byte at an arbitrary later moment)
+  // can't consume another test's budget.
+  let answerNextQueries = 0;
 
   beforeAll(async () => {
     server = createServer((socket) => {
       sockets.add(socket);
       socket.on("error", () => {});
-      // 0 = awaiting startup, 1 = answer one query, 2 = silent forever
-      let stage = 0;
+      let budget: number | null = null;
       socket.on("data", (chunk) => {
         wireLog += chunk.toString("latin1");
-        if (stage === 0) {
-          stage = warmFirstQuery ? 1 : 2;
+        if (budget === null) {
+          budget = answerNextQueries;
+          answerNextQueries = 0;
           socket.write(Buffer.concat([AUTH_OK, READY_FOR_QUERY]));
-        } else if (stage === 1) {
-          stage = 2;
+        } else if (chunk[0] !== 0x58 /* Terminate */ && budget > 0) {
+          budget--;
           socket.write(Buffer.concat([COMMAND_COMPLETE, READY_FOR_QUERY]));
         }
-        // stage 2: the wedge — never send another byte no matter what arrives.
+        // else: the wedge — never send another byte no matter what arrives.
       });
     });
     await new Promise<void>((resolve) => {
@@ -130,7 +133,7 @@ describe("createDeadlineClient against a wedged socket", () => {
 
   it("issues one statement at a time — never pipelines onto the wire", async () => {
     wireLog = "";
-    warmFirstQuery = true;
+    answerNextQueries = 1;
     try {
       const onDeadline = vi.fn();
       const { client, raw } = makeClient({ queryDeadlineMs: 5_000, onDeadline });
@@ -156,7 +159,33 @@ describe("createDeadlineClient against a wedged socket", () => {
       await raw.end({ timeout: 0 });
       await Promise.all([q1, q2]);
     } finally {
-      warmFirstQuery = false;
+      answerNextQueries = 0;
+    }
+  });
+
+  it("a transaction's inner queries don't deadlock against the wire mutex", async () => {
+    answerNextQueries = 1; // BEGIN succeeds; the inner query wedges
+    try {
+      const onDeadline = vi.fn();
+      const { client, raw } = makeClient({
+        queryDeadlineMs: 250,
+        transactionDeadlineMs: 1_000,
+        onDeadline,
+      });
+
+      await expect(
+        client.begin(async (tx) => {
+          await tx.unsafe("select 1");
+        }),
+      ).rejects.toBeInstanceOf(DbDeadlineError);
+
+      // The INNER query's own deadline must be what fires. If tx-scoped
+      // queries acquired the mutex (held by the enclosing transaction),
+      // they'd deadlock and only the transaction deadline could fire.
+      expect(onDeadline).toHaveBeenCalledWith({ scope: "query", ms: 250 });
+      await raw.end({ timeout: 0 });
+    } finally {
+      answerNextQueries = 0;
     }
   });
 
