@@ -37,12 +37,29 @@ export async function sendEmail({
     return { id: null };
   }
 
-  const result = await resend.emails.send({
-    from: from ?? env.RESEND_FROM_EMAIL,
-    to,
-    subject,
-    react,
+  // The Resend SDK has no request timeout, and sendEmail is awaited inside
+  // request paths (offer submission, artist-request actions) before the
+  // response is sent — a hung Resend API would pin those requests until the
+  // function is killed. Same family as the DB wedge (#128/#129): every
+  // awaited external call gets a client-side deadline. Callers already
+  // treat email as best-effort (safeSend / notification wrappers catch),
+  // so timing out behaves exactly like any other send failure.
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error("Resend: send timed out after 10000ms")),
+      10_000,
+    );
   });
+  const result = await Promise.race([
+    resend.emails.send({
+      from: from ?? env.RESEND_FROM_EMAIL,
+      to,
+      subject,
+      react,
+    }),
+    deadline,
+  ]).finally(() => clearTimeout(timer));
 
   if (result.error) {
     logger.error({ err: result.error, to, subject }, "Resend send failed");

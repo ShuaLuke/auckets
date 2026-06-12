@@ -59,7 +59,7 @@ import { createDeadlineClient } from "./deadline-client";
  *     the second query of /shows/new's Promise.all. Costs ~1-2ms per query
  *     (same-region pooler); removes the trigger instead of just surviving it;
  *   - every query rejects after 15s instead of hanging forever;
- *   - a whole transaction rejects after 60s (covers BEGIN/COMMIT, which
+ *   - a whole transaction rejects after 20s (covers BEGIN/COMMIT, which
  *     postgres.js issues internally where the per-query wrap can't see them);
  *   - on any blown deadline we assume the connection is wedged: a fresh
  *     client is swapped in for subsequent requests and the old one is
@@ -82,6 +82,13 @@ const PG_OPTIONS = {
 
 function connect() {
   const { client, raw } = createDeadlineClient(env.DATABASE_URL, PG_OPTIONS, {
+    queryDeadlineMs: 15_000,
+    // Below the lib's 60s default: a normal route's function maxDuration is
+    // shorter than 60s, so a transaction wedged at BEGIN/COMMIT would outlive
+    // the function and only heal on a later thaw. 20s is still ~100x the
+    // slowest real transaction (binding Phase 1) and keeps the heal inside a
+    // single function lifetime.
+    transactionDeadlineMs: 20_000,
     onDeadline({ scope, ms }) {
       // Two queued queries can both blow their deadlines; only the first one
       // gets to heal — the second must not destroy the fresh client.
