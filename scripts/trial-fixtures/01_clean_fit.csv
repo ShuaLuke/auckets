@@ -1,0 +1,8 @@
+id,groupSize,price,tier
+p_a,8,90,premium
+p_b,8,85,premium
+m_c,6,60,mid
+m_d,6,55,mid
+ga_1,10,35,ga
+ga_2,8,32,ga
+ga_3,4,30,ga
