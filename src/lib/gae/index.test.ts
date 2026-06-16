@@ -169,6 +169,69 @@ describe("allocate — orphan vs unfilled classification", () => {
   });
 });
 
+describe("allocate — parity / fill instrumentation", () => {
+  it("reports hole sizes and flags odd-shaped holes", () => {
+    // Row of 7 (odd capacity), one group of 4 placed LEFT → a 3-seat hole.
+    const rows = [makeRow({ id: "row-1", rowRank: 1, capacity: 7 })];
+    const offers = [
+      makeOffer({ id: "A", pricePerTicketCents: 9000, groupSize: 4 }),
+    ];
+    const result = allocate(makeVenue(rows), offers, baseConfig);
+
+    expect(result.stats.emptySeats).toBe(3);
+    expect(result.stats.holesBySize).toEqual({ 3: 1 });
+    expect(result.stats.oddHoleSeats).toBe(3);
+    expect(result.stats.emptySeatsOddRows).toBe(3);
+    expect(result.stats.emptySeatsEvenRows).toBe(0);
+  });
+
+  it("a held seat splits empty seats into separate holes", () => {
+    // Row of 6 (even), hold at the 4th seat, no offers. Open positions
+    // 1-3 and 5-6 → a 3-hole and a 2-hole.
+    const rows = [
+      makeRow({ id: "row-1", rowRank: 1, capacity: 6, holds: ["row-1-4"] }),
+    ];
+    const result = allocate(makeVenue(rows), [], baseConfig);
+
+    expect(result.stats.emptySeats).toBe(5);
+    expect(result.stats.holesBySize).toEqual({ 3: 1, 2: 1 });
+    expect(result.stats.oddHoleSeats).toBe(3);
+    expect(result.stats.emptySeatsEvenRows).toBe(5);
+    expect(result.stats.emptySeatsOddRows).toBe(0);
+  });
+
+  it("counts GA empty seats in emptySeats but excludes them from hole shapes", () => {
+    // GA bucket of 5, one group of 2 → 3 empty, but GA carries no seat
+    // geometry: no holes, no odd/even-row attribution.
+    const rows = [makeRow({ id: "ga-1", rowRank: 1, capacity: 5, isGa: true })];
+    const offers = [
+      makeOffer({ id: "A", pricePerTicketCents: 9000, groupSize: 2 }),
+    ];
+    const result = allocate(makeVenue(rows), offers, baseConfig);
+
+    expect(result.stats.emptySeats).toBe(3);
+    expect(result.stats.holesBySize).toEqual({});
+    expect(result.stats.oddHoleSeats).toBe(0);
+    expect(result.stats.emptySeatsOddRows).toBe(0);
+    expect(result.stats.emptySeatsEvenRows).toBe(0);
+  });
+
+  it("emptySeats equals orphanSeats + unfilledSeats", () => {
+    const rows = [
+      makeRow({ id: "row-1", rowRank: 1, capacity: 10 }),
+      makeRow({ id: "row-2", rowRank: 2, capacity: 6 }),
+    ];
+    const offers = [
+      makeOffer({ id: "A", pricePerTicketCents: 9000, groupSize: 6 }),
+    ];
+    const result = allocate(makeVenue(rows), offers, baseConfig);
+
+    expect(result.stats.emptySeats).toBe(
+      result.stats.orphanSeats + result.stats.unfilledSeats,
+    );
+  });
+});
+
 describe("allocate — end-to-end pipeline (launchpad + waterfall)", () => {
   it("waterfalls a soft-preference offer when its preferred tier filled in launchpad", () => {
     const rows = [

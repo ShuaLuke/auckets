@@ -69,12 +69,30 @@ function computeStats(
 ): AllocationStats {
   const activeSet = new Set(venue.activeRowIds);
   const seatsByRow = new Map<string, number>();
+  const placedPositionsByRow = new Map<string, Set<number>>();
   for (const a of assignments) {
     seatsByRow.set(a.venueRowId, (seatsByRow.get(a.venueRowId) ?? 0) + 1);
+    let placed = placedPositionsByRow.get(a.venueRowId);
+    if (placed === undefined) {
+      placed = new Set<number>();
+      placedPositionsByRow.set(a.venueRowId, placed);
+    }
+    placed.add(a.positionIndex);
   }
 
   let orphanSeats = 0;
   let unfilledSeats = 0;
+
+  // Parity / fill instrumentation (spec §"What GAE optimizes — the objective"
+  // §On parity, role 2: measured hypothesis). Computed over seated (non-GA)
+  // active rows, where seat geometry and capacity parity are meaningful. Row
+  // parity is derived from capacity here, NOT from VenueRow.parity (which the
+  // allocator does not maintain).
+  const holesBySize: Record<number, number> = {};
+  let oddHoleSeats = 0;
+  let emptySeatsOddRows = 0;
+  let emptySeatsEvenRows = 0;
+
   for (const row of venue.rows) {
     if (!activeSet.has(row.id)) continue;
     const available = row.capacity - row.holds.length;
@@ -84,6 +102,43 @@ function computeStats(
       unfilledSeats += available;
     } else if (placedHere < available) {
       orphanSeats += available - placedHere;
+    }
+
+    // GA rows are buckets, not seat layouts: hole shape and capacity parity
+    // carry no allocation meaning there, so they're excluded from the parity
+    // instrumentation. Their empty seats still count in orphan/unfilled (and
+    // thus emptySeats).
+    if (row.isGa === true) continue;
+
+    const emptyHere = available - placedHere;
+    if (emptyHere <= 0) continue;
+    if (row.capacity % 2 === 0) {
+      emptySeatsEvenRows += emptyHere;
+    } else {
+      emptySeatsOddRows += emptyHere;
+    }
+
+    // Collect maximal contiguous runs of open seats (neither held nor
+    // placed). Each run is one "hole" whose length is the largest group that
+    // could still sit in it; a held or placed seat breaks the run.
+    const heldSet = new Set(row.holds);
+    const placedSet = placedPositionsByRow.get(row.id);
+    let runLength = 0;
+    for (let i = 0; i <= row.seatNumbers.length; i++) {
+      const seat = i < row.seatNumbers.length ? row.seatNumbers[i] : undefined;
+      const open =
+        seat !== undefined &&
+        !heldSet.has(seat) &&
+        (placedSet === undefined || !placedSet.has(i));
+      if (open) {
+        runLength += 1;
+        continue;
+      }
+      if (runLength > 0) {
+        holesBySize[runLength] = (holesBySize[runLength] ?? 0) + 1;
+        if (runLength % 2 === 1) oddHoleSeats += runLength;
+        runLength = 0;
+      }
     }
   }
 
@@ -100,6 +155,11 @@ function computeStats(
     orphanSeats,
     unfilledSeats,
     fillRate,
+    emptySeats: orphanSeats + unfilledSeats,
+    holesBySize,
+    oddHoleSeats,
+    emptySeatsOddRows,
+    emptySeatsEvenRows,
   };
 }
 
