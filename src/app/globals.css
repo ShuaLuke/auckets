@@ -8,3 +8,13 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Pre-launch gate (/unlock): hide the global site header so a locked-out
+   visitor sees only the password card, not nav they can't use yet. The
+   unlock page marks its <main> with data-gate-screen; both it and SiteNav's
+   <header> are direct children of <body>, so :has() can reach back to the
+   preceding header. Scoped entirely to that page — no other route renders
+   data-gate-screen. See src/app/unlock/page.tsx. */
+body:has(> main[data-gate-screen]) > header {
+  display: none;
+}
