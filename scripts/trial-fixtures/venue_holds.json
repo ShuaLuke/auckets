@@ -1,0 +1,11 @@
+{
+  "venueId": "copes-place-with-holds",
+  "activeRowIds": ["row_a", "row_b", "row_c", "row_d", "row_ga"],
+  "rows": [
+    { "id": "row_a", "area": "orchestra", "section": "main", "rowName": "A", "rowRank": 1, "capacity": 8, "parity": "EVEN", "lean": "CENTER", "seatNumbers": ["1","2","3","4","5","6","7","8"], "holds": ["4","5"], "tier": "premium", "isGa": false },
+    { "id": "row_b", "area": "orchestra", "section": "main", "rowName": "B", "rowRank": 2, "capacity": 8, "parity": "EVEN", "lean": "CENTER", "seatNumbers": ["1","2","3","4","5","6","7","8"], "holds": ["1"], "tier": "premium", "isGa": false },
+    { "id": "row_c", "area": "orchestra", "section": "main", "rowName": "C", "rowRank": 3, "capacity": 6, "parity": "EVEN", "lean": "CENTER", "seatNumbers": ["1","2","3","4","5","6"], "holds": [], "tier": "mid", "isGa": false },
+    { "id": "row_d", "area": "orchestra", "section": "main", "rowName": "D", "rowRank": 4, "capacity": 6, "parity": "EVEN", "lean": "CENTER", "seatNumbers": ["1","2","3","4","5","6"], "holds": [], "tier": "mid", "isGa": false },
+    { "id": "row_ga", "area": "ga", "section": "ga", "rowName": "GA", "rowRank": 5, "capacity": 22, "parity": "EVEN", "lean": "CENTER", "seatNumbers": ["GA-1","GA-2","GA-3","GA-4","GA-5","GA-6","GA-7","GA-8","GA-9","GA-10","GA-11","GA-12","GA-13","GA-14","GA-15","GA-16","GA-17","GA-18","GA-19","GA-20","GA-21","GA-22"], "holds": [], "tier": "ga", "isGa": true }
+  ]
+}

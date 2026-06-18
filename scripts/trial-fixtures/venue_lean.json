@@ -1,0 +1,10 @@
+{
+  "venueId": "lean-demo (one row per lean, single tier 'main', cap 8 each)",
+  "activeRowIds": ["row_left", "row_right", "row_center", "row_dual"],
+  "rows": [
+    { "id": "row_left",   "area": "orchestra", "section": "main", "rowName": "L", "rowRank": 1, "capacity": 8, "parity": "EVEN", "lean": "LEFT",       "seatNumbers": ["1","2","3","4","5","6","7","8"], "holds": [], "tier": "main", "isGa": false },
+    { "id": "row_right",  "area": "orchestra", "section": "main", "rowName": "R", "rowRank": 2, "capacity": 8, "parity": "EVEN", "lean": "RIGHT",      "seatNumbers": ["1","2","3","4","5","6","7","8"], "holds": [], "tier": "main", "isGa": false },
+    { "id": "row_center", "area": "orchestra", "section": "main", "rowName": "C", "rowRank": 3, "capacity": 8, "parity": "EVEN", "lean": "CENTER",     "seatNumbers": ["1","2","3","4","5","6","7","8"], "holds": [], "tier": "main", "isGa": false },
+    { "id": "row_dual",   "area": "orchestra", "section": "main", "rowName": "D", "rowRank": 4, "capacity": 8, "parity": "EVEN", "lean": "DUAL_AISLE", "seatNumbers": ["1","2","3","4","5","6","7","8"], "holds": [], "tier": "main", "isGa": false }
+  ]
+}
