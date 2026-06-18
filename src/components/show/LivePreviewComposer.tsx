@@ -26,10 +26,11 @@ import {
 } from "@stripe/react-stripe-js";
 import { loadStripe, type Stripe } from "@stripe/stripe-js";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { dialTickFractions } from "@/components/show/dial-ticks";
 import { LiveRoomMap } from "@/components/show/LiveRoomMap";
+import { RoomTierMap } from "@/components/show/RoomTierMap";
 import { Button } from "@/components/ui/Button";
 import { Eyebrow } from "@/components/ui/Eyebrow";
 import { Field } from "@/components/ui/Field";
@@ -40,6 +41,7 @@ import { env } from "@/lib/env";
 import { useAnimatedNumber } from "@/lib/hooks/use-animated-number";
 import { formatCents, parseDollars } from "@/lib/money";
 import {
+  buildTierBands,
   type FanSection,
   type LiveProjectionView,
   type OfferView,
@@ -76,6 +78,18 @@ const TIER_OPTIONS: ReadonlyArray<RadioOption<TierValue>> = [
 ];
 
 const PROJECTION_DEBOUNCE_MS = 250;
+
+// The map's three tabs. "Your spot" (the deterministic projected zone) is the
+// default centerpiece; "Demand" shades by honest current fill; "Seat view" is
+// the literal per-seat map. The markup's "Your odds" is renamed "Your spot" —
+// we don't show odds without the placement-odds engine (ADR-0020) behind them.
+type MapView = "spot" | "demand" | "seat";
+
+const MAP_VIEWS: ReadonlyArray<{ value: MapView; label: string }> = [
+  { value: "spot", label: "Your spot" },
+  { value: "demand", label: "Demand" },
+  { value: "seat", label: "Seat view" },
+];
 
 // Must match the thumb size in design-system.css (.auk-dial::-webkit-slider-thumb
 // / ::-moz-range-thumb). Used to align tier-floor ticks with the thumb's
@@ -161,6 +175,15 @@ function LivePreviewComposerForm({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [succeeded, setSucceeded] = useState(false);
+
+  // Which map tab is showing. Default to "Your spot" — the heat view is the
+  // centerpiece. Tier bands are derived from the same base fill the literal
+  // map uses, so switching tabs is free (no refetch).
+  const [view, setView] = useState<MapView>("spot");
+  const bands = useMemo(
+    () => buildTierBands(sections, tierFloors),
+    [sections, tierFloors],
+  );
 
   // Live projection state. Seeded with the server's first-paint projection so
   // the map + standing aren't blank before the first dial move.
@@ -350,15 +373,62 @@ function LivePreviewComposerForm({
           />
         </div>
         <div className="p-6 md:p-7">
-          <LiveRoomMap
-            sections={sections}
-            venueName={venueName}
-            capacity={capacity}
-            yourSeats={
-              projection && projection.available ? projection.yourSeats : null
-            }
-            updating={projecting}
-          />
+          {/* Tabs: same room, three readings. Switching is local-only — the
+              bands and the literal map both read the base fill already in
+              memory, so there's no refetch and no flash. */}
+          <div
+            className="mb-5 inline-flex rounded-full p-1"
+            style={{ background: "var(--paper)", border: "1px solid var(--border)" }}
+            role="tablist"
+            aria-label="Map view"
+          >
+            {MAP_VIEWS.map((v) => {
+              const active = view === v.value;
+              return (
+                <button
+                  key={v.value}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setView(v.value)}
+                  className="rounded-full px-3.5 py-1.5 font-mono uppercase"
+                  style={{
+                    fontSize: 11,
+                    letterSpacing: "0.06em",
+                    color: active ? "var(--ink-900)" : "var(--fg-muted)",
+                    background: active ? "var(--page)" : "transparent",
+                    boxShadow: active ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
+                    transition: "color var(--dur-fast) var(--ease-out)",
+                  }}
+                >
+                  {v.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {view === "seat" ? (
+            <LiveRoomMap
+              sections={sections}
+              venueName={venueName}
+              capacity={capacity}
+              yourSeats={
+                projection && projection.available ? projection.yourSeats : null
+              }
+              updating={projecting}
+            />
+          ) : (
+            <RoomTierMap
+              bands={bands}
+              mode={view === "demand" ? "demand" : "spot"}
+              yourSeats={
+                projection && projection.available ? projection.yourSeats : null
+              }
+              venueName={venueName}
+              capacity={capacity}
+              updating={projecting}
+            />
+          )}
         </div>
       </div>
 
