@@ -12,7 +12,7 @@ Given a venue (a set of ranked rows with capacity, parity, lean, and holds) and 
 
 1. Respect offer rank — higher-ranked offers get better seats.
 2. Keep groups together — a group of 4 gets 4 adjacent seats or no seats.
-3. Avoid orphan seats where possible — no awkward single-seat gaps.
+3. Fill remaining seats once rank is honored — avoid orphan single-seat gaps where possible. (Secondary to rank; see "What GAE optimizes — the objective".)
 4. Honor tier preferences — fans expressing "this tier or below" waterfall correctly.
 5. Place groups within rows according to row lean — best groups toward center, aisles, or as configured.
 6. Produce a complete audit trail — every decision is logged with snapshot state.
@@ -25,6 +25,49 @@ The GAE does not handle payment, email, or persistence. It is pure logic.
 - It is not a first-come-first-served allocator. Rank is by RankKey, not by submission time (timestamp is only a tiebreaker).
 - It is not zone-independent. The whole venue is allocated holistically; tiers waterfall.
 - It is not closing-time triggered. It runs on demand from the orchestration layer, in either preview or binding mode.
+
+---
+
+## What GAE optimizes — the objective
+
+The Purpose list above names six goals but doesn't say what happens when they conflict — and rank-respect and fill *do* conflict. This section states the ordering. It is the contract the rest of the spec implements; when a mechanic below is ambiguous, resolve it in favor of this section.
+
+**GAE is lexicographic: rank-respect first, fill second.**
+
+1. **Primary — rank-respect.** A higher-ranked offer is never displaced or down-seated to make room for a lower-ranked one. We never reorder or bump a placed group to pack the venue tighter. Rank is not a tiebreaker on fill; it is the objective. Fill is what we do with what rank leaves behind.
+
+2. **Secondary — fill.** Once the rank-respecting placement is fixed, we fill remaining empty seats with the next-ranked offer that fits. We never trade away (1) to gain (2).
+
+This ordering is already the MVP decision recorded under `findBestFit` ("optimize for rank-respect over total fill"); this section promotes it from an implementation note to the engine's stated objective, because every other design question — parity, packing, reserves — has to be answered against it.
+
+### Fill is reactive, not preventive
+
+We do not hold inventory back. The engine never declines to place a willing, fitting, rank-deserving offer now in order to preserve some group size for a future row. Holes are handled *after* they appear, by backfilling — not *before*, by hoarding. Two mechanisms already implement this, both rank-respecting by construction:
+
+- **Within a row — FitResolver (§3).** When a higher-ranked group is too big for a row's leftover gap, we place the next-ranked group that fits and defer the larger one to a worse row. The smaller group only takes the gap because the larger one physically couldn't.
+- **Across tiers — Waterfall (§5).** Leftover offers cascade into holes in other tiers, subject to their own tier preference.
+
+What survives both is a **shape-limited hole**: an empty run no remaining preference-compatible offer is the right size to fill (e.g. a 1-seat gap with no group of 1 left). **These are left empty by design.** They are not a bug and not something to pre-empt by reserving groups. They are the price of honoring rank, and we pay it.
+
+### The monotonicity guarantee is "subject to fit"
+
+Strict rank monotonicity — "a higher-ranked offer never gets a worse seat than a lower-ranked one" — is **false** in this engine, intentionally. FitResolver will seat a lower-ranked group in a better row than a higher-ranked group when the higher-ranked group's size didn't fit the better row's gap.
+
+The honest guarantee is: **among offers that can fit a given seat, rank is always respected.** The only inversions are those forced by group indivisibility — a group of 6 cannot occupy a 1-seat hole, so a single seated there has not "jumped" the 6; the 6 was never eligible for that seat. We create inversions no other way. (The property test in §Tests carries this "subject to fit" qualifier; a strict-monotonicity assertion would fail correctly.)
+
+### No free upgrades
+
+Backfill respects the fan's tier preference, not just fit. A `this_or_worse` offer is never *upgraded* into a better tier to fill a hole; a `specific` offer never moves. A premium hole can sit empty next to a fan who would take it but only bid `this_or_worse` on gold. This is deliberate — free upgrades would undercut the value of bidding premium. Fill never overrides what the fan asked for.
+
+### On parity (odd/even capacity)
+
+Each row carries a `parity` field, and it is tempting to treat odd/even capacity as an allocation *rule* — reserving odd-sized groups (1, 3, 5, 7) for odd-capacity rows so they don't strand. **We do not, and parity never overrides rank.** Parity is a *necessary condition* for a perfectly-packed row, not the objective, and not sufficient for it: two rows of 6 filled from `{4, 4, 4}` strand a third of the seats with parity perfectly satisfied. Reserving groups to protect parity is preventive hoarding, which violates the rank-first objective above.
+
+Parity has exactly two sanctioned roles:
+
+1. **A fill-level tiebreaker.** Where rank is genuinely indifferent between two placements, the engine may prefer the one that keeps odd-sized groups available for odd-capacity rows. This sits *below* rank in the lexicographic order — it only ever breaks ties, never overrides — so it is free. (Rank ties are rare in practice, so this fires seldom; it is a stated policy, implemented alongside the scarcity model below, not before it.)
+
+2. **A measured hypothesis.** We instrument the empty seats left after allocation — count, hole-size histogram, how many seats sit in odd-shaped holes, and whether stranding concentrates in odd-capacity rows (see `AllocationStats`). If real-show data shows unfilled seats crossing the 2% bar *and* concentrated in shapes a reserve could have recovered, we revisit — and even then with the smallest possible guard ("don't spend the last single"), not a venue-wide reserve. Until that data exists, parity stays out of the allocator's decisions.
 
 ---
 
@@ -329,7 +372,7 @@ These integration tests serve as both regression protection and as the canonical
 
 ### Property-based tests (nice-to-have, Phase 1.5)
 
-- Rank monotonicity: a higher-ranked offer never receives a worse seat than a lower-ranked one.
+- Rank monotonicity (subject to fit): among offers that can fit a given seat, a higher-ranked offer never receives a worse seat than a lower-ranked one. This is **not** strict — FitResolver can seat a lower-ranked smaller group in a better row when a higher-ranked larger group didn't fit the gap, and that inversion is forced by group indivisibility, not a violation (see "What GAE optimizes — the objective"). A strict-monotonicity assertion will fail correctly.
 - Group integrity: every placed offer occupies `groupSize` contiguous seats.
 - Total accounting: `placed.seats + unplaced.seats + orphans + unfilled = total venue capacity`.
 - Determinism: same input + same config = same output, always.

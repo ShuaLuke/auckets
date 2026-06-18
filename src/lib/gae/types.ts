@@ -124,6 +124,19 @@ export type AllocationStats = {
   orphanSeats: number;
   unfilledSeats: number;
   fillRate: number;
+
+  // --- Parity / fill instrumentation -------------------------------------
+  // The "measured hypothesis" from spec §"What GAE optimizes — the objective"
+  // §On parity: describe the empty seats left after allocation so we can see
+  // whether stranding is "parity-shaped" before ever considering an
+  // odd-group reserve. Computed over seated (non-GA) active rows; row parity
+  // is derived from capacity, NOT from the (allocator-unmaintained)
+  // VenueRow.parity field.
+  emptySeats: number; // orphanSeats + unfilledSeats (includes GA rows)
+  holesBySize: Record<number, number>; // contiguous empty-run length -> count
+  oddHoleSeats: number; // seats sitting in odd-length holes
+  emptySeatsOddRows: number; // empty seats in odd-capacity seated rows
+  emptySeatsEvenRows: number; // empty seats in even-capacity seated rows
 };
 
 export type AllocationResult = {
