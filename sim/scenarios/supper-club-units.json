@@ -1,0 +1,27 @@
+{
+  "name": "supper-club-units",
+  "venue": "supper-club",
+  "pool": {
+    "generate": {
+      "seed": 1,
+      "oversubscription": 1.3,
+      "groupSizeMix": {
+        "1": 5,
+        "2": 45,
+        "3": 20,
+        "4": 20,
+        "5": 5,
+        "6": 5
+      },
+      "priceModel": {
+        "kind": "ladder",
+        "ladderCents": 500
+      }
+    }
+  },
+  "policies": [
+    "greedy",
+    "protect-units"
+  ],
+  "seeds": 10
+}

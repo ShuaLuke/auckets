@@ -1,0 +1,437 @@
+{
+  "name": "supper-club",
+  "displayName": "Supper club (tier spec: 12 four-tops, 6 six-tops, GA bar)",
+  "venueId": "supper-club",
+  "rows": [
+    {
+      "id": "row-1",
+      "area": "tables",
+      "section": "tables",
+      "rowName": "Table 1",
+      "rowRank": 1,
+      "capacity": 4,
+      "parity": "EVEN",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "holds": [],
+      "tier": "front_tables",
+      "isGa": false
+    },
+    {
+      "id": "row-2",
+      "area": "tables",
+      "section": "tables",
+      "rowName": "Table 2",
+      "rowRank": 2,
+      "capacity": 4,
+      "parity": "EVEN",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "holds": [],
+      "tier": "front_tables",
+      "isGa": false
+    },
+    {
+      "id": "row-3",
+      "area": "tables",
+      "section": "tables",
+      "rowName": "Table 3",
+      "rowRank": 3,
+      "capacity": 4,
+      "parity": "EVEN",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "holds": [],
+      "tier": "front_tables",
+      "isGa": false
+    },
+    {
+      "id": "row-4",
+      "area": "tables",
+      "section": "tables",
+      "rowName": "Table 4",
+      "rowRank": 4,
+      "capacity": 4,
+      "parity": "EVEN",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "holds": [],
+      "tier": "front_tables",
+      "isGa": false
+    },
+    {
+      "id": "row-5",
+      "area": "tables",
+      "section": "tables",
+      "rowName": "Table 5",
+      "rowRank": 5,
+      "capacity": 4,
+      "parity": "EVEN",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "holds": [],
+      "tier": "front_tables",
+      "isGa": false
+    },
+    {
+      "id": "row-6",
+      "area": "tables",
+      "section": "tables",
+      "rowName": "Table 6",
+      "rowRank": 6,
+      "capacity": 4,
+      "parity": "EVEN",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "holds": [],
+      "tier": "front_tables",
+      "isGa": false
+    },
+    {
+      "id": "row-7",
+      "area": "tables",
+      "section": "tables",
+      "rowName": "Table 7",
+      "rowRank": 7,
+      "capacity": 4,
+      "parity": "EVEN",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "holds": [],
+      "tier": "front_tables",
+      "isGa": false
+    },
+    {
+      "id": "row-8",
+      "area": "tables",
+      "section": "tables",
+      "rowName": "Table 8",
+      "rowRank": 8,
+      "capacity": 4,
+      "parity": "EVEN",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "holds": [],
+      "tier": "front_tables",
+      "isGa": false
+    },
+    {
+      "id": "row-9",
+      "area": "tables",
+      "section": "tables",
+      "rowName": "Table 9",
+      "rowRank": 9,
+      "capacity": 4,
+      "parity": "EVEN",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "holds": [],
+      "tier": "front_tables",
+      "isGa": false
+    },
+    {
+      "id": "row-10",
+      "area": "tables",
+      "section": "tables",
+      "rowName": "Table 10",
+      "rowRank": 10,
+      "capacity": 4,
+      "parity": "EVEN",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "holds": [],
+      "tier": "front_tables",
+      "isGa": false
+    },
+    {
+      "id": "row-11",
+      "area": "tables",
+      "section": "tables",
+      "rowName": "Table 11",
+      "rowRank": 11,
+      "capacity": 4,
+      "parity": "EVEN",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "holds": [],
+      "tier": "front_tables",
+      "isGa": false
+    },
+    {
+      "id": "row-12",
+      "area": "tables",
+      "section": "tables",
+      "rowName": "Table 12",
+      "rowRank": 12,
+      "capacity": 4,
+      "parity": "EVEN",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "holds": [],
+      "tier": "front_tables",
+      "isGa": false
+    },
+    {
+      "id": "row-13",
+      "area": "tables",
+      "section": "tables",
+      "rowName": "Table 1",
+      "rowRank": 13,
+      "capacity": 6,
+      "parity": "EVEN",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6"
+      ],
+      "holds": [],
+      "tier": "back_tables",
+      "isGa": false
+    },
+    {
+      "id": "row-14",
+      "area": "tables",
+      "section": "tables",
+      "rowName": "Table 2",
+      "rowRank": 14,
+      "capacity": 6,
+      "parity": "EVEN",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6"
+      ],
+      "holds": [],
+      "tier": "back_tables",
+      "isGa": false
+    },
+    {
+      "id": "row-15",
+      "area": "tables",
+      "section": "tables",
+      "rowName": "Table 3",
+      "rowRank": 15,
+      "capacity": 6,
+      "parity": "EVEN",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6"
+      ],
+      "holds": [],
+      "tier": "back_tables",
+      "isGa": false
+    },
+    {
+      "id": "row-16",
+      "area": "tables",
+      "section": "tables",
+      "rowName": "Table 4",
+      "rowRank": 16,
+      "capacity": 6,
+      "parity": "EVEN",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6"
+      ],
+      "holds": [],
+      "tier": "back_tables",
+      "isGa": false
+    },
+    {
+      "id": "row-17",
+      "area": "tables",
+      "section": "tables",
+      "rowName": "Table 5",
+      "rowRank": 17,
+      "capacity": 6,
+      "parity": "EVEN",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6"
+      ],
+      "holds": [],
+      "tier": "back_tables",
+      "isGa": false
+    },
+    {
+      "id": "row-18",
+      "area": "tables",
+      "section": "tables",
+      "rowName": "Table 6",
+      "rowRank": 18,
+      "capacity": 6,
+      "parity": "EVEN",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6"
+      ],
+      "holds": [],
+      "tier": "back_tables",
+      "isGa": false
+    },
+    {
+      "id": "row-19",
+      "area": "ga",
+      "section": "ga",
+      "rowName": "GA",
+      "rowRank": 19,
+      "capacity": 30,
+      "parity": "EVEN",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "GA-1-1",
+        "GA-1-2",
+        "GA-1-3",
+        "GA-1-4",
+        "GA-1-5",
+        "GA-1-6",
+        "GA-1-7",
+        "GA-1-8",
+        "GA-1-9",
+        "GA-1-10",
+        "GA-1-11",
+        "GA-1-12",
+        "GA-1-13",
+        "GA-1-14",
+        "GA-1-15",
+        "GA-1-16",
+        "GA-1-17",
+        "GA-1-18",
+        "GA-1-19",
+        "GA-1-20",
+        "GA-1-21",
+        "GA-1-22",
+        "GA-1-23",
+        "GA-1-24",
+        "GA-1-25",
+        "GA-1-26",
+        "GA-1-27",
+        "GA-1-28",
+        "GA-1-29",
+        "GA-1-30"
+      ],
+      "holds": [],
+      "tier": "bar",
+      "isGa": true
+    }
+  ],
+  "activeRowIds": [
+    "row-1",
+    "row-2",
+    "row-3",
+    "row-4",
+    "row-5",
+    "row-6",
+    "row-7",
+    "row-8",
+    "row-9",
+    "row-10",
+    "row-11",
+    "row-12",
+    "row-13",
+    "row-14",
+    "row-15",
+    "row-16",
+    "row-17",
+    "row-18",
+    "row-19"
+  ],
+  "source": {
+    "kind": "tier-spec",
+    "file": "supper-club.json",
+    "importedAt": "2026-09-07"
+  },
+  "tierFloorsCents": {
+    "front_tables": 9000,
+    "back_tables": 6000,
+    "bar": 3500
+  }
+}

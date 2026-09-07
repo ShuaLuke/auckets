@@ -15,7 +15,7 @@ import { computeMetrics } from "./metrics";
 import { parsePolicy } from "./policy";
 import { offerParitySummary } from "./pool";
 import { finishTimeline, simulateWindow } from "./temporal";
-import type { AutoBids, FillMetrics, Percentiles, PolicyAggregate, PolicyName, PolicyRun, RunOutput, Scenario, SimVenue } from "./types";
+import type { AutoBids, FillMetrics, Percentiles, PolicyAggregate, PolicyName, PolicyRun, RunOutput, Scenario, SeatPrefs, SimVenue } from "./types";
 import { activeRows, applyShowOverlay, SimInputError, tierOrder, toArchitecture, venueParitySummary } from "./venue";
 
 export type RunInput = {
@@ -66,6 +66,7 @@ export function runScenario(input: RunInput): RunOutput {
   for (let s = 0; s < seedCount; s++) {
     let offers: RankedOffer[];
     let autoBids: AutoBids;
+    let seatPrefs: SeatPrefs = {};
     let seed: number;
     if ("file" in scenario.pool) {
       offers = input.poolOffers!;
@@ -85,6 +86,7 @@ export function runScenario(input: RunInput): RunOutput {
       );
       offers = gen.offers;
       autoBids = gen.autoBids;
+      seatPrefs = gen.seatPrefs;
     }
     seeds.push(seed);
     firstPool ??= offers;
@@ -121,6 +123,11 @@ export function runScenario(input: RunInput): RunOutput {
           rounds: ab.rounds,
         },
         resolved.bleacher,
+        {
+          seatPrefs,
+          ...("generate" in scenario.pool && scenario.pool.generate.seatPrefs?.frontRows !== undefined && { frontRows: scenario.pool.generate.seatPrefs.frontRows }),
+          ...(config.unitPolicy !== undefined && { unitPolicy: config.unitPolicy }),
+        },
       );
       if (config.singlesReserve) {
         const reservedIds = new Set(result.decisions.filter((d) => d.snapshot.singlesReserve === true && d.offerId).map((d) => d.offerId!));
@@ -216,6 +223,9 @@ const SCALAR_PATHS: ReadonlyArray<[keyof FillMetrics, string]> = [
   ["policy", "parityTiebreaks"],
   ["policy", "reservedSinglesPlaced"],
   ["policy", "reservedSinglesUnplaced"],
+  ["policy", "lookaheadDeferrals"],
+  ["policy", "seatsSavedByLookahead"],
+  ["policy", "protectedSeats"],
   ["autoBid", "bidders"],
   ["autoBid", "raised"],
   ["autoBid", "totalRaiseCents"],
@@ -266,7 +276,12 @@ const TEMPORAL_PATHS = [
   "registerFirst.acceptedUnseatedOffers",
   "registerFirst.acceptedUnseatedValueCents",
   "registerFirst.acceptedUnseatedShareOfBooked",
+  "upgrades.requests",
+  "upgrades.matched",
+  "upgrades.accepted",
+  "upgrades.upliftCents",
 ] as const;
+const SEATPREF_PATHS = ["fans", "seated", "satisfied"] as const;
 
 function dig(obj: unknown, path: string): number {
   let cur: unknown = obj;
@@ -303,6 +318,15 @@ function aggregate(policy: PolicyName, runs: PolicyRun[]): PolicyAggregate {
   }
   if (runs.some((r) => r.metrics.bleacher !== null)) {
     for (const key of BLEACHER_PATHS) scalars[`bleacher.${key}`] = percentiles(runs.map((r) => r.metrics.bleacher?.[key] ?? 0));
+  }
+  if (runs.some((r) => r.metrics.seatPrefs !== null)) {
+    for (const key of SEATPREF_PATHS) scalars[`seatPrefs.${key}`] = percentiles(runs.map((r) => r.metrics.seatPrefs?.[key] ?? 0));
+    for (const kind of ["aisle", "centre", "front"] as const) {
+      scalars[`seatPrefs.${kind}.satisfiedRate`] = percentiles(runs.map((r) => {
+        const k = r.metrics.seatPrefs?.byKind[kind];
+        return k && k.seated > 0 ? k.satisfied / k.seated : 0;
+      }));
+    }
   }
   if (runs.some((r) => r.temporal !== undefined)) {
     for (const path of TEMPORAL_PATHS) scalars[`temporal.${path}`] = percentiles(runs.map((r) => dig(r.temporal, path)));

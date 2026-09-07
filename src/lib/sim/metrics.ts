@@ -6,7 +6,7 @@ import { sortRankedOffers } from "@/lib/gae/rankkey";
 import type { AllocationResult, RankedOffer, TierPreference, VenueRow } from "@/lib/gae/types";
 
 import { median } from "./pool";
-import type { AutoBidMetrics, AutoBidRaise, BleacherMetrics, FillMetrics, GroupSizeMetrics, PreferenceMetrics, SimVenue, SliceMetrics } from "./types";
+import type { AutoBidMetrics, AutoBidRaise, BleacherMetrics, FillMetrics, GroupSizeMetrics, PreferenceMetrics, SeatPrefKind, SeatPrefMetrics, SeatPrefs, SimVenue, SliceMetrics } from "./types";
 import { activeRows, maxRunLength, tierOrder } from "./venue";
 
 type Placement = { row: VenueRow; seats: number };
@@ -32,6 +32,7 @@ export function computeMetrics(
   runtimeMs: number,
   autoBid: { bidders: number; privateOffers: number; raises: AutoBidRaise[]; rounds: number } = { bidders: 0, privateOffers: 0, raises: [], rounds: 0 },
   bleacher?: { seats: number; rows: number; priceCents: number },
+  extra: { seatPrefs?: SeatPrefs; frontRows?: number; unitPolicy?: "co_seat" | "protect" } = {},
 ): FillMetrics {
   const rows = activeRows(venue);
   const rowById = new Map(rows.map((r) => [r.id, r]));
@@ -319,11 +320,58 @@ export function computeMetrics(
       parityTiebreaks: result.decisions.filter((d) => d.snapshot.parityTiebreak === true).length,
       reservedSinglesPlaced: new Set(result.decisions.filter((d) => d.snapshot.singlesReserve === true && d.offerId).map((d) => d.offerId)).size,
       reservedSinglesUnplaced: 0, // filled in by run.ts, which knows the reserve set
+      lookaheadDeferrals: result.decisions.filter((d) => d.snapshot.policy === "lookahead").length,
+      seatsSavedByLookahead: result.decisions.reduce((s, d) => s + (d.snapshot.policy === "lookahead" ? Number(d.snapshot.strandedSeatsAvoided ?? 0) : 0), 0),
+      protectedSeats:
+        extra.unitPolicy === "protect"
+          ? rows.filter((r) => (r.area === "tables" || r.area === "boxes") && (placedPerRow.get(r.id) ?? 0) > 0).reduce((s, r) => s + available(r) - (placedPerRow.get(r.id) ?? 0), 0)
+          : 0,
     },
     autoBid: autoBidMetrics(autoBid),
     bleacher: bleacher ? bleacherMetrics(bleacher, offers, placement, grossPlacedCents) : null,
+    seatPrefs: extra.seatPrefs && Object.keys(extra.seatPrefs).length > 0 ? seatPrefMetrics(extra.seatPrefs, result, rows, extra.frontRows ?? 10) : null,
     runtimeMs,
   };
+}
+
+// Would the fan have got the seat kind they wanted, by chance? Aisle = the
+// group touches either end of the row; centre = the whole group sits within
+// the middle third; front = the row's rank is within the first `frontRows`.
+function seatPrefMetrics(prefs: SeatPrefs, result: AllocationResult, rows: VenueRow[], frontRows: number): SeatPrefMetrics {
+  const rowById = new Map(rows.map((r) => [r.id, r]));
+  const positions = new Map<string, { row: VenueRow; pos: number[] }>();
+  for (const a of result.assignments) {
+    const row = rowById.get(a.venueRowId);
+    if (!row) continue;
+    const e = positions.get(a.offerId) ?? { row, pos: [] };
+    e.pos.push(a.positionIndex);
+    positions.set(a.offerId, e);
+  }
+  const blank = (): { fans: number; seated: number; satisfied: number } => ({ fans: 0, seated: 0, satisfied: 0 });
+  const byKind: Record<SeatPrefKind, ReturnType<typeof blank>> = { aisle: blank(), centre: blank(), front: blank() };
+  let fans = 0;
+  let seated = 0;
+  let satisfied = 0;
+  for (const [id, kind] of Object.entries(prefs)) {
+    fans += 1;
+    byKind[kind].fans += 1;
+    const p = positions.get(id);
+    if (!p) continue;
+    seated += 1;
+    byKind[kind].seated += 1;
+    const n = p.row.seatNumbers.length;
+    const lo = Math.min(...p.pos);
+    const hi = Math.max(...p.pos);
+    let ok = false;
+    if (kind === "aisle") ok = p.row.isGa !== true && (lo === 0 || hi === n - 1);
+    else if (kind === "centre") ok = p.row.isGa !== true && lo >= Math.floor(n / 3) && hi <= Math.ceil((2 * n) / 3) - 1;
+    else ok = p.row.rowRank <= frontRows;
+    if (ok) {
+      satisfied += 1;
+      byKind[kind].satisfied += 1;
+    }
+  }
+  return { fans, seated, satisfied, byKind };
 }
 
 function autoBidMetrics(ab: { bidders: number; privateOffers: number; raises: AutoBidRaise[]; rounds: number }): AutoBidMetrics {

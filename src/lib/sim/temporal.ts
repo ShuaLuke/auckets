@@ -25,7 +25,7 @@ export type WindowResult = {
   finalAutoBids: AutoBids;
   // Everything measured before binding; returns/register-first are
   // completed by finishTimeline() once the binding result exists.
-  partial: Omit<TemporalMetrics, "returns" | "registerFirst"> & {
+  partial: Omit<TemporalMetrics, "returns" | "registerFirst" | "upgrades"> & {
     bookedByDayCents: number[];
     arrivalHourById: Map<string, number>;
     revisedIds: Set<string>;
@@ -397,6 +397,42 @@ export function finishTimeline(
     };
   }
 
+  // Q29 upgrade buyouts: a seated fan asks to move up; a same-size holder in
+  // a better tier is offered their price + premium; accepted → swap.
+  let upgrades: TemporalMetrics["upgrades"] = null;
+  if (timeline.upgrades && timeline.upgrades.requestSharePct > 0) {
+    const rng = createRng(seed * 15485863 + 11);
+    const tierByRow = new Map(venue.rows.map((r) => [r.id, r.tier]));
+    const tierRank = new Map<string, number>();
+    {
+      const active = new Set(venue.activeRowIds);
+      const minRank = new Map<string, number>();
+      for (const r of venue.rows) if (active.has(r.id) && r.tier !== undefined) minRank.set(r.tier, Math.min(minRank.get(r.tier) ?? Infinity, r.rowRank));
+      [...minRank.entries()].sort((a, b) => a[1] - b[1]).forEach(([t], i) => tierRank.set(t, i));
+    }
+    const seatedList = offers.filter((o) => placedIds.has(o.id));
+    const tierOf = (id: string): number => tierRank.get(tierByRow.get(seatsByOffer.get(id)!.rowId) ?? "") ?? 0;
+    const taken = new Set<string>(); // holders already bought out
+    let requests = 0;
+    let matched = 0;
+    let accepted = 0;
+    let upliftCents = 0;
+    for (const o of seatedList) {
+      if (taken.has(o.id) || tierOf(o.id) === 0) continue; // already in the best tier
+      if (rng.next() * 100 >= timeline.upgrades.requestSharePct) continue;
+      requests += 1;
+      const target = seatedList.find((h) => !taken.has(h.id) && h.id !== o.id && h.groupSize === o.groupSize && tierOf(h.id) < tierOf(o.id));
+      if (!target) continue;
+      matched += 1;
+      if (rng.next() * 100 >= timeline.upgrades.acceptRatePct) continue;
+      accepted += 1;
+      taken.add(target.id);
+      taken.add(o.id);
+      upliftCents += Math.round((target.pricePerTicketCents * timeline.upgrades.premiumPct) / 100) * o.groupSize;
+    }
+    upgrades = { requests, matched, accepted, upliftCents, holdersMovedDown: accepted };
+  }
+
   const bookedAtClose = offers.reduce((s, o) => s + value(o), 0);
   const seated = offers.filter((o) => placedIds.has(o.id)).reduce((s, o) => s + value(o), 0);
   const unseated = offers.filter((o) => !placedIds.has(o.id));
@@ -415,6 +451,7 @@ export function finishTimeline(
     withdrawals: p.withdrawals,
     rollingConfirmed,
     returns,
+    upgrades,
     registerFirst: {
       bookedByDayCents: p.bookedByDayCents,
       bookedAtCloseCents: bookedAtClose,

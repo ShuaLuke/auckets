@@ -195,6 +195,26 @@ function renderPolicySection(out: RunOutput, agg: PolicyAggregate, first: Policy
     L.push(`| Parity tiebreaks taken | ${cell("policy.parityTiebreaks", n)} |`);
     L.push(`| Reserved singles placed / unplaced | ${cell("policy.reservedSinglesPlaced", n)} |`);
     L.push(`| Reserved singles unplaced | ${cell("policy.reservedSinglesUnplaced", n)} |`);
+    L.push(`| Lookahead deferrals | ${cell("policy.lookaheadDeferrals", n)} |`);
+    L.push(`| Seats a lookahead deferral kept from stranding | ${cell("policy.seatsSavedByLookahead", n)} |`);
+    L.push(`| Seats kept empty to protect a table/box | ${cell("policy.protectedSeats", n)} |`);
+  }
+  if (first.metrics.seatPrefs) {
+    const sp = first.metrics.seatPrefs;
+    L.push("### Seat preferences beyond tier (scored, not enforced)");
+    L.push("");
+    L.push("The engine does not take aisle / centre / row-range preferences yet. This is how often fans who had one would have got it anyway, which sizes what building the feature is worth.");
+    L.push("");
+    L.push("| Preference | Fans | Seated | Got it by chance | Rate |");
+    L.push("|---|---:|---:|---:|---:|");
+    for (const kind of ["aisle", "centre", "front"] as const) {
+      const k = sp.byKind[kind];
+      if (k.fans === 0) continue;
+      const rate = multi ? sc[`seatPrefs.${kind}.satisfiedRate`]!.p50 : k.seated > 0 ? k.satisfied / k.seated : 0;
+      L.push(`| ${kind} | ${n(k.fans)} | ${n(k.seated)} | ${n(k.satisfied)} | ${pct(rate, 0)} |`);
+    }
+    L.push(`| all | ${n(sp.fans)} | ${n(sp.seated)} | ${n(sp.satisfied)} | ${pct(sp.seated > 0 ? sp.satisfied / sp.seated : 0, 0)} |`);
+    L.push("");
   }
   L.push("");
   if (first.metrics.autoBid.bidders > 0) {
@@ -355,6 +375,17 @@ function renderTimeline(
     L.push(`| Gross after returns | ${cell("temporal.returns.grossAfterReturnsCents", usd)} |`);
     L.push("");
     L.push(t.returns.refill === "release" ? "Refill \"release\" is today's rule (May Q13/Q14: outbid offers are released immediately, no waitlist): returned seats stay empty. Run the same scenario with `keep-pool-live` to see what a live pool recovers." : "Refill \"keep-pool-live\" keeps unplaced offers alive after binding and re-seats them in rank order into returned and released seats. Today's rule (May Q13/Q14) is \"release\"; this is Cope's playbook reading.");
+    L.push("");
+  }
+  if (t.upgrades) {
+    L.push(`#### Upgrade buyouts after binding (Q29) — ${tl.upgrades!.requestSharePct}% of seated fans ask, holders accept ${tl.upgrades!.acceptRatePct}% of offers at +${tl.upgrades!.premiumPct}%`);
+    L.push("");
+    L.push(hdr);
+    L.push(sep);
+    L.push(`| Upgrade requests | ${cell("temporal.upgrades.requests", n)} |`);
+    L.push(`| &nbsp;&nbsp;with a same-size holder in a better tier | ${cell("temporal.upgrades.matched", n)} |`);
+    L.push(`| &nbsp;&nbsp;accepted (seats swapped) | ${cell("temporal.upgrades.accepted", n)} |`);
+    L.push(`| Uplift to the artist (premium × size; holder refunded at original price, ADR-0014) | ${cell("temporal.upgrades.upliftCents", usd)} |`);
     L.push("");
   }
   L.push("#### Register-first view (Q5 — booked vs seated)");

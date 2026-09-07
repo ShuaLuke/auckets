@@ -70,6 +70,10 @@ const METRICS: { key: string; label: string; fmt: "n" | "pct" | "usd" }[] = [
   { key: "policy.cleanFitDeferrals", label: "Clean-fit deferrals", fmt: "n" },
   { key: "policy.parityTiebreaks", label: "Parity tiebreaks", fmt: "n" },
   { key: "policy.reservedSinglesPlaced", label: "Reserved singles placed", fmt: "n" },
+  { key: "policy.lookaheadDeferrals", label: "Lookahead deferrals", fmt: "n" },
+  { key: "policy.protectedSeats", label: "Seats protected (tables/boxes)", fmt: "n" },
+  { key: "seatPrefs.satisfied", label: "Seat prefs met by chance", fmt: "n" },
+  { key: "temporal.upgrades.upliftCents", label: "Upgrade uplift to artist", fmt: "usd" },
   { key: "autoBid.raised", label: "Auto-bidders raised", fmt: "n" },
   { key: "autoBid.totalRaiseCents", label: "Auto-bid $ added", fmt: "usd" },
   { key: "autoBid.privateConverted", label: "Private offers converted", fmt: "n" },
@@ -83,7 +87,7 @@ const METRICS: { key: string; label: string; fmt: "n" | "pct" | "usd" }[] = [
   { key: "temporal.returns.grossAfterReturnsCents", label: "Gross after returns", fmt: "usd" },
   { key: "temporal.registerFirst.acceptedUnseatedValueCents", label: "Accepted but unseated $", fmt: "usd" },
 ];
-const OPTIONAL_KEYS = /^(fill\.holesBySize|policy\.|autoBid\.|bleacher\.|temporal\.)/;
+const OPTIONAL_KEYS = /^(fill\.holesBySize|policy\.|autoBid\.|bleacher\.|temporal\.|seatPrefs\.)/;
 
 export function poolLabel(out: RunOutput): string {
   const p = out.scenario.pool;
@@ -209,7 +213,7 @@ export function renderComparison(c: Comparison): string {
   L.push("| Venue | " + cols.map((x) => x.venue).join(" | ") + " |");
   L.push("| Pool | " + cols.map((x) => x.poolLabel).join(" | ") + " |");
   L.push("| Policy | " + cols.map((x) => x.policy).join(" | ") + " |");
-  L.push("| Rank-first? | " + cols.map((x) => (x.first.config.singlesReserve ? "no (reserve)" : x.first.config.fitPolicy === "clean_fit" ? "subject to clean-fit deferrals" : x.first.config.parityTiebreak ? "yes (ties reordered at equal price)" : "yes")).join(" | ") + " |");
+  L.push("| Rank-first? | " + cols.map((x) => (x.first.config.singlesReserve ? "no (reserve)" : x.first.config.fitPolicy === "lookahead" ? "no (lookahead)" : x.first.config.fitPolicy === "clean_fit" ? "subject to clean-fit deferrals" : x.first.config.parityTiebreak ? "yes (ties reordered at equal price)" : "yes")).join(" | ") + " |");
   L.push("| Seeds | " + cols.map((x) => String(x.seeds)).join(" | ") + " |");
   L.push("| Run date | " + cols.map((x) => x.output.generatedAt.slice(0, 16).replace("T", " ")).join(" | ") + " |");
   L.push("");

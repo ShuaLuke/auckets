@@ -148,6 +148,25 @@ export type DemandModel = {
   tierChoice?: "premium-biased" | "uniform";
   autoBid?: AutoBidModel;
   privateOffers?: PrivateOfferModel;
+  // Seat preferences beyond tier (Cope's playbook: aisle, centre, row range).
+  // The engine has no support for these yet; the sim only SCORES how often
+  // fans would get what they asked for by chance, to size the feature.
+  seatPrefs?: SeatPrefModel;
+};
+
+export type SeatPrefKind = "aisle" | "centre" | "front";
+export type SeatPrefModel = {
+  sharePct: number; // percent of offers with a seat preference
+  mix?: { aisle: number; centre: number; front: number }; // weights, default 40/40/20
+  frontRows?: number; // "front" = rowRank ≤ this; default 10
+};
+export type SeatPrefs = Record<string, SeatPrefKind>; // offerId → preference
+
+export type SeatPrefMetrics = {
+  fans: number;
+  seated: number;
+  satisfied: number;
+  byKind: Record<SeatPrefKind, { fans: number; seated: number; satisfied: number }>;
 };
 
 export type PoolSource = { file: string } | { generate: DemandModel };
@@ -196,6 +215,11 @@ export type TimelineSpec = {
   // Production releases after binding: held seats (source production or
   // venue) freed and, under keep-pool-live, backfilled from the unplaced pool.
   releases?: { seats: number };
+  // Q29: after binding, a share of seated fans ask to move up a tier; AUCKETS
+  // offers the holder of a same-size seat above a buyout at their price plus
+  // a premium. Accepted with acceptRatePct. Per ADR-0014 the holder gets
+  // their original price back; the premium goes to the artist.
+  upgrades?: { requestSharePct: number; acceptRatePct: number; premiumPct: number };
 };
 
 export type TimelineTick = {
@@ -248,6 +272,13 @@ export type TemporalMetrics = {
     refilledValueCents: number;
     fillAfterReturns: number;
     grossAfterReturnsCents: number;
+  } | null;
+  upgrades: {
+    requests: number;
+    matched: number; // a same-size holder existed in a better tier
+    accepted: number;
+    upliftCents: number; // Σ premium × size — goes to the artist (ADR-0014)
+    holdersMovedDown: number;
   } | null;
   registerFirst: {
     bookedByDayCents: number[]; // cumulative, index = day
@@ -332,6 +363,9 @@ export type PolicyActivity = {
   parityTiebreaks: number; // PLACED with snapshot.parityTiebreak
   reservedSinglesPlaced: number;
   reservedSinglesUnplaced: number;
+  lookaheadDeferrals: number; // FIT_RESOLVED with snapshot.policy === "lookahead"
+  seatsSavedByLookahead: number;
+  protectedSeats: number; // empty seats in tables/boxes that hold a group, under unitPolicy "protect"
 };
 
 export type AutoBidMetrics = {
@@ -408,6 +442,7 @@ export type FillMetrics = {
   policy: PolicyActivity;
   autoBid: AutoBidMetrics;
   bleacher: BleacherMetrics | null;
+  seatPrefs: SeatPrefMetrics | null;
   runtimeMs: number;
 };
 

@@ -124,7 +124,8 @@ const RaiseRuleSchema = z.union([
   z.strictObject({ kind: z.literal("percent"), pct: z.number().positive().max(100) }),
 ]);
 
-export const POLICY_PATTERN = /^(greedy|clean-fit|parity-tiebreak|singles-reserve(:\d+)?)(\+(clean-fit|parity-tiebreak|singles-reserve(:\d+)?))*$/;
+const POLICY_PART = "clean-fit|parity-tiebreak|singles-reserve(:\\d+)?|lookahead(:\\d+)?|protect-units";
+export const POLICY_PATTERN = new RegExp(`^(greedy|${POLICY_PART})(\\+(${POLICY_PART}))*$`);
 
 export const DemandModelSchema = z.strictObject({
   seed: z.number().int().nonnegative(),
@@ -152,6 +153,13 @@ export const DemandModelSchema = z.strictObject({
       thresholdMultiplier: z.tuple([z.number().min(1), z.number().min(1)]).refine(([lo, hi]) => hi >= lo, { message: "thresholdMultiplier must be [lo, hi] with hi ≥ lo" }),
     })
     .optional(),
+  seatPrefs: z
+    .strictObject({
+      sharePct: z.number().min(0).max(100),
+      mix: z.strictObject({ aisle: z.number().nonnegative(), centre: z.number().nonnegative(), front: z.number().nonnegative() }).optional(),
+      frontRows: z.number().int().positive().optional(),
+    })
+    .optional(),
 });
 
 const TimelineSchema = z.strictObject({
@@ -170,6 +178,13 @@ const TimelineSchema = z.strictObject({
   rollingConfirmed: z.strictObject({ afterHours: z.number().positive() }).optional(),
   returns: z.strictObject({ sharePct: z.number().min(0).max(100), refill: z.enum(["release", "keep-pool-live"]) }).optional(),
   releases: z.strictObject({ seats: z.number().int().nonnegative() }).optional(),
+  upgrades: z
+    .strictObject({
+      requestSharePct: z.number().min(0).max(100),
+      acceptRatePct: z.number().min(0).max(100),
+      premiumPct: z.number().min(0).max(500),
+    })
+    .optional(),
 });
 
 export const ScenarioSchema = z.strictObject({
@@ -180,7 +195,7 @@ export const ScenarioSchema = z.strictObject({
     z.strictObject({ file: z.string().min(1) }),
     z.strictObject({ generate: DemandModelSchema }),
   ]),
-  policies: z.array(z.string().regex(POLICY_PATTERN, 'a policy is "greedy", "clean-fit", "parity-tiebreak", "singles-reserve[:k]", or a "+"-joined combination')).min(1).optional(),
+  policies: z.array(z.string().regex(POLICY_PATTERN, 'a policy is "greedy", "clean-fit", "parity-tiebreak", "singles-reserve[:k]", "lookahead[:k]", "protect-units", or a "+"-joined combination')).min(1).optional(),
   seeds: z.number().int().min(1).max(1000).optional(),
   autoBidRaiseRule: RaiseRuleSchema.optional(),
   timeline: TimelineSchema.optional(),
