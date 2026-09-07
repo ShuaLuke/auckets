@@ -29,7 +29,7 @@ describe("venueFromManifest", () => {
     expect(orchL).toMatchObject({ seatNumbers: ["1", "2"], capacity: 2, tier: "p2", lean: "RIGHT", area: "orchestra", holds: [] });
     expect(venue.rows.find((r) => r.id === "orch_c-a")!.holds).toEqual(["102"]);
     expect(venue.tierFloorsCents).toEqual({ p1: 12500, p2: 8500, p3: 7000, p5: 2500 });
-    expect(heldBySource).toEqual({ venue: 1, artist: 1, comp: 1, production: 1 });
+    expect(heldBySource).toEqual({ venue: 1, artist: 1, comp: 1, production: 1, bleacher: 0 });
     expect(holdGroups).toEqual({ "2-HOUS": 1, "1-TECH": 1, "3-ARTI": 1, "4-MKTG": 1 });
     expect(soldSeats).toBe(1);
     expect(venue.rows.find((r) => r.id === "orch_c-aa")!.holds).toEqual([]); // sold ≠ held by default

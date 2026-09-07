@@ -91,6 +91,12 @@ function renderPolicySection(out: RunOutput, agg: PolicyAggregate, first: Policy
   L.push("");
   L.push(`> ${first.caveat}`);
   L.push("");
+  if (multi) {
+    const fr = sc["fill.fillRate"]!;
+    const gr = sc["revenue.grossPlacedCents"]!;
+    L.push(`Across ${agg.seeds} seeds: fill ${pct(fr.mean)} ± ${pct(fr.stdev)} (min ${pct(fr.min)}, max ${pct(fr.max)}) · gross ${usd(gr.mean)} ± ${usd(gr.stdev)}.`);
+    L.push("");
+  }
   L.push(hdr);
   L.push(sep);
   L.push(`| Seats filled | ${cell("fill.placedSeats", n)} |`);
@@ -204,7 +210,31 @@ function renderPolicySection(out: RunOutput, agg: PolicyAggregate, first: Policy
     L.push(`| Held their section after raising | ${cell("autoBid.heldSectionAfterRaise", n)} |`);
     L.push(`| Hit their cap and still displaced | ${cell("autoBid.cappedOut", n)} |`);
     L.push(`| Resolution rounds | ${cell("autoBid.rounds", n)} |`);
+    if (first.metrics.autoBid.privateOffers > 0) {
+      L.push(`| Private offers (hidden threshold) | ${cell("autoBid.privateOffers", n)} |`);
+      L.push(`| &nbsp;&nbsp;converted above their visible price | ${cell("autoBid.privateConverted", n)} |`);
+      L.push(`| &nbsp;&nbsp;added to prices by conversion | ${cell("autoBid.privateAddedCents", usd)} |`);
+    }
     L.push("");
+    if (first.metrics.autoBid.privateOffers > 0) {
+      L.push("Private offers are modelled as an auto-bid whose cap is the hidden threshold (ADR-0017 says the offer \"auto-converts\" when a competing offer exceeds it). Confirm the reading with Cope before relying on the conversion numbers.");
+      L.push("");
+    }
+  }
+  if (first.metrics.bleacher) {
+    const b = first.metrics.bleacher;
+    L.push("### Bleacher carve-out (NEW-8 — not confirmed by Cope)");
+    L.push("");
+    L.push(`${n(b.seats)} seats in the ${b.rows} worst row(s) held out of the GAE and priced at ${usd(b.priceCents)} flat. If every seat sells: ${usd(b.grossIfSoldOutCents)}. Fans the GAE did not seat asked for ${n(b.overflowTickets)} tickets, so the estimate is ${n(b.estSoldSeats)} sold → ${usd(b.estGrossCents)}; GAE gross + Bleacher estimate = ${usd(b.combinedGrossCents)}. Compare against a run without the carve-out to see what the same rows earn inside the engine.`);
+    L.push("");
+    if (multi) {
+      L.push(hdr);
+      L.push(sep);
+      L.push(`| Bleacher est. sold seats | ${cell("bleacher.estSoldSeats", n)} |`);
+      L.push(`| Bleacher est. gross | ${cell("bleacher.estGrossCents", usd)} |`);
+      L.push(`| Combined gross | ${cell("bleacher.combinedGrossCents", usd)} |`);
+      L.push("");
+    }
   }
   L.push("\"Passed over\" is the spec's rank-respect test made countable: a lower-ranked group sits in a better row, and its block plus the empty seats touching it could have held this offer. A single that took a 1-seat hole has not passed a pair. With the shipped greedy policy these arise only from the strict-then-waterfall pass order (an `any` fan seated in a lower tier before a this-or-worse fan cascades down); fill-first policies will produce them by design.");
   L.push("");
@@ -272,7 +302,8 @@ export function renderConsoleSummary(out: RunOutput): string {
     L.push(row("Offers placed", "offers.placed", n) + `   of ${n(first.metrics.offers.total)}`);
     L.push(row("Passed over (rank-respect)", "rankRespect.passedOver", n));
     if (agg.policy !== "greedy") L.push(row("Clean-fit deferrals / parity picks", "policy.cleanFitDeferrals", n) + `   parity ${n(s["policy.parityTiebreaks"]!.p50)} · reserved ${n(s["policy.reservedSinglesPlaced"]!.p50)}`);
-    if (first.metrics.autoBid.bidders > 0) L.push(row("Auto-bid raised / added", "autoBid.raised", n) + `   ${usd(s["autoBid.totalRaiseCents"]!.p50)} · held section ${n(s["autoBid.heldSectionAfterRaise"]!.p50)}`);
+    if (first.metrics.autoBid.bidders > 0) L.push(row("Auto-bid raised / added", "autoBid.raised", n) + `   ${usd(s["autoBid.totalRaiseCents"]!.p50)} · held section ${n(s["autoBid.heldSectionAfterRaise"]!.p50)}${first.metrics.autoBid.privateOffers > 0 ? ` · private converted ${n(s["autoBid.privateConverted"]!.p50)}` : ""}`);
+    if (first.metrics.bleacher) L.push(row("Bleacher est. sold / combined $", "bleacher.estSoldSeats", n) + `   ${usd(s["bleacher.combinedGrossCents"]!.p50)}  (${n(first.metrics.bleacher.seats)} seats @ ${usd(first.metrics.bleacher.priceCents)}, unconfirmed)`);
     L.push("");
     L.push(`  By group size${multi ? " (p50)" : ""}:   size   offers   placed   placed%   median row rank`);
     const m = first.metrics;

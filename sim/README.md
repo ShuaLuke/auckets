@@ -24,6 +24,10 @@ npm run sim -- compare-runs couples singles-rich                # any saved runs
 
 npm run sim -- compare sim/scenarios/lincoln-v4-cope-pool.json --policies greedy,clean-fit,clean-fit+singles-reserve   # Q1/Q2
 npm run sim -- run sim/scenarios/lincoln-v4-autobid.json --raise percent:5     # auto-bid step rule: fixed:5 (shipped) or percent:5
+
+npm run sim -- sweep sim/scenarios/lincoln-v4-mix.json --vary pool.oversubscription=0.6:2.0:0.1 --seeds 20    # yield curve
+npm run sim -- sweep sim/scenarios/lincoln-v4-mix.json --vary pool.groupSizeMix=even-heavy,odd-heavy,singles-rich,couples,big-groups --seeds 20 --policies greedy,clean-fit
+npm run sim -- run sim/scenarios/lincoln-v4-channels.json      # auto-bid + private offers + Bleacher carve-out, 10 seeds
 ```
 
 Every `run` prints the fill report and writes `sim/runs/<name>/`:
@@ -36,9 +40,11 @@ Every `run` prints the fill report and writes `sim/runs/<name>/`:
 | `result.json` | Everything above as data, plus the engine's full output for the first seed |
 | `scenario.json` | The inputs after CLI overrides, so the run reproduces without the flags |
 
+`sweep` varies one scenario parameter over a list (`a,b,c`) or a range (`start:end:step`), runs every value × seeds × policies, and writes `sweep.md` (the yield curve: fill, empty, gross, left on table, offers placed, passed over per value, then placed % by group size, then every metric), `sweep.csv` (long format with p5/p50/p95/mean/stdev/min/max for Excel charts) and `sweep.json`. Paths: `venue=a,b`, `pool.<knob>` (shorthand for `pool.generate.<knob>`), `show.<knob>` (e.g. `show.maxGroupSize=6,8,10`, `show.floorsCents.orchestra=8500,10000,12500`, `show.bleacher={"sharePct":6,"priceCents":4000}`), `seeds`, `autoBidRaiseRule={...}`. JSON values are allowed. Policies are not swept — pass `--policies` and each runs at every point.
+
 `compare-runs` takes two or more run folders (names under `sim/runs/` or paths) and writes `compare.md`: the fill report columns side by side with deltas against the first run, placed % and median row rank per group size, fill and gross per tier, and, when two runs used the same offers on the same venue, a per-offer "who moved" list.
 
-With `--seeds N` the pool is regenerated N times (seed, seed+1, …) and the report shows p50 / p5 / p95. The run exits non-zero if any invariant fails (contiguity, total accounting, double booking, free upgrades). Same scenario + seed always gives the same result hash.
+With `--seeds N` the pool is regenerated N times (seed, seed+1, …) and the report shows p50 / p5 / p95, plus a mean ± stdev line with min and max under each policy heading. The run exits non-zero if any invariant fails (contiguity, total accounting, double booking, free upgrades). Same scenario + seed always gives the same result hash.
 
 ## Policies
 
@@ -58,6 +64,14 @@ On Cope's pool and architecture: greedy 1,133 / 1,152 seated, 19 one-seat holes;
 
 A generated pool can carry an auto-bid share (`generate.autoBid: { "sharePct": 25, "capMultiplier": [1.2, 1.6] }`); a pool CSV can carry a `cap` column (dollars). Before each policy runs, the sim resolves auto-bids the way production does (ADR-0018): run the engine, raise every displaced bidder one step up to its cap, repeat until stable. The step rule is on the scenario: `"autoBidRaiseRule": { "kind": "fixed", "cents": 500 }` (shipped) or `{ "kind": "percent", "pct": 5 }` (Cope's preference), or `--raise fixed:5 | percent:5`. The report's Auto-bid section shows bidders, how many raised, dollars added, who held their section, and who capped out. Compare two runs with different rules to settle NEW-13.
 
+## Private offers (ADR-0017)
+
+A generated pool can carry a share of private offers (`generate.privateOffers: { "sharePct": 10, "thresholdMultiplier": [1.3, 2.0] }`, drawn on non-auto-bidders so the shares don't overlap); a pool CSV can carry a `threshold` column (dollars, must be above the price; an offer can't have both `cap` and `threshold`). The sim models a private offer as an auto-bid whose cap is the hidden threshold: the fan publicly commits the visible price and is raised up to the threshold only when a competing offer would displace them. That is one reading of the ADR's "auto-converts to that price" — confirm it with Cope. The Auto-bid section reports how many private offers converted and what conversion added.
+
+## Bleacher carve-out (NEW-8 — not confirmed by Cope)
+
+`show.bleacher: { "sharePct": 6, "priceCents": 4000 }` holds whole seated rows from the worst rank up until the share of seats on sale is met, tagged `bleacher`, so the engine allocates the rest. The report estimates the channel outside the engine: seats × price if sold out, and a demand-bounded estimate `min(seats, tickets requested by unplaced offers) × price`, added to the GAE gross as "combined". Compare against the same scenario without the carve-out to see what those rows earn inside the engine.
+
 ## Scenario file
 
 ```jsonc
@@ -72,7 +86,8 @@ A generated pool can carry an auto-bid share (`generate.autoBid: { "sharePct": 2
       { "source": "venue", "seatIds": ["orch_c-aa:101"] }           // "<rowId>:<seat>"
     ],
     "floorsCents": { "orchestra": 8500 },     // overrides the venue's tierFloorsCents
-    "maxGroupSize": 10
+    "maxGroupSize": 10,
+    "bleacher": { "sharePct": 6, "priceCents": 4000 }   // optional; see Bleacher
   },
   "pool": {
     "file": "sim/pools/lincoln-pool-v4.csv"   // OR:
@@ -84,7 +99,9 @@ A generated pool can carry an auto-bid share (`generate.autoBid: { "sharePct": 2
     //   "priceModel": { "kind": "ladder", "ladderCents": 2500, "meanStepsAboveFloor": 3 },
     //   // or { "kind": "lognormal", "ladderCents": 2500, "medianMultiple": 1.3, "sigma": 0.35 }
     //   "tierPreferenceMix": { "specific": 20, "this_or_worse": 60, "this_or_better": 5, "any": 15 },
-    //   "tierChoice": "premium-biased"                  // or "uniform"
+    //   "tierChoice": "premium-biased",                 // or "uniform"
+    //   "autoBid": { "sharePct": 25, "capMultiplier": [1.2, 1.6] },
+    //   "privateOffers": { "sharePct": 10, "thresholdMultiplier": [1.3, 2.0] }
     // }
   },
   "policies": ["greedy", "clean-fit"],        // see Policies above

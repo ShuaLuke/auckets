@@ -36,9 +36,9 @@ describe("runScenario with policies", () => {
 
   it("auto-bid caps from the pool file feed the pre-pass, and the raise rule comes from the scenario", () => {
     const csv = poolToCsv(loadPoolCsv("id,size,price,tier\nrich,4,120,premium-\nauto,2,100,premium-\n").offers, { auto: { capCents: 15000 } });
-    expect(csv.split("\n")[0]).toBe("id,size,price,tier,order,cap");
+    expect(csv.split("\n")[0]).toBe("id,size,price,tier,order,cap,threshold");
     const pool = loadPoolCsv(csv);
-    expect(pool.autoBids).toEqual({ auto: { capCents: 15000 } });
+    expect(pool.autoBids).toEqual({ auto: { capCents: 15000, kind: "auto" } });
     const v2 = venue([row({ id: "p", rank: 1, cap: 4, tier: "premium" }), row({ id: "m", rank: 2, cap: 4, tier: "mid" })]);
     const scenario: Scenario = { name: "ab", venue: "test-venue", pool: { file: "p.csv" }, autoBidRaiseRule: { kind: "percent", pct: 10 } };
     const out = runScenario({ scenario, venue: v2, poolOffers: pool.offers, poolAutoBids: pool.autoBids });

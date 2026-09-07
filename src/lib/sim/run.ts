@@ -98,11 +98,21 @@ export function runScenario(input: RunInput): RunOutput {
       const seen = ab.offers;
       const result = allocate(arch, seen, config);
       const runtimeMs = performance.now() - t0;
-      const metrics = computeMetrics(resolved.venue, seen, result, heldBySource, runtimeMs, {
-        bidders: Object.keys(autoBids).filter((id) => offers.some((o) => o.id === id)).length,
-        raises: ab.raises,
-        rounds: ab.rounds,
-      });
+      const inPool = Object.entries(autoBids).filter(([id]) => offers.some((o) => o.id === id));
+      const metrics = computeMetrics(
+        resolved.venue,
+        seen,
+        result,
+        heldBySource,
+        runtimeMs,
+        {
+          bidders: inPool.length,
+          privateOffers: inPool.filter(([, spec]) => spec.kind === "private").length,
+          raises: ab.raises,
+          rounds: ab.rounds,
+        },
+        resolved.bleacher,
+      );
       if (config.singlesReserve) {
         const reservedIds = new Set(result.decisions.filter((d) => d.snapshot.singlesReserve === true && d.offerId).map((d) => d.offerId!));
         const unplacedIds = new Set(result.unplaced.map((u) => u.offerId));
@@ -201,10 +211,14 @@ const SCALAR_PATHS: ReadonlyArray<[keyof FillMetrics, string]> = [
   ["autoBid", "heldSectionAfterRaise"],
   ["autoBid", "cappedOut"],
   ["autoBid", "rounds"],
+  ["autoBid", "privateOffers"],
+  ["autoBid", "privateConverted"],
+  ["autoBid", "privateAddedCents"],
 ];
+const BLEACHER_PATHS = ["seats", "estSoldSeats", "estGrossCents", "combinedGrossCents", "overflowTickets"] as const;
 
 export function percentiles(values: number[]): Percentiles {
-  if (values.length === 0) return { p5: 0, p50: 0, p95: 0, mean: 0 };
+  if (values.length === 0) return { p5: 0, p50: 0, p95: 0, mean: 0, stdev: 0, min: 0, max: 0 };
   const s = [...values].sort((a, b) => a - b);
   const q = (p: number): number => {
     const pos = (s.length - 1) * p;
@@ -212,7 +226,9 @@ export function percentiles(values: number[]): Percentiles {
     const hi = Math.ceil(pos);
     return s[lo]! + (s[hi]! - s[lo]!) * (pos - lo);
   };
-  return { p5: q(0.05), p50: q(0.5), p95: q(0.95), mean: s.reduce((a, b) => a + b, 0) / s.length };
+  const mean = s.reduce((a, b) => a + b, 0) / s.length;
+  const variance = s.reduce((a, b) => a + (b - mean) * (b - mean), 0) / s.length;
+  return { p5: q(0.05), p50: q(0.5), p95: q(0.95), mean, stdev: Math.sqrt(variance), min: s[0]!, max: s[s.length - 1]! };
 }
 
 function aggregate(policy: PolicyName, runs: PolicyRun[]): PolicyAggregate {
@@ -224,6 +240,9 @@ function aggregate(policy: PolicyName, runs: PolicyRun[]): PolicyAggregate {
   // Hole-size histogram: sizes 1..6 individually.
   for (let size = 1; size <= 6; size++) {
     scalars[`fill.holesBySize.${size}`] = percentiles(runs.map((r) => r.metrics.fill.holesBySize[size] ?? 0));
+  }
+  if (runs.some((r) => r.metrics.bleacher !== null)) {
+    for (const key of BLEACHER_PATHS) scalars[`bleacher.${key}`] = percentiles(runs.map((r) => r.metrics.bleacher?.[key] ?? 0));
   }
   const sizes = new Set<number>();
   const tiers = new Set<string>();
