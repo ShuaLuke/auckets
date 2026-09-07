@@ -50,6 +50,7 @@ const COLUMN_ALIASES: Record<string, string[]> = {
   id: ["id", "offerid", "bidid"],
   order: ["timestamporder", "timestamp", "submittedat", "order", "arrival"],
   cap: ["cap", "autobidcap", "autobidcapcents", "autobid", "maxprice"],
+  threshold: ["threshold", "privatethreshold", "privatethresholdcents", "private", "hiddenprice"],
 };
 
 function findColumn(headers: string[], key: string): number {
@@ -122,11 +123,15 @@ export function offersFromSheet(sheetRows: Record<string, unknown>[], opts: Pool
 // Normalised pool CSV, the shape import-pool writes and every scenario reads.
 export function poolToCsv(offers: RankedOffer[], autoBids: AutoBids = {}): string {
   const withCaps = Object.keys(autoBids).length > 0;
-  const lines = [withCaps ? "id,size,price,tier,order,cap" : "id,size,price,tier,order"];
+  const lines = [withCaps ? "id,size,price,tier,order,cap,threshold" : "id,size,price,tier,order"];
   const base = SUBMITTED_BASE_MS;
   for (const o of offers) {
-    const cells = [o.id, o.groupSize, (o.pricePerTicketCents / 100).toFixed(2), formatTierPref(o.tierPreference), Math.round((o.submittedAt.getTime() - base) / 1000)];
-    if (withCaps) cells.push(autoBids[o.id] ? (autoBids[o.id]!.capCents / 100).toFixed(2) : "");
+    const cells: (string | number)[] = [o.id, o.groupSize, (o.pricePerTicketCents / 100).toFixed(2), formatTierPref(o.tierPreference), Math.round((o.submittedAt.getTime() - base) / 1000)];
+    if (withCaps) {
+      const ab = autoBids[o.id];
+      cells.push(ab && ab.kind !== "private" ? (ab.capCents / 100).toFixed(2) : "");
+      cells.push(ab && ab.kind === "private" ? (ab.capCents / 100).toFixed(2) : "");
+    }
     lines.push(cells.join(","));
   }
   return lines.join("\n") + "\n";
@@ -141,6 +146,7 @@ function offersFromTable(headers: string[], rows: string[][], opts: PoolOptions)
   const idi = findColumn(headers, "id");
   const oi = findColumn(headers, "order");
   const capi = findColumn(headers, "cap");
+  const thi = findColumn(headers, "threshold");
   const autoBids: AutoBids = {};
   if (gi === -1 || pi === -1) {
     throw new SimInputError(
@@ -161,7 +167,13 @@ function offersFromTable(headers: string[], rows: string[][], opts: PoolOptions)
     if (capi !== -1 && r[capi]?.trim()) {
       const capCents = toCents(r[capi]!, priceMode);
       if (capCents < pricePerTicketCents) throw new SimInputError(`${label} line ${line}: auto-bid cap ${r[capi]} is below the price`);
-      autoBids[id] = { capCents };
+      autoBids[id] = { capCents, kind: "auto" };
+    }
+    if (thi !== -1 && r[thi]?.trim()) {
+      const capCents = toCents(r[thi]!, priceMode);
+      if (capCents < pricePerTicketCents) throw new SimInputError(`${label} line ${line}: private threshold ${r[thi]} is below the visible price`);
+      if (autoBids[id]) throw new SimInputError(`${label} line ${line}: an offer can't have both an auto-bid cap and a private threshold`);
+      autoBids[id] = { capCents, kind: "private" };
     }
     return {
       id,

@@ -51,7 +51,7 @@ describe("applyShowOverlay", () => {
     const b = r.venue.rows.find((x) => x.id === "b")!;
     expect(a.holds).toHaveLength(8);
     expect(b.holds).toEqual(["1", "2"]);
-    expect(r.heldBySource).toEqual({ venue: 0, artist: 10, comp: 0, production: 0 });
+    expect(r.heldBySource).toEqual({ venue: 0, artist: 10, comp: 0, production: 0, bleacher: 0 });
     expect(base.rows.find((x) => x.id === "a")!.holds).toEqual([]); // library venue untouched
   });
 

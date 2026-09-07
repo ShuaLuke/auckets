@@ -24,7 +24,7 @@ describe("resolveAutoBids", () => {
     const auto = r.offers.find((o) => o.id === "auto")!;
     expect(auto.pricePerTicketCents).toBe(12500); // $120 ties on price but rich's bigger group wins; $125 takes it
     expect(auto.rankKey).toBe(12500 * 1000 + 2);
-    expect(r.raises).toEqual([{ offerId: "auto", fromCents: 10000, toCents: 12500, steps: 5, heldSection: true }]);
+    expect(r.raises).toEqual([{ offerId: "auto", kind: "auto", fromCents: 10000, toCents: 12500, steps: 5, heldSection: true }]);
     expect(r.rounds).toBeGreaterThan(1);
     expect(pool[1]!.pricePerTicketCents).toBe(10000); // input untouched
   });

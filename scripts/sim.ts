@@ -12,6 +12,7 @@
 //                       [--policies greedy,clean-fit,clean-fit+singles-reserve] [--raise fixed:5|percent:5]
 //   npm run sim -- compare <scenario.json> --policies a,b[,c]     (same as run; a report with policies side by side)
 //   npm run sim -- compare-runs sim/runs/<a> sim/runs/<b> [...] [--out dir]
+//   npm run sim -- sweep <scenario.json> --vary pool.oversubscription=0.6:2.0:0.1 [--seeds N] [--policies ...] [--name x]
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
@@ -20,7 +21,15 @@ import * as XLSX from "xlsx";
 
 import {
   applyShowOverlay,
+  applyVary,
+  assembleSweep,
   compareRuns,
+  labelFor,
+  parseVaryArg,
+  renderSweep,
+  renderSweepConsole,
+  renderSweepCsv,
+  slimOutput,
   formatIssues,
   loadPoolCsv,
   offersFromSheet,
@@ -47,6 +56,7 @@ import {
   type RunOutput,
   type Scenario,
   type SimVenue,
+  type SweepPoint,
 } from "../src/lib/sim";
 import type { RankedOffer } from "../src/lib/gae/types";
 
@@ -235,9 +245,9 @@ function cmdVenue(args: Args): void {
 
 // --- run ---------------------------------------------------------------------
 
-function cmdRun(args: Args): number {
+function loadScenarioWithOverrides(args: Args): Scenario {
   const scenarioPath = args.positional[1];
-  if (!scenarioPath) throw new SimInputError("usage: run <scenario.json> [--venue x] [--group-mix ...] [--seeds N] ...");
+  if (!scenarioPath) throw new SimInputError(`usage: ${args.positional[0]} <scenario.json> [--venue x] [--group-mix ...] [--seeds N] ...`);
   const parsed = ScenarioSchema.safeParse(readJson(resolve(ROOT, scenarioPath)));
   if (!parsed.success) throw new SimInputError(formatIssues(scenarioPath, parsed.error));
   let scenario: Scenario = parsed.data as Scenario;
@@ -277,7 +287,10 @@ function cmdRun(args: Args): number {
   }
   const check = ScenarioSchema.safeParse(scenario);
   if (!check.success) throw new SimInputError(formatIssues("overrides", check.error));
+  return scenario;
+}
 
+function runOne(scenario: Scenario, args: Args): { output: RunOutput; venue: SimVenue } {
   const venue = loadVenue(scenario.venue);
   const loaded =
     "file" in scenario.pool
@@ -286,9 +299,14 @@ function cmdRun(args: Args): number {
           label: scenario.pool.file,
         })
       : undefined;
-
-  const t0 = performance.now();
   const output = runScenario(loaded ? { scenario, venue, poolOffers: loaded.offers, poolAutoBids: loaded.autoBids } : { scenario, venue });
+  return { output, venue };
+}
+
+function cmdRun(args: Args): number {
+  const scenario = loadScenarioWithOverrides(args);
+  const t0 = performance.now();
+  const { output, venue } = runOne(scenario, args);
   const elapsed = performance.now() - t0;
 
   const runName = flagStr(args, "name") ?? `${scenario.name}-${output.generatedAt.replace(/[-:]/g, "").replace(/\..*$/, "").replace("T", "-")}`;
@@ -329,6 +347,44 @@ function slimForDisk(out: RunOutput): RunOutput {
         : r,
     ),
   };
+}
+
+// --- sweep -------------------------------------------------------------------
+
+function cmdSweep(args: Args): number {
+  const scenario = loadScenarioWithOverrides(args);
+  const varyArg = flagStr(args, "vary");
+  if (!varyArg) throw new SimInputError("usage: sweep <scenario.json> --vary <path>=<a,b,c | start:end:step> [--seeds N] [--policies ...]");
+  const vary = parseVaryArg(varyArg);
+  const t0 = performance.now();
+  const points: SweepPoint[] = [];
+  let violations = 0;
+  for (const value of vary.values) {
+    const sc = applyVary(scenario, vary.path, value);
+    const check = ScenarioSchema.safeParse(sc);
+    if (!check.success) throw new SimInputError(formatIssues(`${vary.path}=${labelFor(value)}`, check.error));
+    const { output } = runOne(sc, args);
+    violations += output.runs.reduce((s, r) => s + r.violations.length, 0);
+    points.push({ label: labelFor(value), value, scenario: sc, output: slimOutput(output) });
+    process.stdout.write(`  ${vary.path} = ${labelFor(value)} · fill ${(100 * (output.aggregates[0]!.scalars["fill.fillRate"]!.p50)).toFixed(1)}%\n`);
+  }
+  const sweep = assembleSweep(scenario.name, vary.path, points);
+  const runName = flagStr(args, "name") ?? `sweep-${scenario.name}-${vary.path.split(".").pop()}-${sweep.generatedAt.replace(/[-:]/g, "").replace(/\..*$/, "").replace("T", "-")}`;
+  const dir = resolve(flagStr(args, "out") ?? RUNS_DIR, runName);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "sweep.md"), renderSweep(sweep) + "\n");
+  writeFileSync(join(dir, "sweep.csv"), renderSweepCsv(sweep));
+  writeFileSync(join(dir, "sweep.json"), JSON.stringify(sweep, null, 2) + "\n");
+  console.log("");
+  console.log(renderSweepConsole(sweep));
+  console.log("");
+  console.log(`  ${points.length} points · ${points.reduce((s, p) => s + p.output.runs.length, 0)} allocations in ${(performance.now() - t0).toFixed(0)} ms · ${dir}`);
+  console.log("  sweep.md · sweep.csv · sweep.json");
+  if (violations > 0) {
+    console.error(`\n  !! ${violations} invariant violation(s) across the sweep. Exiting 1.`);
+    return 1;
+  }
+  return 0;
 }
 
 // --- import-pool ---------------------------------------------------------------
@@ -406,6 +462,10 @@ function usage(): string {
     "                                     [--policies greedy,clean-fit,parity-tiebreak,singles-reserve[:k],clean-fit+singles-reserve]",
     "                                     [--raise fixed:5 | percent:5]   (auto-bid step rule)",
     "  npm run sim -- compare <scenario.json> --policies greedy,clean-fit    (run with policies side by side)",
+    "  npm run sim -- sweep <scenario.json> --vary pool.oversubscription=0.6:2.0:0.1 [--seeds N] [--policies ...]",
+    "        --vary paths: venue=a,b · pool.<knob>=... · show.<knob>=... · seeds · autoBidRaiseRule={json}",
+    "        e.g. --vary pool.groupSizeMix=even-heavy,odd-heavy,singles-rich   --vary show.maxGroupSize=6,8,10",
+    "             --vary pool.autoBid.sharePct=0,25,50   --vary show.floorsCents.orchestra=8500,10000,12500",
   ].join("\n");
 }
 
@@ -420,6 +480,8 @@ function main(): number {
       case "run":
       case "compare":
         return cmdRun(args);
+      case "sweep":
+        return cmdSweep(args);
       case "import-pool":
         cmdImportPool(args);
         return 0;

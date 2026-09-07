@@ -79,6 +79,12 @@ export const ShowOverlaySchema = z.strictObject({
   holds: z.array(HoldSpecSchema).optional(),
   floorsCents: z.record(z.string(), z.number().int().positive()).optional(),
   maxGroupSize: z.number().int().min(1).max(50).optional(),
+  bleacher: z
+    .strictObject({
+      sharePct: z.number().positive().max(50),
+      priceCents: z.number().int().positive(),
+    })
+    .optional(),
 });
 
 const GroupMixPresetSchema = z.enum([
@@ -138,6 +144,12 @@ export const DemandModelSchema = z.strictObject({
     .strictObject({
       sharePct: z.number().min(0).max(100),
       capMultiplier: z.tuple([z.number().min(1), z.number().min(1)]).refine(([lo, hi]) => hi >= lo, { message: "capMultiplier must be [lo, hi] with hi ≥ lo" }),
+    })
+    .optional(),
+  privateOffers: z
+    .strictObject({
+      sharePct: z.number().min(0).max(100),
+      thresholdMultiplier: z.tuple([z.number().min(1), z.number().min(1)]).refine(([lo, hi]) => hi >= lo, { message: "thresholdMultiplier must be [lo, hi] with hi ≥ lo" }),
     })
     .optional(),
 });

@@ -110,10 +110,11 @@ export type ResolvedShow = {
   heldBySource: Record<HoldSource, number>;
   floorsCents: Record<string, number>;
   maxGroupSize: number;
+  bleacher?: { seats: number; rows: number; priceCents: number; rowIds: string[] };
 };
 
 export function applyShowOverlay(base: SimVenue, overlay: ShowOverlay | undefined): ResolvedShow {
-  const heldBySource: Record<HoldSource, number> = { venue: 0, artist: 0, comp: 0, production: 0 };
+  const heldBySource: Record<HoldSource, number> = { venue: 0, artist: 0, comp: 0, production: 0, bleacher: 0 };
   const o = overlay ?? {};
 
   // 1. Active rows: explicit ids win; else sections/areas; else the venue's.
@@ -177,13 +178,37 @@ export function applyShowOverlay(base: SimVenue, overlay: ShowOverlay | undefine
     }
   }
 
+  // 3. Bleacher carve-out (NEW-8, unconfirmed): whole seated rows from the
+  // worst rowRank up until the share is met, held with source "bleacher".
+  let bleacher: ResolvedShow["bleacher"];
+  if (o.bleacher) {
+    const onSale = rows.filter((r) => activeSet.has(r.id)).reduce((s, r) => s + r.capacity - r.holds.length, 0);
+    const target = Math.round((o.bleacher.sharePct / 100) * onSale);
+    const worstFirst = rows.filter((r) => activeSet.has(r.id) && r.isGa !== true).sort((a, b) => b.rowRank - a.rowRank);
+    let seats = 0;
+    const rowIds: string[] = [];
+    for (const row of worstFirst) {
+      if (seats >= target) break;
+      const free = row.seatNumbers.filter((seat) => !row.holds.includes(seat));
+      if (free.length === 0) continue;
+      row.holds.push(...free);
+      seats += free.length;
+      heldBySource.bleacher += free.length;
+      rowIds.push(row.id);
+    }
+    if (seats === 0) throw new SimInputError("show.bleacher: no seated rows available to carve out");
+    bleacher = { seats, rows: rowIds.length, priceCents: o.bleacher.priceCents, rowIds };
+  }
+
   const venue: SimVenue = { ...base, rows, activeRowIds };
-  return {
+  const resolved: ResolvedShow = {
     venue,
     heldBySource,
     floorsCents: { ...(base.tierFloorsCents ?? {}), ...(o.floorsCents ?? {}) },
     maxGroupSize: o.maxGroupSize ?? 10,
   };
+  if (bleacher) resolved.bleacher = bleacher;
+  return resolved;
 }
 
 // Cope's "Architecture Summary": one line for the whole room, one per area.

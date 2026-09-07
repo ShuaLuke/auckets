@@ -72,8 +72,11 @@ const METRICS: { key: string; label: string; fmt: "n" | "pct" | "usd" }[] = [
   { key: "policy.reservedSinglesPlaced", label: "Reserved singles placed", fmt: "n" },
   { key: "autoBid.raised", label: "Auto-bidders raised", fmt: "n" },
   { key: "autoBid.totalRaiseCents", label: "Auto-bid $ added", fmt: "usd" },
+  { key: "autoBid.privateConverted", label: "Private offers converted", fmt: "n" },
+  { key: "bleacher.estSoldSeats", label: "Bleacher est. sold seats", fmt: "n" },
+  { key: "bleacher.combinedGrossCents", label: "Gross incl. Bleacher est.", fmt: "usd" },
 ];
-const OPTIONAL_KEYS = /^(fill\.holesBySize|policy\.|autoBid\.)/;
+const OPTIONAL_KEYS = /^(fill\.holesBySize|policy\.|autoBid\.|bleacher\.)/;
 
 export function poolLabel(out: RunOutput): string {
   const p = out.scenario.pool;
