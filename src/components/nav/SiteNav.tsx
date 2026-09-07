@@ -77,6 +77,9 @@ export async function SiteNav() {
   const roleLinks: { href: string; label: string }[] = [
     ...(canScan ? [{ href: "/scan", label: "Venue" }] : []),
     ...(artistHref ? [{ href: artistHref, label: "Artist" }] : []),
+    // The Simulation tab is open to artist members as well as admins
+    // (src/lib/simulation/access.ts). Admins reach it from the Admin pills.
+    ...(artistHref && !isAdmin ? [{ href: "/admin/simulation", label: "Simulator" }] : []),
     ...(isAdmin ? [{ href: "/admin", label: "Admin" }] : []),
   ];
 
@@ -119,6 +122,12 @@ export async function SiteNav() {
             {artistHref && (
               <Link href={artistHref} className={linkClass}>
                 Artist
+              </Link>
+            )}
+
+            {artistHref && !isAdmin && (
+              <Link href="/admin/simulation" className={linkClass}>
+                Simulator
               </Link>
             )}
 

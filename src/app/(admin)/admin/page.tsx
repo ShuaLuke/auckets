@@ -194,6 +194,17 @@ export default async function AdminHomePage() {
           >
             Staff
           </Link>
+          <Link
+            href="/admin/simulation"
+            className="rounded-full px-3 py-1.5 font-sans text-[13px]"
+            style={{
+              background: "transparent",
+              color: "var(--fg-muted)",
+              border: "1px solid var(--border)",
+            }}
+          >
+            Simulation
+          </Link>
         </div>
 
         {showCount === 0 ? (
