@@ -2,22 +2,13 @@
 // terminal), the per-offer CSV that opens in Excel, and a text seat map.
 // Dollars appear only here — everything upstream is integer cents.
 
+import { compareRuns, renderComparison } from "./compare";
+import { n, pct, usd } from "./format";
 import { formatTierPref } from "./pool";
 import type { FillMetrics, Percentiles, PolicyAggregate, PolicyRun, RunOutput, SimVenue } from "./types";
 import { activeRows, tierOrder } from "./venue";
 
-export function usd(cents: number): string {
-  const sign = cents < 0 ? "-" : "";
-  const abs = Math.abs(Math.round(cents));
-  const dollars = Math.floor(abs / 100).toLocaleString("en-US");
-  return `${sign}$${dollars}.${String(abs % 100).padStart(2, "0")}`;
-}
-
-export function pct(rate: number, digits = 1): string {
-  return `${(100 * rate).toFixed(digits)}%`;
-}
-
-const n = (v: number): string => Math.round(v).toLocaleString("en-US");
+export { usd, pct } from "./format";
 
 // --- Fill report -----------------------------------------------------------
 
@@ -63,9 +54,21 @@ export function renderFillReport(out: RunOutput): string {
   }
   lines.push("");
 
+  if (out.scenario.autoBidRaiseRule || out.runs.some((r) => r.metrics.autoBid.bidders > 0)) {
+    const rule = out.scenario.autoBidRaiseRule ?? { kind: "fixed", cents: 500 };
+    lines.push(`Auto-bid raise rule: ${rule.kind === "fixed" ? `fixed ${usd(rule.cents)} per step (shipped, ADR-0018)` : `${rule.pct}% of the current price per step, rounded up to whole dollars (Cope's preference)`}.`);
+    lines.push("");
+  }
+
   for (const agg of out.aggregates) {
     const first = out.runs.find((r) => r.policy === agg.policy)!;
     lines.push(...renderPolicySection(out, agg, first, multi));
+  }
+  if (out.policies.length > 1) {
+    lines.push("---");
+    lines.push("");
+    lines.push(renderComparison(compareRuns([{ runName: out.scenarioName, output: out }])).replace(/^# Run comparison/, "## Policies compared"));
+    lines.push("");
   }
   return lines.join("\n");
 }
@@ -85,6 +88,8 @@ function renderPolicySection(out: RunOutput, agg: PolicyAggregate, first: Policy
   L.push(`## FILL REPORT — policy \`${agg.policy}\`${multi ? ` · ${agg.seeds} seeds` : ""}`);
   L.push("");
   L.push(`On sale: ${n(cap.availableSeats)} seats (${n(cap.totalSeats)} total, ${n(cap.heldSeats)} held${heldBreakdown(cap.heldBySource)}) across ${cap.activeRows} active rows.`);
+  L.push("");
+  L.push(`> ${first.caveat}`);
   L.push("");
   L.push(hdr);
   L.push(sep);
@@ -178,7 +183,29 @@ function renderPolicySection(out: RunOutput, agg: PolicyAggregate, first: Policy
   L.push(`| Price gap to the cheaper fan who got the better row, max | ${cell("rankRespect.priceGapMaxCents", usd)} |`);
   L.push(`| FitResolver deferrals | ${cell("rankRespect.fitResolvedDeferrals", n)} |`);
   L.push(`| Waterfalled placements | ${cell("rankRespect.waterfalled", n)} |`);
+  if (agg.policy !== "greedy") {
+    L.push(`| Clean-fit deferrals | ${cell("policy.cleanFitDeferrals", n)} |`);
+    L.push(`| Seats a clean-fit deferral kept from stranding | ${cell("policy.seatsSavedByCleanFit", n)} |`);
+    L.push(`| Parity tiebreaks taken | ${cell("policy.parityTiebreaks", n)} |`);
+    L.push(`| Reserved singles placed / unplaced | ${cell("policy.reservedSinglesPlaced", n)} |`);
+    L.push(`| Reserved singles unplaced | ${cell("policy.reservedSinglesUnplaced", n)} |`);
+  }
   L.push("");
+  if (first.metrics.autoBid.bidders > 0) {
+    L.push("### Auto-bid");
+    L.push("");
+    L.push(hdr);
+    L.push(sep);
+    L.push(`| Auto-bidders in the pool | ${cell("autoBid.bidders", n)} |`);
+    L.push(`| Raised at least once | ${cell("autoBid.raised", n)} |`);
+    L.push(`| Total added to prices | ${cell("autoBid.totalRaiseCents", usd)} |`);
+    L.push(`| Largest single raise | ${cell("autoBid.maxRaiseCents", usd)} |`);
+    L.push(`| Avg steps per raised bidder | ${cell("autoBid.avgStepsPerRaised", (v) => v.toFixed(1))} |`);
+    L.push(`| Held their section after raising | ${cell("autoBid.heldSectionAfterRaise", n)} |`);
+    L.push(`| Hit their cap and still displaced | ${cell("autoBid.cappedOut", n)} |`);
+    L.push(`| Resolution rounds | ${cell("autoBid.rounds", n)} |`);
+    L.push("");
+  }
   L.push("\"Passed over\" is the spec's rank-respect test made countable: a lower-ranked group sits in a better row, and its block plus the empty seats touching it could have held this offer. A single that took a 1-seat hole has not passed a pair. With the shipped greedy policy these arise only from the strict-then-waterfall pass order (an `any` fan seated in a lower tier before a this-or-worse fan cascades down); fill-first policies will produce them by design.");
   L.push("");
 
@@ -244,6 +271,8 @@ export function renderConsoleSummary(out: RunOutput): string {
     L.push(row("Left on table (unplaced $)", "revenue.unplacedValueCents", usd));
     L.push(row("Offers placed", "offers.placed", n) + `   of ${n(first.metrics.offers.total)}`);
     L.push(row("Passed over (rank-respect)", "rankRespect.passedOver", n));
+    if (agg.policy !== "greedy") L.push(row("Clean-fit deferrals / parity picks", "policy.cleanFitDeferrals", n) + `   parity ${n(s["policy.parityTiebreaks"]!.p50)} · reserved ${n(s["policy.reservedSinglesPlaced"]!.p50)}`);
+    if (first.metrics.autoBid.bidders > 0) L.push(row("Auto-bid raised / added", "autoBid.raised", n) + `   ${usd(s["autoBid.totalRaiseCents"]!.p50)} · held section ${n(s["autoBid.heldSectionAfterRaise"]!.p50)}`);
     L.push("");
     L.push(`  By group size${multi ? " (p50)" : ""}:   size   offers   placed   placed%   median row rank`);
     const m = first.metrics;

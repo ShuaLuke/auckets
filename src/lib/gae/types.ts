@@ -67,12 +67,38 @@ export type RankedOffer = {
 export type OrphanPolicy = "leave" | "bump_to_next_row";
 export type AllocationMode = "preview" | "binding";
 
+// Opt-in fill policies (docs/GAE_SIMULATOR.md §4.3). Every field defaults to
+// OFF, which is the shipped greedy behaviour; production never sets these
+// until an ADR flips a default. They exist so the simulator can A/B them
+// against the same pools and the promotion is a config change, not a rewrite.
+export type FitPolicy =
+  // Take offers in rank order; FitResolver skips forward only on a non-fit.
+  | "greedy"
+  // When placing a group would leave a remainder no remaining compatible
+  // offer can exactly fill, defer it and take the next-ranked group that
+  // leaves a fillable remainder. Falls back to greedy when nothing does.
+  // Rank-respect widened by one deferral; logged as FIT_RESOLVED with
+  // snapshot.policy === "clean_fit".
+  | "clean_fit";
+
 export type AllocationConfig = {
   mode: AllocationMode;
   allowOrphans: boolean;
   maxGroupSize: number;
   orphanPolicy: OrphanPolicy;
   rngSeed?: number;
+  fitPolicy?: FitPolicy;
+  // At EQUAL price per ticket (the spec's definition of a rank tie, normally
+  // broken by larger group first), prefer the group whose size parity
+  // matches the remaining run so the row can close cleanly. Never reorders
+  // across prices. Logged on the PLACED snapshot as parityTiebreak: true.
+  parityTiebreak?: boolean;
+  // Hold back the k lowest-ranked single-seat offers (compatible with some
+  // 1-seat row) until everyone else is placed, then seat them in the 1-seat
+  // rows first and anywhere left second. Mild preventive hoarding — NOT
+  // rank-first — kept as the smallest possible guard for the parity
+  // hypothesis. Logged with snapshot.singlesReserve === true.
+  singlesReserve?: number;
 };
 
 export type SeatAssignment = {

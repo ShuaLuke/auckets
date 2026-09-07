@@ -5,7 +5,7 @@
 
 import type { RankedOffer } from "@/lib/gae/types";
 
-import { pct, usd } from "./report";
+import { pct, usd } from "./format";
 import type { PolicyAggregate, PolicyRun, RunOutput } from "./types";
 
 export type CompareColumn = {
@@ -67,7 +67,13 @@ const METRICS: { key: string; label: string; fmt: "n" | "pct" | "usd" }[] = [
   { key: "rankRespect.priceGapMaxCents", label: "Price gap, max", fmt: "usd" },
   { key: "rankRespect.fitResolvedDeferrals", label: "FitResolver deferrals", fmt: "n" },
   { key: "rankRespect.waterfalled", label: "Waterfalled", fmt: "n" },
+  { key: "policy.cleanFitDeferrals", label: "Clean-fit deferrals", fmt: "n" },
+  { key: "policy.parityTiebreaks", label: "Parity tiebreaks", fmt: "n" },
+  { key: "policy.reservedSinglesPlaced", label: "Reserved singles placed", fmt: "n" },
+  { key: "autoBid.raised", label: "Auto-bidders raised", fmt: "n" },
+  { key: "autoBid.totalRaiseCents", label: "Auto-bid $ added", fmt: "usd" },
 ];
+const OPTIONAL_KEYS = /^(fill\.holesBySize|policy\.|autoBid\.)/;
 
 export function poolLabel(out: RunOutput): string {
   const p = out.scenario.pool;
@@ -78,13 +84,14 @@ export function poolLabel(out: RunOutput): string {
 }
 
 export function compareRuns(inputs: { runName: string; output: RunOutput }[]): Comparison {
-  if (inputs.length < 2) throw new Error("compare-runs needs at least two runs");
+  const columnCount = inputs.reduce((s, i) => s + i.output.aggregates.length, 0);
+  if (columnCount < 2) throw new Error("compare-runs needs at least two runs (or one run with two policies)");
   const columns: CompareColumn[] = [];
   for (const { runName, output } of inputs) {
     for (const agg of output.aggregates) {
       const first = output.runs.find((r) => r.policy === agg.policy)!;
       columns.push({
-        label: output.aggregates.length > 1 ? `${runName} / ${agg.policy}` : runName,
+        label: inputs.length === 1 ? agg.policy : output.aggregates.length > 1 ? `${runName} / ${agg.policy}` : runName,
         runName,
         venue: output.venueName,
         poolLabel: poolLabel(output),
@@ -192,6 +199,7 @@ export function renderComparison(c: Comparison): string {
   L.push("| Venue | " + cols.map((x) => x.venue).join(" | ") + " |");
   L.push("| Pool | " + cols.map((x) => x.poolLabel).join(" | ") + " |");
   L.push("| Policy | " + cols.map((x) => x.policy).join(" | ") + " |");
+  L.push("| Rank-first? | " + cols.map((x) => (x.first.config.singlesReserve ? "no (reserve)" : x.first.config.fitPolicy === "clean_fit" ? "subject to clean-fit deferrals" : x.first.config.parityTiebreak ? "yes (ties reordered at equal price)" : "yes")).join(" | ") + " |");
   L.push("| Seeds | " + cols.map((x) => String(x.seeds)).join(" | ") + " |");
   L.push("| Run date | " + cols.map((x) => x.output.generatedAt.slice(0, 16).replace("T", " ")).join(" | ") + " |");
   L.push("");
@@ -200,7 +208,7 @@ export function renderComparison(c: Comparison): string {
   L.push("| Metric | " + cols.map((x) => x.label).join(" | ") + " |");
   L.push("|---|" + cols.map(() => "---:").join("|") + "|");
   for (const m of c.metrics) {
-    if (m.key.startsWith("fill.holesBySize") && m.values.every((v) => v === 0)) continue;
+    if (OPTIONAL_KEYS.test(m.key) && m.values.every((v) => v === 0)) continue;
     const f = fmtOf(m.fmt);
     const cells = m.values.map((v, i) => (i === 0 ? f(v) : `${f(v)} (${delta(m.fmt, v, m.values[0]!)})`));
     L.push(`| ${m.label.replace(/^ {2}/, "&nbsp;&nbsp;")} | ${cells.join(" | ")} |`);
@@ -259,7 +267,7 @@ export function renderComparisonConsole(c: Comparison): string {
   L.push("  " + "venue".padEnd(32) + cols.map((x) => x.venue.padStart(w)).join(""));
   L.push("  " + "policy · seeds".padEnd(32) + cols.map((x) => `${x.policy} · ${x.seeds}`.padStart(w)).join(""));
   for (const m of c.metrics) {
-    if (m.key.startsWith("fill.holesBySize") && m.values.every((v) => v === 0)) continue;
+    if (OPTIONAL_KEYS.test(m.key) && m.values.every((v) => v === 0)) continue;
     const f = fmtOf(m.fmt);
     L.push("  " + m.label.padEnd(32) + m.values.map((v) => f(v).padStart(w)).join(""));
   }

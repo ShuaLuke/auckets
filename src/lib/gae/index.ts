@@ -18,7 +18,8 @@
 // layer is responsible for honoring `mode` (preview vs binding), since
 // the GAE itself doesn't know which side of that line it's on.
 
-import { launchPad } from "./launchpad";
+import { launchPad, type LaunchPadPolicies } from "./launchpad";
+import { sortRankedOffers } from "./rankkey";
 import type {
   AllocationConfig,
   AllocationDecision,
@@ -26,18 +27,32 @@ import type {
   AllocationStats,
   RankedOffer,
   SeatAssignment,
+  UnplacedOffer,
   VenueArchitecture,
 } from "./types";
-import { waterfall } from "./waterfall";
+import {
+  buildTierIndex,
+  getActiveRows,
+  makeRelaxedMatcher,
+  venueWithExtraHolds,
+  waterfall,
+} from "./waterfall";
 
 export function allocate(
   venue: VenueArchitecture,
   offers: RankedOffer[],
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _config: AllocationConfig,
+  config: AllocationConfig,
 ): AllocationResult {
-  const phase1 = launchPad(venue, offers);
-  const phase2 = waterfall(venue, phase1.remainingOffers, phase1.assignments);
+  // Opt-in policies (types.ts). With none set this is the shipped greedy
+  // path, unchanged: launchPad → waterfall → stats.
+  const policies: LaunchPadPolicies = {
+    fitPolicy: config.fitPolicy,
+    parityTiebreak: config.parityTiebreak,
+  };
+  const reserve = splitSinglesReserve(venue, offers, config.singlesReserve ?? 0);
+
+  const phase1 = launchPad(venue, reserve.mainPool, { policies });
+  const phase2 = waterfall(venue, phase1.remainingOffers, phase1.assignments, policies);
 
   const assignments: SeatAssignment[] = [
     ...phase1.assignments,
@@ -47,12 +62,97 @@ export function allocate(
     ...phase1.decisions,
     ...phase2.decisions,
   ];
+  let unplaced: UnplacedOffer[] = phase2.unplaced;
+
+  if (reserve.reserved.length > 0) {
+    const late = placeReservedSingles(venue, reserve.reserved, reserve.singleRowIds, assignments, policies);
+    assignments.push(...late.assignments);
+    decisions.push(...late.decisions);
+    unplaced = [...unplaced, ...late.unplaced];
+  }
 
   return {
     assignments,
-    unplaced: phase2.unplaced,
+    unplaced,
     decisions,
-    stats: computeStats(venue, offers, assignments, phase2.unplaced.length),
+    stats: computeStats(venue, offers, assignments, unplaced.length),
+  };
+}
+
+// --- singles reserve -------------------------------------------------------
+//
+// Hold back the k lowest-ranked single-seat offers that could sit in some
+// 1-seat row, so they are not spent plugging 1-seat gaps in better rows
+// during the main pass. They are seated after everyone else: first into the
+// 1-seat rows only, then anywhere still open. Both late passes are ordinary
+// launchPad + waterfall runs over a venue whose taken seats are holds.
+
+function splitSinglesReserve(
+  venue: VenueArchitecture,
+  offers: RankedOffer[],
+  k: number,
+): { mainPool: RankedOffer[]; reserved: RankedOffer[]; singleRowIds: string[] } {
+  if (k <= 0) return { mainPool: offers, reserved: [], singleRowIds: [] };
+  const active = getActiveRows(venue);
+  const singleRows = active.filter((r) => r.isGa !== true && r.capacity - r.holds.length === 1);
+  if (singleRows.length === 0) return { mainPool: offers, reserved: [], singleRowIds: [] };
+  const matcher = makeRelaxedMatcher(buildTierIndex(active));
+  const candidates = sortRankedOffers(offers).filter(
+    (o) => o.groupSize === 1 && singleRows.some((r) => matcher(o, r)),
+  );
+  const reserved = candidates.slice(Math.max(0, candidates.length - Math.min(k, singleRows.length)));
+  const reservedIds = new Set(reserved.map((o) => o.id));
+  return {
+    mainPool: offers.filter((o) => !reservedIds.has(o.id)),
+    reserved,
+    singleRowIds: singleRows.map((r) => r.id),
+  };
+}
+
+function placeReservedSingles(
+  venue: VenueArchitecture,
+  reserved: RankedOffer[],
+  singleRowIds: string[],
+  alreadyPlaced: SeatAssignment[],
+  policies: LaunchPadPolicies,
+): { assignments: SeatAssignment[]; decisions: AllocationDecision[]; unplaced: UnplacedOffer[] } {
+  const taken = new Map<string, Set<string>>();
+  for (const a of alreadyPlaced) {
+    const set = taken.get(a.venueRowId) ?? new Set<string>();
+    set.add(a.seatNumber);
+    taken.set(a.venueRowId, set);
+  }
+  const assignments: SeatAssignment[] = [];
+  const decisions: AllocationDecision[] = [];
+  let remaining = reserved;
+
+  // Pass 1: the 1-seat rows only. Pass 2: anywhere left.
+  for (const activeRowIds of [singleRowIds, venue.activeRowIds]) {
+    if (remaining.length === 0) break;
+    const working = venueWithExtraHolds({ ...venue, activeRowIds }, taken);
+    const lp = launchPad(working, remaining, { policies });
+    const wf = waterfall(working, lp.remainingOffers, [...alreadyPlaced, ...assignments, ...lp.assignments], policies);
+    for (const a of [...lp.assignments, ...wf.assignments]) {
+      assignments.push(a);
+      const set = taken.get(a.venueRowId) ?? new Set<string>();
+      set.add(a.seatNumber);
+      taken.set(a.venueRowId, set);
+    }
+    for (const d of [...lp.decisions, ...wf.decisions]) {
+      if (d.action === "SKIPPED" || d.action === "ORPHAN_DETECTED") continue; // row observations of a partial venue; not informative
+      decisions.push({ ...d, snapshot: { ...d.snapshot, singlesReserve: true } });
+    }
+    const placedIds = new Set([...lp.assignments, ...wf.assignments].map((a) => a.offerId));
+    remaining = remaining.filter((o) => !placedIds.has(o.id));
+  }
+  const tierIdx = buildTierIndex(getActiveRows(venue));
+  return {
+    assignments,
+    decisions,
+    unplaced: remaining.map((o) => ({
+      offerId: o.id,
+      reason: o.tierPreference.type !== "any" && !tierIdx.has(o.tierPreference.tier) ? "no_compatible_tier" : "no_fit_anywhere",
+    })),
   };
 }
 

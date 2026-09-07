@@ -7,7 +7,7 @@
 import { computeRankKey } from "@/lib/gae/rankkey";
 import type { RankedOffer, TierPreference } from "@/lib/gae/types";
 
-import type { OfferParitySummary } from "./types";
+import type { AutoBids, OfferParitySummary } from "./types";
 import { SimInputError } from "./venue";
 
 export function parseCsv(text: string, delimiter = ","): string[][] {
@@ -49,6 +49,7 @@ const COLUMN_ALIASES: Record<string, string[]> = {
   tier: ["tier", "tierpref", "tierpreference", "preference"],
   id: ["id", "offerid", "bidid"],
   order: ["timestamporder", "timestamp", "submittedat", "order", "arrival"],
+  cap: ["cap", "autobidcap", "autobidcapcents", "autobid", "maxprice"],
 };
 
 function findColumn(headers: string[], key: string): number {
@@ -97,10 +98,16 @@ export const SUBMITTED_BASE_MS = Date.UTC(2026, 0, 1);
 
 export type PoolOptions = { priceMode?: "dollars" | "cents"; label?: string };
 
-export function offersFromCsv(text: string, opts: PoolOptions = {}): RankedOffer[] {
+export type LoadedPool = { offers: RankedOffer[]; autoBids: AutoBids };
+
+export function loadPoolCsv(text: string, opts: PoolOptions = {}): LoadedPool {
   const rows = parseCsv(text);
   if (rows.length < 2) throw new SimInputError(`${opts.label ?? "pool"}: CSV has no data rows`);
   return offersFromTable(rows[0]!, rows.slice(1), opts);
+}
+
+export function offersFromCsv(text: string, opts: PoolOptions = {}): RankedOffer[] {
+  return loadPoolCsv(text, opts).offers;
 }
 
 // A sheet read as row objects (the CLI's xlsx path). Cells become strings;
@@ -109,20 +116,23 @@ export function offersFromSheet(sheetRows: Record<string, unknown>[], opts: Pool
   if (sheetRows.length === 0) throw new SimInputError(`${opts.label ?? "pool"}: sheet has no rows`);
   const headers = Object.keys(sheetRows[0]!);
   const rows = sheetRows.map((r) => headers.map((h) => (r[h] === null || r[h] === undefined ? "" : String(r[h]))));
-  return offersFromTable(headers, rows.filter((r) => r.some((c) => c.trim() !== "")), opts);
+  return offersFromTable(headers, rows.filter((r) => r.some((c) => c.trim() !== "")), opts).offers;
 }
 
 // Normalised pool CSV, the shape import-pool writes and every scenario reads.
-export function poolToCsv(offers: RankedOffer[]): string {
-  const lines = ["id,size,price,tier,order"];
+export function poolToCsv(offers: RankedOffer[], autoBids: AutoBids = {}): string {
+  const withCaps = Object.keys(autoBids).length > 0;
+  const lines = [withCaps ? "id,size,price,tier,order,cap" : "id,size,price,tier,order"];
   const base = SUBMITTED_BASE_MS;
   for (const o of offers) {
-    lines.push([o.id, o.groupSize, (o.pricePerTicketCents / 100).toFixed(2), formatTierPref(o.tierPreference), Math.round((o.submittedAt.getTime() - base) / 1000)].join(","));
+    const cells = [o.id, o.groupSize, (o.pricePerTicketCents / 100).toFixed(2), formatTierPref(o.tierPreference), Math.round((o.submittedAt.getTime() - base) / 1000)];
+    if (withCaps) cells.push(autoBids[o.id] ? (autoBids[o.id]!.capCents / 100).toFixed(2) : "");
+    lines.push(cells.join(","));
   }
   return lines.join("\n") + "\n";
 }
 
-function offersFromTable(headers: string[], rows: string[][], opts: PoolOptions): RankedOffer[] {
+function offersFromTable(headers: string[], rows: string[][], opts: PoolOptions): LoadedPool {
   const label = opts.label ?? "pool";
   const priceMode = opts.priceMode ?? "dollars";
   const gi = findColumn(headers, "groupSize");
@@ -130,13 +140,15 @@ function offersFromTable(headers: string[], rows: string[][], opts: PoolOptions)
   const ti = findColumn(headers, "tier");
   const idi = findColumn(headers, "id");
   const oi = findColumn(headers, "order");
+  const capi = findColumn(headers, "cap");
+  const autoBids: AutoBids = {};
   if (gi === -1 || pi === -1) {
     throw new SimInputError(
       `${label}: need a group-size column and a price column. Saw: ${headers.join(", ")}`,
     );
   }
   const seen = new Set<string>();
-  return rows.map((r, idx) => {
+  const offers = rows.map((r, idx) => {
     const line = idx + 2;
     const groupSize = Math.round(Number(r[gi]?.trim()));
     if (!Number.isFinite(groupSize) || groupSize < 1) throw new SimInputError(`${label} line ${line}: bad group size "${r[gi]}"`);
@@ -146,6 +158,11 @@ function offersFromTable(headers: string[], rows: string[][], opts: PoolOptions)
     seen.add(id);
     const order = oi !== -1 && r[oi]?.trim() ? Number(r[oi]) : idx + 1;
     if (!Number.isFinite(order)) throw new SimInputError(`${label} line ${line}: bad timestamp/order "${r[oi]}"`);
+    if (capi !== -1 && r[capi]?.trim()) {
+      const capCents = toCents(r[capi]!, priceMode);
+      if (capCents < pricePerTicketCents) throw new SimInputError(`${label} line ${line}: auto-bid cap ${r[capi]} is below the price`);
+      autoBids[id] = { capCents };
+    }
     return {
       id,
       userId: `user-${id}`,
@@ -157,6 +174,7 @@ function offersFromTable(headers: string[], rows: string[][], opts: PoolOptions)
       tierPreference: parseTierPref(ti !== -1 ? r[ti] : undefined),
     };
   });
+  return { offers, autoBids };
 }
 
 export function median(values: number[]): number {

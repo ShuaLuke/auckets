@@ -8,7 +8,7 @@ import type { RankedOffer, TierPreference } from "@/lib/gae/types";
 
 import { SUBMITTED_BASE_MS } from "./pool";
 import { createRng } from "./rng";
-import type { DemandModel, GroupMixPreset, GroupSizeMix, TierPreferenceMix } from "./types";
+import type { AutoBids, DemandModel, GroupMixPreset, GroupSizeMix, TierPreferenceMix } from "./types";
 import { SimInputError } from "./venue";
 
 // Percent of OFFERS by group size. `lincoln-v4` is fitted to Cope's 512-offer
@@ -60,6 +60,8 @@ export type GeneratedPool = {
   // The mix actually drawn, as percent of offers — echoed in the report so
   // the input and the pool can be checked against each other.
   realizedMixPct: GroupSizeMix;
+  // offerId → cap, for the auto-bid share of the pool (empty when off).
+  autoBids: AutoBids;
 };
 
 export function generatePool(model: DemandModel, ctx: DemandContext, seedOverride?: number): GeneratedPool {
@@ -108,6 +110,19 @@ export function generatePool(model: DemandModel, ctx: DemandContext, seedOverrid
     arrival[idx] = pos;
   });
 
+  // Auto-bid share: drawn after the pool so turning it on doesn't reshuffle
+  // the offers themselves (same seed → same crowd, with or without auto-bid).
+  const autoBids: AutoBids = {};
+  const ab = model.autoBid;
+  const ladder = model.priceModel.ladderCents ?? 2500;
+  const abFlags = drawn.map(() => ab !== undefined && ab.sharePct > 0 && rng.next() * 100 < ab.sharePct);
+  const abCaps = drawn.map((d, i) => {
+    if (!abFlags[i] || !ab) return 0;
+    const mult = ab.capMultiplier[0] + rng.next() * (ab.capMultiplier[1] - ab.capMultiplier[0]);
+    const raw = Math.round(d.priceCents * mult);
+    return Math.max(d.priceCents + ladder, Math.round(raw / ladder) * ladder);
+  });
+
   const width = String(drawn.length).length;
   const offers: RankedOffer[] = drawn.map((d, i) => {
     const id = `gen-${String(i + 1).padStart(Math.max(4, width), "0")}`;
@@ -124,13 +139,17 @@ export function generatePool(model: DemandModel, ctx: DemandContext, seedOverrid
     };
   });
 
+  offers.forEach((o, i) => {
+    if (abFlags[i]) autoBids[o.id] = { capCents: abCaps[i]! };
+  });
+
   const realizedMixPct: GroupSizeMix = {};
   for (const o of offers) realizedMixPct[o.groupSize] = (realizedMixPct[o.groupSize] ?? 0) + 1;
   for (const k of Object.keys(realizedMixPct)) {
     const size = Number(k);
     realizedMixPct[size] = offers.length === 0 ? 0 : (100 * realizedMixPct[size]!) / offers.length;
   }
-  return { offers, realizedMixPct };
+  return { offers, realizedMixPct, autoBids };
 }
 
 function drawPrice(model: DemandModel, floorCents: number, rng: ReturnType<typeof createRng>): number {

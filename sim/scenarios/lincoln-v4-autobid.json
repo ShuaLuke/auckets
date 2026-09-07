@@ -1,0 +1,17 @@
+{
+  "name": "lincoln-v4-autobid",
+  "venue": "lincoln-v4",
+  "pool": {
+    "generate": {
+      "seed": 1,
+      "oversubscription": 1.25,
+      "groupSizeMix": "lincoln-v4",
+      "priceModel": { "kind": "ladder", "ladderCents": 2500, "meanStepsAboveFloor": 3 },
+      "tierPreferenceMix": { "specific": 30, "this_or_worse": 55, "this_or_better": 5, "any": 10 },
+      "autoBid": { "sharePct": 25, "capMultiplier": [1.2, 1.6] }
+    }
+  },
+  "autoBidRaiseRule": { "kind": "fixed", "cents": 500 },
+  "policies": ["greedy"],
+  "seeds": 10
+}

@@ -44,6 +44,7 @@ import { sortRankedOffers } from "./rankkey";
 import type {
   AllocationAction,
   AllocationDecision,
+  FitPolicy,
   RankedOffer,
   SeatAssignment,
   VenueArchitecture,
@@ -56,12 +57,18 @@ export type LaunchPadResult = {
   remainingOffers: RankedOffer[];
 };
 
+export type LaunchPadPolicies = {
+  fitPolicy?: FitPolicy | undefined;
+  parityTiebreak?: boolean | undefined;
+};
+
 export function launchPad(
   venue: VenueArchitecture,
   offers: RankedOffer[],
-  options: { matcher?: TierMatcher } = {},
+  options: { matcher?: TierMatcher; policies?: LaunchPadPolicies } = {},
 ): LaunchPadResult {
   const matcher = options.matcher ?? strictTierMatcher;
+  const policies = options.policies ?? {};
   const assignments: SeatAssignment[] = [];
   const decisions: AllocationDecision[] = [];
   let pool = sortRankedOffers(offers);
@@ -70,7 +77,7 @@ export function launchPad(
     const runs = contiguousRuns(row);
     if (runs.length === 0) continue; // entire row held; spec: no decision
 
-    const filled = fillRow(row, runs, pool, matcher);
+    const filled = fillRow(row, runs, pool, matcher, policies);
     assignments.push(...filled.assignments);
     decisions.push(...filled.decisions);
     if (filled.placedOfferIds.size > 0) {
@@ -138,6 +145,11 @@ type Selection = {
   // scan plus any additional compatible non-fits between cursor and the
   // resolved offer.
   skippedOfferIds?: string[];
+  // Opt-in policies annotate the decision they made (see types.ts).
+  policy?: "clean_fit";
+  strandedSeatsAvoided?: number;
+  parityTiebreak?: boolean;
+  tiedOverOfferIds?: string[];
 };
 
 type FillRowResult = {
@@ -151,6 +163,7 @@ function fillRow(
   initialRuns: Run[],
   pool: RankedOffer[],
   matcher: TierMatcher,
+  policies: LaunchPadPolicies,
 ): FillRowResult {
   // Selection phase: decide which offers go in which runs. We only
   // track each run's remaining length here; the position math waits
@@ -161,25 +174,55 @@ function fillRow(
   const placedOfferIds = new Set<string>();
   const runLengths = initialRuns.map((r) => r.positions.length);
 
+  // Policies are seat-layout ideas; GA rows are buckets, so they run pure
+  // greedy there. With no policy on, this loop is byte-for-byte the shipped
+  // greedy selection.
+  const cleanFit = policies.fitPolicy === "clean_fit" && row.isGa !== true;
+  const parity = policies.parityTiebreak === true && row.isGa !== true;
+  // Compatible, not-yet-selected offers by group size — what could still
+  // fill a remainder in THIS pass. Maintained only when clean-fit is on.
+  const sizeCounts = new Map<number, number>();
+  if (cleanFit) {
+    for (const o of pool) {
+      if (matcher(o, row)) sizeCounts.set(o.groupSize, (sizeCounts.get(o.groupSize) ?? 0) + 1);
+    }
+  }
+  const take = (sel: Selection): void => {
+    selections.push(sel);
+    placedOfferIds.add(sel.offer.id);
+    runLengths[sel.runIdx] = runLengths[sel.runIdx]! - sel.offer.groupSize;
+    if (cleanFit) sizeCounts.set(sel.offer.groupSize, (sizeCounts.get(sel.offer.groupSize) ?? 1) - 1);
+  };
+  const fitsRun = (o: RankedOffer): number => runLengths.findIndex((len) => len >= o.groupSize);
+
   let i = 0;
   while (i < pool.length) {
     const current = pool[i]!;
-    if (!matcher(current, row)) {
+    if (placedOfferIds.has(current.id) || !matcher(current, row)) {
       i++;
       continue;
     }
 
-    const directRunIdx = runLengths.findIndex(
-      (len) => len >= current.groupSize,
-    );
+    const directRunIdx = fitsRun(current);
     if (directRunIdx !== -1) {
-      selections.push({
-        offer: current,
-        runIdx: directRunIdx,
-        action: "PLACED",
-      });
-      placedOfferIds.add(current.id);
-      runLengths[directRunIdx] = runLengths[directRunIdx]! - current.groupSize;
+      if (parity) {
+        const pick = parityPick(pool, i, current, row, matcher, placedOfferIds, runLengths);
+        if (pick !== null) {
+          take({ offer: pick.offer, runIdx: pick.runIdx, action: "PLACED", parityTiebreak: true, tiedOverOfferIds: pick.tiedOver });
+          continue; // re-examine the cursor against the smaller run
+        }
+      }
+      if (cleanFit) {
+        const remainder = runLengths[directRunIdx]! - current.groupSize;
+        if (remainder > 0 && !exactlyFillable(remainder, sizeCounts, current.groupSize)) {
+          const alt = cleanFitAlternative(pool, i + 1, row, matcher, placedOfferIds, runLengths, sizeCounts);
+          if (alt !== null) {
+            take({ offer: alt.offer, runIdx: alt.runIdx, action: "FIT_RESOLVED", skippedOfferIds: [current.id], policy: "clean_fit", strandedSeatsAvoided: remainder });
+            continue; // the cursor stays in the pool and is re-examined
+          }
+        }
+      }
+      take({ offer: current, runIdx: directRunIdx, action: "PLACED" });
       i++;
       continue;
     }
@@ -189,7 +232,7 @@ function fillRow(
       pool,
       i + 1,
       runLengths.map((len) => ({ length: len })),
-      (o) => matcher(o, row),
+      (o) => !placedOfferIds.has(o.id) && matcher(o, row),
     );
 
     if (scan.foundIdx === -1) {
@@ -199,16 +242,15 @@ function fillRow(
     }
 
     const resolved = pool[scan.foundIdx]!;
-    selections.push({
+    take({
       offer: resolved,
       runIdx: scan.foundRunIdx,
       action: "FIT_RESOLVED",
       skippedOfferIds: [current.id, ...scan.skipped.map((o) => o.id)],
     });
-    placedOfferIds.add(resolved.id);
-    runLengths[scan.foundRunIdx] =
-      runLengths[scan.foundRunIdx]! - resolved.groupSize;
-    i = scan.foundIdx + 1;
+    // Greedy advances past the scan; a policy pass re-examines the cursor,
+    // because the skipped offers may now fit or fill cleanly.
+    i = cleanFit || parity ? i : scan.foundIdx + 1;
   }
 
   // Placement phase: per run, ask placement.ts to assign positions
@@ -259,11 +301,14 @@ function fillRow(
         action: "PLACED",
         offerId: sel.offer.id,
         venueRowId: row.id,
-        reason: `placed group of ${sel.offer.groupSize} starting at position ${startPosition}`,
+        reason: sel.parityTiebreak
+          ? `placed group of ${sel.offer.groupSize} starting at position ${startPosition} (parity tiebreak at equal price over ${sel.tiedOverOfferIds?.length ?? 0} offer(s))`
+          : `placed group of ${sel.offer.groupSize} starting at position ${startPosition}`,
         snapshot: {
           groupSize: sel.offer.groupSize,
           startPosition,
           rankKey: sel.offer.rankKey,
+          ...(sel.parityTiebreak && { parityTiebreak: true, tiedOverOfferIds: sel.tiedOverOfferIds ?? [] }),
         },
       });
     } else {
@@ -272,12 +317,16 @@ function fillRow(
         action: "FIT_RESOLVED",
         offerId: sel.offer.id,
         venueRowId: row.id,
-        reason: `placed group of ${sel.offer.groupSize}, deferring ${skipped.length} larger compatible offer(s) to next row`,
+        reason:
+          sel.policy === "clean_fit"
+            ? `placed group of ${sel.offer.groupSize}, deferring a fitting larger offer that would have stranded ${sel.strandedSeatsAvoided} seat(s) (clean-fit)`
+            : `placed group of ${sel.offer.groupSize}, deferring ${skipped.length} larger compatible offer(s) to next row`,
         snapshot: {
           groupSize: sel.offer.groupSize,
           startPosition,
           rankKey: sel.offer.rankKey,
           skippedOfferIds: skipped,
+          ...(sel.policy === "clean_fit" && { policy: "clean_fit", strandedSeatsAvoided: sel.strandedSeatsAvoided }),
         },
       });
     }
@@ -322,4 +371,87 @@ function fillRow(
   }
 
   return { assignments, decisions, placedOfferIds };
+}
+
+// --- Opt-in policy helpers -------------------------------------------------
+
+// Can `remainder` seats be filled EXACTLY by the compatible, unselected offers
+// counted in `sizeCounts`, excluding one offer of size `excludeSize` (the
+// candidate being placed)? Bounded knapsack over small numbers: remainders
+// are at most a row length.
+function exactlyFillable(remainder: number, sizeCounts: Map<number, number>, excludeSize: number): boolean {
+  const reachable = new Array<boolean>(remainder + 1).fill(false);
+  reachable[0] = true;
+  for (const [size, rawCount] of sizeCounts) {
+    const count = size === excludeSize ? rawCount - 1 : rawCount;
+    if (count <= 0 || size > remainder) continue;
+    for (let c = 0; c < count; c++) {
+      let progressed = false;
+      for (let t = remainder; t >= size; t--) {
+        if (!reachable[t] && reachable[t - size]) {
+          reachable[t] = true;
+          progressed = true;
+        }
+      }
+      if (!progressed) break;
+    }
+  }
+  return reachable[remainder] === true;
+}
+
+// Clean-fit: the next-ranked compatible offer that fits a run and leaves a
+// remainder of zero or one that can be exactly filled. null → nothing does
+// (stranding is unavoidable; caller falls back to greedy).
+function cleanFitAlternative(
+  pool: RankedOffer[],
+  startIdx: number,
+  row: VenueRow,
+  matcher: TierMatcher,
+  selected: Set<string>,
+  runLengths: number[],
+  sizeCounts: Map<number, number>,
+): { offer: RankedOffer; runIdx: number } | null {
+  for (let j = startIdx; j < pool.length; j++) {
+    const o = pool[j]!;
+    if (selected.has(o.id) || !matcher(o, row)) continue;
+    for (let r = 0; r < runLengths.length; r++) {
+      const len = runLengths[r]!;
+      if (len < o.groupSize) continue;
+      const rem = len - o.groupSize;
+      if (rem === 0 || exactlyFillable(rem, sizeCounts, o.groupSize)) return { offer: o, runIdx: r };
+      break; // a run it fits but can't close; try the next offer
+    }
+  }
+  return null;
+}
+
+// Parity tiebreak: among the same-price block starting at the cursor (the
+// spec's rank tie, normally broken by larger group first), pick the first
+// fitting offer whose group-size parity matches the run it would enter, so
+// the remainder is even and the row can close. null → the cursor itself
+// already matches, or nothing in the block does: place the cursor as usual.
+function parityPick(
+  pool: RankedOffer[],
+  cursorIdx: number,
+  cursor: RankedOffer,
+  row: VenueRow,
+  matcher: TierMatcher,
+  selected: Set<string>,
+  runLengths: number[],
+): { offer: RankedOffer; runIdx: number; tiedOver: string[] } | null {
+  const matches = (o: RankedOffer): number => {
+    const r = runLengths.findIndex((len) => len >= o.groupSize);
+    return r !== -1 && (runLengths[r]! - o.groupSize) % 2 === 0 ? r : -1;
+  };
+  if (matches(cursor) !== -1) return null;
+  const tiedOver: string[] = [cursor.id];
+  for (let j = cursorIdx + 1; j < pool.length; j++) {
+    const o = pool[j]!;
+    if (o.pricePerTicketCents !== cursor.pricePerTicketCents) break;
+    if (selected.has(o.id) || !matcher(o, row)) continue;
+    const r = matches(o);
+    if (r !== -1) return { offer: o, runIdx: r, tiedOver };
+    tiedOver.push(o.id);
+  }
+  return null;
 }
