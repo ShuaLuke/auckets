@@ -40,6 +40,7 @@ const SECTION_NAV: { label: string; href: string }[] = [
   { label: "Artists", href: "/admin/artists" },
   { label: "Requests", href: "/admin/requests" },
   { label: "Staff", href: "/admin/staff" },
+  { label: "Simulation", href: "/admin/simulation" },
 ];
 
 export default async function AdminArtistsPage() {

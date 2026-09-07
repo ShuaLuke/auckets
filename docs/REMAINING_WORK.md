@@ -240,14 +240,14 @@ The data already supports far more than messages. Sections, roughly in priority 
 | **Allocations** | Each binding run's full snapshot/log — what the GAE decided and why | `allocationLogs` |
 | **Requests** | (the inbox shipped today) | `artistRequests` |
 | **People** | Users/artists, roles | `users`, `artists` |
-| **Simulation** | What-if allocation runs against live/synthetic pools. **Julia has a Claude-design outline for this tab — pull it in before building.** | GAE (preview mode) |
+| **Simulation** | ✅ Shipped at `/admin/simulation` (2026-09-07): what-if runs on library venues with a described or sample crowd, up to 4 engine policies side by side, auto-bid / private offers / Bleacher / timeline options, downloads, run-to-run comparison. Open to admins and artist members. Built without Julia's design outline — fold it in as a follow-up if she has layout changes. | GAE via `src/lib/sim` (pure) + `POST /api/admin/simulation` |
 
 Design principles to carry through every slice:
 - **Progressive disclosure.** Summary numbers up top, raw JSON snapshots / logs behind a "dive deeper" toggle — so the non-technical default stays clean and the technical path is one click in.
 - **Read-then-act.** Each section starts read-only; actions (capture a hold, cancel an offer, force a re-run) layer on once the view is trusted. Actions re-check authorization server-side regardless of nav visibility.
 - **Reuse presenters/repos.** Cross-artist admin views are the same shapes as the artist-scoped views, just unscoped — don't fork the formatting.
 
-First slice shipped: the **Shows list** at `/admin` (all shows, all statuses, each row → existing ShowAdmin). Remaining sections above are unbuilt and unordered beyond the priority hint.
+Shipped: the **Shows list** at `/admin`, **Requests**, **Staff**, **Artists**, and **Simulation**. The remaining sections above are unbuilt and unordered beyond the priority hint.
 
 ## How to use this doc
 
