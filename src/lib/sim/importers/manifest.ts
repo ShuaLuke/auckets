@@ -174,7 +174,7 @@ export function venueFromManifest(text: string, opts: ManifestOptions): Manifest
   });
   levels.forEach(([lvl], i) => levelOrder.set(lvl, i));
 
-  const heldBySource: Record<HoldSource, number> = { venue: 0, artist: 0, comp: 0, production: 0 };
+  const heldBySource: Record<HoldSource, number> = { venue: 0, artist: 0, comp: 0, production: 0, bleacher: 0 };
   const holdGroups: Record<string, number> = {};
   let soldSeats = 0;
   const sectionOrder = [...rowsBySection.keys()];

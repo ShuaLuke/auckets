@@ -140,8 +140,21 @@ export function generatePool(model: DemandModel, ctx: DemandContext, seedOverrid
   });
 
   offers.forEach((o, i) => {
-    if (abFlags[i]) autoBids[o.id] = { capCents: abCaps[i]! };
+    if (abFlags[i]) autoBids[o.id] = { capCents: abCaps[i]!, kind: "auto" };
   });
+  // Private offers (ADR-0017): a hidden threshold above the visible price.
+  // Drawn after auto-bid, on non-auto-bidders, so the two shares don't overlap.
+  const po = model.privateOffers;
+  if (po && po.sharePct > 0) {
+    offers.forEach((o, i) => {
+      if (abFlags[i]) return;
+      if (rng.next() * 100 >= po.sharePct) return;
+      const mult = po.thresholdMultiplier[0] + rng.next() * (po.thresholdMultiplier[1] - po.thresholdMultiplier[0]);
+      const raw = Math.round(o.pricePerTicketCents * mult);
+      const threshold = Math.max(o.pricePerTicketCents + ladder, Math.round(raw / ladder) * ladder);
+      autoBids[o.id] = { capCents: threshold, kind: "private" };
+    });
+  }
 
   const realizedMixPct: GroupSizeMix = {};
   for (const o of offers) realizedMixPct[o.groupSize] = (realizedMixPct[o.groupSize] ?? 0) + 1;

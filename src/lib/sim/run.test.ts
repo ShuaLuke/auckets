@@ -93,7 +93,7 @@ describe("renderers", () => {
 
 describe("percentiles", () => {
   it("interpolates", () => {
-    expect(percentiles([1, 2, 3, 4, 5])).toEqual({ p5: 1.2, p50: 3, p95: 4.8, mean: 3 });
-    expect(percentiles([])).toEqual({ p5: 0, p50: 0, p95: 0, mean: 0 });
+    expect(percentiles([1, 2, 3, 4, 5])).toEqual({ p5: 1.2, p50: 3, p95: 4.8, mean: 3, stdev: Math.sqrt(2), min: 1, max: 5 });
+    expect(percentiles([])).toEqual({ p5: 0, p50: 0, p95: 0, mean: 0, stdev: 0, min: 0, max: 0 });
   });
 });

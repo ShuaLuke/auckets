@@ -79,7 +79,7 @@ export function resolveAutoBids(
     const o = byId.get(id)!;
     const from = start.get(id)!;
     if (o.pricePerTicketCents === from) continue;
-    raises.push({ offerId: id, fromCents: from, toCents: o.pricePerTicketCents, steps: steps.get(id) ?? 0, heldSection: !displaced(o, lastPlacedTier) });
+    raises.push({ offerId: id, kind: autoBids[id]!.kind ?? "auto", fromCents: from, toCents: o.pricePerTicketCents, steps: steps.get(id) ?? 0, heldSection: !displaced(o, lastPlacedTier) });
   }
   return { offers: working, raises, rounds };
 }

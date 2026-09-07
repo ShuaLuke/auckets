@@ -1,6 +1,6 @@
 # GAE Simulator — requirements and how we'll use it
 
-*Status: requirements agreed 2026-09-07. Slices 1–3 built (PRs #136, #137, S3 stacked) — see `sim/README.md` for usage. S4 onward still to build.*
+*Status: requirements agreed 2026-09-07. Slices 1–4 built (PRs #136 → #139, stacked) — see `sim/README.md` for usage. S5 (temporal) waits on Cope; S6 later.*
 
 ---
 
@@ -349,7 +349,7 @@ Per run folder:
 | **S1 — core + CLI skeleton** ✅ | `src/lib/sim/` scenario schema; **venue library** (`venue add/list/show`, JSON + tier-spec upload, seeded with the 4 known venues); per-show overlays (active sections, holds by source, floors, group cap); pool CSV loader; seeded demand model with **group-size % input**; `run` command; metrics; invariants; the **fill report**; `offers.csv` + `seatmap.txt`. Baseline `greedy` only. Retires `scripts/sim-allocate.ts` | pick a venue, run a mix, see how it fills |
 | **S2 — compare runs + importers** ✅ | `compare-runs` over saved run folders; `venue add` for Cope's RowRank workbook (with relief-row flags) and the manifest CSV (`lincoln-manifest` in the library); `import-pool` for his pool sheet. Lincoln v4 golden fixture pins the seat map by hash | compare mixes on real data |
 | **S3 — policies + auto-bid** ✅ | `clean-fit`, `parity-tiebreak`, `singles-reserve[:k]` as opt-in `AllocationConfig` fields (defaults off) with engine unit tests; auto-bid share/cap in the demand model and a `cap` pool column, fixed-$ vs percent raise rule on the scenario; `compare` (policies on one pool) with per-offer diff. Orphan bump (`bump_to_next_row`) not built — clean-fit covers the same ground reactively. First numbers on Cope's pool: clean-fit +11 seats / +$2,800 at 29 passed-over (≤5 rows, ≤$25); clean-fit+reserve +17 / +$4,300 at 105 passed-over | Q1, Q2, NEW-13 reports |
-| **S4 — sweeps** | `sweep` over any parameter × seeds, Monte Carlo summaries, yield curves; private offers; optional Bleacher carve-out | "distribution with yield capacity" |
+| **S4 — sweeps** ✅ | `sweep --vary <path>=<list|range>` over venue, any show or pool knob, seeds, raise rule × seeds × policies → `sweep.md` yield curves + `sweep.csv` for Excel; mean ± stdev / min / max on every aggregate; private offers (ADR-0017, modelled as auto-bid with cap = hidden threshold — reading to confirm with Cope); Bleacher carve-out as a per-show overlay with a demand-bounded revenue estimate, off unless set | "distribution with yield capacity" |
 | **S5 — temporal** | Window length + arrival curves, preview cadence, displacement metrics, fan revisions upward and withdrawals, rolling-confirmed, returns/resales and production releases, register-first | Q3, Q4, Q5, Q12, NEW-9 reports |
 | **S6 (later)** | `lookahead-k`; atomic tables/boxes (protect vs co-seat); seat preferences beyond tier; upgrade buyouts; admin Simulation tab over the same core, from Julia's outline | Cope's Phase 6; NEW-14; ops UI |
 

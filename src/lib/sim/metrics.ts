@@ -6,7 +6,7 @@ import { sortRankedOffers } from "@/lib/gae/rankkey";
 import type { AllocationResult, RankedOffer, TierPreference, VenueRow } from "@/lib/gae/types";
 
 import { median } from "./pool";
-import type { AutoBidMetrics, AutoBidRaise, FillMetrics, GroupSizeMetrics, PreferenceMetrics, SimVenue, SliceMetrics } from "./types";
+import type { AutoBidMetrics, AutoBidRaise, BleacherMetrics, FillMetrics, GroupSizeMetrics, PreferenceMetrics, SimVenue, SliceMetrics } from "./types";
 import { activeRows, maxRunLength, tierOrder } from "./venue";
 
 type Placement = { row: VenueRow; seats: number };
@@ -30,7 +30,8 @@ export function computeMetrics(
   result: AllocationResult,
   heldBySource: Record<string, number>,
   runtimeMs: number,
-  autoBid: { bidders: number; raises: AutoBidRaise[]; rounds: number } = { bidders: 0, raises: [], rounds: 0 },
+  autoBid: { bidders: number; privateOffers: number; raises: AutoBidRaise[]; rounds: number } = { bidders: 0, privateOffers: 0, raises: [], rounds: 0 },
+  bleacher?: { seats: number; rows: number; priceCents: number },
 ): FillMetrics {
   const rows = activeRows(venue);
   const rowById = new Map(rows.map((r) => [r.id, r]));
@@ -320,13 +321,15 @@ export function computeMetrics(
       reservedSinglesUnplaced: 0, // filled in by run.ts, which knows the reserve set
     },
     autoBid: autoBidMetrics(autoBid),
+    bleacher: bleacher ? bleacherMetrics(bleacher, offers, placement, grossPlacedCents) : null,
     runtimeMs,
   };
 }
 
-function autoBidMetrics(ab: { bidders: number; raises: AutoBidRaise[]; rounds: number }): AutoBidMetrics {
+function autoBidMetrics(ab: { bidders: number; privateOffers: number; raises: AutoBidRaise[]; rounds: number }): AutoBidMetrics {
   const raised = ab.raises.length;
   const total = ab.raises.reduce((s, r) => s + (r.toCents - r.fromCents), 0);
+  const priv = ab.raises.filter((r) => r.kind === "private");
   return {
     bidders: ab.bidders,
     raised,
@@ -336,6 +339,24 @@ function autoBidMetrics(ab: { bidders: number; raises: AutoBidRaise[]; rounds: n
     heldSectionAfterRaise: ab.raises.filter((r) => r.heldSection).length,
     cappedOut: ab.raises.filter((r) => !r.heldSection).length,
     rounds: ab.rounds,
+    privateOffers: ab.privateOffers,
+    privateConverted: priv.length,
+    privateAddedCents: priv.reduce((s, r) => s + (r.toCents - r.fromCents), 0),
+  };
+}
+
+function bleacherMetrics(b: { seats: number; rows: number; priceCents: number }, offers: RankedOffer[], placement: Map<string, Placement>, grossPlacedCents: number): BleacherMetrics {
+  const overflowTickets = offers.filter((o) => !placement.has(o.id)).reduce((s, o) => s + o.groupSize, 0);
+  const estSoldSeats = Math.min(b.seats, overflowTickets);
+  return {
+    seats: b.seats,
+    rows: b.rows,
+    priceCents: b.priceCents,
+    grossIfSoldOutCents: b.seats * b.priceCents,
+    overflowTickets,
+    estSoldSeats,
+    estGrossCents: estSoldSeats * b.priceCents,
+    combinedGrossCents: grossPlacedCents + estSoldSeats * b.priceCents,
   };
 }
 

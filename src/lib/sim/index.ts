@@ -25,3 +25,4 @@ export { resolveAutoBids, incrementFor, DEFAULT_RAISE_RULE } from "./autobid";
 export { ScenarioSchema, VenueFileSchema, TierSpecFileSchema, formatIssues } from "./schema";
 export { createRng } from "./rng";
 export type * from "./types";
+export { parseVaryArg, applyVary, normalizePath, labelFor, slimOutput, assembleSweep, renderSweep, renderSweepCsv, renderSweepConsole } from "./sweep";
