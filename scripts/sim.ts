@@ -4,17 +4,29 @@
 //
 //   npm run sim -- venue list
 //   npm run sim -- venue show lincoln-v4
-//   npm run sim -- venue add <file.json> [--name x] [--format json|tierspec]
+//   npm run sim -- venue add <file> [--name x] [--sheet "Full RowRank Architecture"] [--floors "orchestra=85,..."]
+//                       (.json venue or tier spec · .xlsx Cope RowRank workbook · .csv/.tsv box-office manifest)
+//   npm run sim -- import-pool <file.xlsx|.csv> [--sheet "Full Offer Pool v4"] --out sim/pools/x.csv
 //   npm run sim -- run sim/scenarios/<name>.json [--venue x] [--group-mix "1:10,2:45,..."]
 //                       [--seeds N] [--seed N] [--oversub X] [--active "A,B"] [--name run] [--price=cents]
+//   npm run sim -- compare-runs sim/runs/<a> sim/runs/<b> [...] [--out dir]
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 
+import * as XLSX from "xlsx";
+
 import {
   applyShowOverlay,
+  compareRuns,
   formatIssues,
   offersFromCsv,
+  offersFromSheet,
+  poolToCsv,
+  renderComparison,
+  renderComparisonConsole,
+  venueFromCopeRowRank,
+  venueFromManifest,
   parseGroupMixArg,
   parseVenueFile,
   renderConsoleSummary,
@@ -68,6 +80,44 @@ function readJson(path: string): unknown {
     throw new SimInputError(`${path}: ${(e as Error).message}`);
   }
 }
+
+// Box-office exports are often UTF-16 with a BOM; scenario/pool files are UTF-8.
+function readText(path: string): string {
+  const buf = readFileSync(path);
+  if (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe) return buf.subarray(2).toString("utf16le");
+  if (buf.length >= 2 && buf[0] === 0xfe && buf[1] === 0xff) return buf.subarray(2).swap16().toString("utf16le");
+  return buf.toString("utf8").replace(/^\uFEFF/, "");
+}
+
+// Pick a sheet by --sheet name, else the first whose name matches `prefer`.
+function readSheet(path: string, sheetFlag: string | undefined, prefer: RegExp[]): { name: string; rows: Record<string, unknown>[] } {
+  const wb = XLSX.read(readFileSync(path), { type: "buffer" });
+  let name = sheetFlag;
+  for (const re of prefer) {
+    if (name) break;
+    name = wb.SheetNames.find((n) => re.test(n));
+  }
+  name ??= wb.SheetNames[0];
+  if (!name || !wb.Sheets[name]) {
+    throw new SimInputError(`sheet "${sheetFlag ?? "?"}" not found. Sheets in ${basename(path)}: ${wb.SheetNames.join(", ")}`);
+  }
+  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(wb.Sheets[name]!, { defval: null });
+  return { name, rows };
+}
+
+// "--floors orchestra=85,front_balcony=70" (dollars) → cents per tier.
+function parseFloors(arg: string | undefined): Record<string, number> | undefined {
+  if (!arg) return undefined;
+  const out: Record<string, number> = {};
+  for (const part of arg.split(",")) {
+    const m = /^\s*([a-z0-9_]+)\s*=\s*\$?([\d.]+)\s*$/i.exec(part);
+    if (!m) throw new SimInputError(`--floors: cannot read "${part}" (want tier=dollars, e.g. orchestra=85)`);
+    out[m[1]!.toLowerCase()] = Math.round(Number(m[2]) * 100);
+  }
+  return out;
+}
+
+const today = (): string => new Date().toISOString().slice(0, 10);
 
 // --- venue library -----------------------------------------------------------
 
@@ -129,33 +179,50 @@ function cmdVenue(args: Args): void {
     const path = resolve(ROOT, file);
     if (!existsSync(path)) throw new SimInputError(`no such file: ${path}`);
     const lower = path.toLowerCase();
-    if (lower.endsWith(".xlsx") || lower.endsWith(".xls")) {
-      throw new SimInputError(
-        "xlsx import lands in slice 2. Cope's Lincoln v4 workbook is already in the library as `lincoln-v4`; for another workbook, export the architecture sheet to JSON in the venue-file shape (see sim/README.md).",
-      );
+    const defaultName = basename(file).replace(/\.[^.]+$/, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    const name = flagStr(args, "name") ?? defaultName;
+    const displayName = flagStr(args, "display");
+    let venue: SimVenue;
+    let extraSummary = "";
+    if (lower.endsWith(".xlsx") || lower.endsWith(".xlsm") || lower.endsWith(".xls")) {
+      const { name: sheetName, rows } = readSheet(path, flagStr(args, "sheet"), [/rowrank/i, /architecture/i, /venue/i]);
+      const opts: Parameters<typeof venueFromCopeRowRank>[1] = { name, sourceFile: `${basename(file)} · sheet "${sheetName}"`, importedAt: today() };
+      if (displayName) opts.displayName = displayName;
+      if (flagStr(args, "tier-by") === "section") opts.tierBy = "section";
+      const floors = parseFloors(flagStr(args, "floors"));
+      if (floors) opts.floorsCents = floors;
+      venue = venueFromCopeRowRank(rows as Parameters<typeof venueFromCopeRowRank>[0], opts);
+    } else if (lower.endsWith(".csv") || lower.endsWith(".tsv") || lower.endsWith(".txt")) {
+      const opts: Parameters<typeof venueFromManifest>[1] = { name, sourceFile: basename(file), importedAt: today() };
+      if (displayName) opts.displayName = displayName;
+      if (args.flags["sold-as-held"] === true) opts.soldAsHeld = true;
+      if (args.flags["ignore-holds"] === true) opts.ignoreHolds = true;
+      const rankFile = flagStr(args, "rank-file");
+      if (rankFile) opts.rankFileText = readText(resolve(ROOT, rankFile));
+      const imported = venueFromManifest(readText(path), opts);
+      venue = imported.venue;
+      const held = Object.entries(imported.heldBySource).filter(([, n]) => n > 0).map(([k, n]) => `${k} ${n}`).join(", ");
+      extraSummary = `  price levels: ${Object.entries(imported.priceLevels).map(([l, i]) => `${l} ${usd(i.priceCents)} ×${i.seats}`).join(", ")}\n  holds: ${held || "none"}${imported.soldSeats ? ` · ${imported.soldSeats} seats show as sold in this snapshot${opts.soldAsHeld ? " (held)" : " (treated as open; pass --sold-as-held to hold them)"}` : ""}`;
+    } else {
+      const raw = readJson(path) as Record<string, unknown>;
+      const format = flagStr(args, "format") ?? (Array.isArray(raw.tiers) ? "tierspec" : "json");
+      if (flagStr(args, "name")) raw.name = name;
+      if (displayName) raw.displayName = displayName;
+      if (typeof raw.name !== "string") raw.name = name;
+      if (typeof raw.displayName !== "string") raw.displayName = raw.name;
+      venue = format === "tierspec" ? venueFromTierSpec(raw, file) : parseVenueFile(raw, file);
+      venue = { ...venue, source: { ...(venue.source ?? { kind: format }), file: basename(file), importedAt: today() } };
     }
-    if (lower.endsWith(".csv") || lower.endsWith(".tsv")) {
-      throw new SimInputError("box-office manifest import lands in slice 2. Slice 1 accepts venue JSON and tier-spec JSON.");
-    }
-    const raw = readJson(path) as Record<string, unknown>;
-    const format = flagStr(args, "format") ?? (Array.isArray(raw.tiers) ? "tierspec" : "json");
-    if (flagStr(args, "name")) raw.name = flagStr(args, "name");
-    if (flagStr(args, "display")) raw.displayName = flagStr(args, "display");
-    if (typeof raw.name !== "string") raw.name = basename(file).replace(/\.json$/i, "").toLowerCase().replace(/[^a-z0-9]+/g, "-");
-    if (typeof raw.displayName !== "string") raw.displayName = raw.name;
-    const venue = format === "tierspec" ? venueFromTierSpec(raw, file) : parseVenueFile(raw, file);
     mkdirSync(VENUES_DIR, { recursive: true });
     const dest = join(VENUES_DIR, `${venue.name}.json`);
     if (existsSync(dest) && args.flags.force !== true) {
       throw new SimInputError(`${dest} already exists. Pass --force to replace it, or --name to pick another name.`);
     }
-    const stored: SimVenue = {
-      ...venue,
-      source: { ...(venue.source ?? { kind: format }), file: basename(file), importedAt: new Date().toISOString().slice(0, 10) },
-    };
-    writeFileSync(dest, JSON.stringify(stored, null, 2) + "\n");
+    writeFileSync(dest, JSON.stringify(venue, null, 2) + "\n");
     console.log(`Added ${venue.name} → ${dest}`);
     console.log(venueSummaryLine(venue));
+    if (extraSummary) console.log(extraSummary);
+    if (venue.notes) console.log(`  ${venue.notes}`);
     return;
   }
   throw new SimInputError(`unknown venue command "${sub}". Try: venue list | venue show <name> | venue add <file>`);
@@ -248,6 +315,58 @@ function slimForDisk(out: RunOutput): RunOutput {
   };
 }
 
+// --- import-pool ---------------------------------------------------------------
+
+function cmdImportPool(args: Args): void {
+  const file = args.positional[1];
+  if (!file) throw new SimInputError("usage: import-pool <file.xlsx|.csv> [--sheet name] --out sim/pools/<name>.csv [--price=cents]");
+  const path = resolve(ROOT, file);
+  if (!existsSync(path)) throw new SimInputError(`no such file: ${path}`);
+  const priceMode = flagStr(args, "price") === "cents" ? "cents" : "dollars";
+  const lower = path.toLowerCase();
+  let offers;
+  let sourceLabel = basename(file);
+  if (lower.endsWith(".xlsx") || lower.endsWith(".xlsm") || lower.endsWith(".xls")) {
+    const { name, rows } = readSheet(path, flagStr(args, "sheet"), [/full offer pool/i, /offer pool/i, /pool/i, /offers/i]);
+    sourceLabel += ` · sheet "${name}"`;
+    offers = offersFromSheet(rows, { priceMode, label: sourceLabel });
+  } else {
+    offers = offersFromCsv(readText(path), { priceMode, label: sourceLabel });
+  }
+  const out = flagStr(args, "out") ?? join("sim", "pools", `${basename(file).replace(/\.[^.]+$/, "").toLowerCase().replace(/[^a-z0-9]+/g, "-")}.csv`);
+  const dest = resolve(ROOT, out);
+  if (existsSync(dest) && args.flags.force !== true) throw new SimInputError(`${dest} already exists. Pass --force to replace it, or --out to pick another path.`);
+  mkdirSync(join(dest, ".."), { recursive: true });
+  writeFileSync(dest, poolToCsv(offers));
+  const tickets = offers.reduce((s, o) => s + o.groupSize, 0);
+  const sizes = new Map<number, number>();
+  for (const o of offers) sizes.set(o.groupSize, (sizes.get(o.groupSize) ?? 0) + 1);
+  console.log(`Imported ${offers.length} offers (${tickets} tickets) from ${sourceLabel} → ${dest}`);
+  console.log(`  by size: ${[...sizes.entries()].sort((a, b) => a[0] - b[0]).map(([k, v]) => `${k}×${v}`).join("  ")}`);
+  console.log(`  prices: ${usd(Math.min(...offers.map((o) => o.pricePerTicketCents)))} – ${usd(Math.max(...offers.map((o) => o.pricePerTicketCents)))}`);
+  console.log(`  use it with: "pool": { "file": "${out}" }`);
+}
+
+// --- compare-runs ------------------------------------------------------------
+
+function cmdCompareRuns(args: Args): void {
+  const dirs = args.positional.slice(1);
+  if (dirs.length < 2) throw new SimInputError("usage: compare-runs <run-dir> <run-dir> [...] [--out dir]");
+  const inputs = dirs.map((d) => {
+    const dir = existsSync(resolve(ROOT, d)) ? resolve(ROOT, d) : resolve(RUNS_DIR, d);
+    const file = join(dir, "result.json");
+    if (!existsSync(file)) throw new SimInputError(`${d}: no result.json (is it a run folder under sim/runs?)`);
+    return { runName: basename(dir), output: readJson(file) as RunOutput };
+  });
+  const comparison = compareRuns(inputs);
+  const outDir = resolve(flagStr(args, "out") ?? join(RUNS_DIR, `compare-${inputs.map((i) => i.runName).join("-vs-")}`.slice(0, 120)));
+  mkdirSync(outDir, { recursive: true });
+  writeFileSync(join(outDir, "compare.md"), renderComparison(comparison) + "\n");
+  console.log(renderComparisonConsole(comparison));
+  console.log("");
+  console.log(`  compare.md → ${outDir}`);
+}
+
 // --- main --------------------------------------------------------------------
 
 function usage(): string {
@@ -256,7 +375,12 @@ function usage(): string {
     "",
     "  npm run sim -- venue list",
     "  npm run sim -- venue show <name>",
-    "  npm run sim -- venue add <file.json> [--name x] [--display \"...\"] [--format json|tierspec] [--force]",
+    "  npm run sim -- venue add <file> [--name x] [--display \"...\"] [--force]",
+    "        .json  venue file or tier spec            [--format json|tierspec]",
+    "        .xlsx  Cope RowRank workbook              [--sheet name] [--floors \"orchestra=85,front_balcony=70\"] [--tier-by area|section]",
+    "        .csv   box-office manifest (UTF-16 ok)    [--rank-file section,row,rowRank.csv] [--sold-as-held] [--ignore-holds]",
+    "  npm run sim -- import-pool <file.xlsx|.csv> [--sheet name] [--out sim/pools/x.csv] [--price=cents]",
+    "  npm run sim -- compare-runs <run-dir> <run-dir> [...] [--out dir]",
     "  npm run sim -- run <scenario.json> [--venue name] [--group-mix \"1:10,2:45,3:10,4:25,5:5,6:5\"]",
     "                                     [--seeds N] [--seed N] [--oversub 1.25] [--active \"ORCH C,FC BAL\"]",
     "                                     [--name run-name] [--out dir] [--price=cents]",
@@ -273,6 +397,12 @@ function main(): number {
         return 0;
       case "run":
         return cmdRun(args);
+      case "import-pool":
+        cmdImportPool(args);
+        return 0;
+      case "compare-runs":
+        cmdCompareRuns(args);
+        return 0;
       default:
         console.log(usage());
         return cmd === undefined || cmd === "help" ? 0 : 1;

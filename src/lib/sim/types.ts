@@ -274,6 +274,8 @@ export type RunOutput = {
   venueDisplayName: string;
   inputHash: string;
   venueSummary: VenueParitySummary[];
+  // active row id → rowRank, so compare-runs can name rows without the venue file
+  rowRanks: Record<string, number>;
   offerSummary: OfferParitySummary; // first seed's pool
   policies: PolicyName[];
   seeds: number[];

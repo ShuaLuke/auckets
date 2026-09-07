@@ -9,13 +9,18 @@ Nothing here touches the database, Stripe, email, or env. The engine is pure; so
 ```bash
 npm run sim -- venue list
 npm run sim -- venue show lincoln-v4
-npm run sim -- venue add my-venue.json            # venue JSON or tier-spec JSON (see below)
+npm run sim -- venue add my-venue.json                                   # venue JSON or tier-spec JSON (see below)
+npm run sim -- venue add ~/Downloads/His_RowRank_Workbook.xlsx --name x --floors "orchestra=85,front_balcony=70,upper_balcony=50"
+npm run sim -- venue add ~/Downloads/box-office-manifest.csv --name y   # UTF-16 tab-separated exports work as is
+npm run sim -- import-pool ~/Downloads/His_RowRank_Workbook.xlsx --out sim/pools/x.csv   # picks the "Full Offer Pool" sheet
 
 npm run sim -- run sim/scenarios/lincoln-v4-mix.json
 npm run sim -- run sim/scenarios/lincoln-v4-mix.json --group-mix "1:10,2:45,3:10,4:25,5:5,6:5" --seeds 20 --name couples
 npm run sim -- run sim/scenarios/lincoln-v4-mix.json --venue copes-place --oversub 1.5 --seed 3
 npm run sim -- run sim/scenarios/lincoln-v4-mix.json --active "ORCH C,ORCH L,ORCH R"   # sell part of the room
 npm run sim -- run sim/scenarios/lincoln-v4-cope-pool.json                           # Cope's real 512-offer pool
+
+npm run sim -- compare-runs couples singles-rich                # any saved runs, side by side, deltas vs the first
 ```
 
 Every `run` prints the fill report and writes `sim/runs/<name>/`:
@@ -27,6 +32,8 @@ Every `run` prints the fill report and writes `sim/runs/<name>/`:
 | `seatmap.txt` | Every active row, seat by seat: `[offer×n]` groups, `.` empty, `#` held |
 | `result.json` | Everything above as data, plus the engine's full output for the first seed |
 | `scenario.json` | The inputs after CLI overrides, so the run reproduces without the flags |
+
+`compare-runs` takes two or more run folders (names under `sim/runs/` or paths) and writes `compare.md`: the fill report columns side by side with deltas against the first run, placed % and median row rank per group size, fill and gross per tier, and, when two runs used the same offers on the same venue, a per-offer "who moved" list.
 
 With `--seeds N` the pool is regenerated N times (seed, seed+1, …) and the report shows p50 / p5 / p95. The run exits non-zero if any invariant fails (contiguity, total accounting, double booking, free upgrades). Same scenario + seed always gives the same result hash.
 
@@ -72,17 +79,20 @@ Pool CSV columns are matched by name, case-insensitively: a group-size column (`
 
 | Name | Room |
 |---|---|
-| `lincoln-v4` | Cope's 144-row Lincoln Theatre RowRank architecture, 1,152 seats, with his relief-row flags |
+| `lincoln-v4` | Cope's 144-row Lincoln Theatre RowRank architecture, 1,152 seats, with his relief-row flags. Produced by `venue add` from his workbook; re-importing reproduces it |
+| `lincoln-manifest` | The same theatre from the box-office seat manifest (May 2026 onsale snapshot): 157 rows incl. boxes, 1,265 seats, 143 held by hold group, tiers = price levels P1–P5, RowRank derived |
 | `copes-place` | The seeded 50-cap alpha venue |
 | `lincoln-synthetic` | The 5-row fixture from the engine's tests |
 | `austin-partial` | The sectioned-off Austin fixture (two rows inactive) |
 
-`venue add` accepts two JSON shapes:
+`venue add` accepts four inputs, picked by file extension:
 
 - **Venue JSON** — the library format: `name`, `displayName`, `venueId`, `rows[]` (the engine's `VenueRow`: id, area, section, rowName, rowRank, capacity, parity, lean, seatNumbers, holds, tier, isGa), optional `activeRowIds`, `tierFloorsCents`, `relief`, `notes`.
-- **Tier spec** — quick uniform rooms: `{ "name", "displayName", "tiers": [{ "name": "front", "rowCount": 2, "seatsPerRow": 6, "floorCents": 6000 }, { "name": "ga", "rowCount": 1, "seatsPerRow": 40, "unitType": "ga" }] }`.
+- **Tier spec JSON** — quick uniform rooms: `{ "name", "displayName", "tiers": [{ "name": "front", "rowCount": 2, "seatsPerRow": 6, "floorCents": 6000 }, { "name": "ga", "rowCount": 1, "seatsPerRow": 40, "unitType": "ga" }] }`.
+- **Cope's RowRank workbook (`.xlsx`)** — the sheet with GlobalRowRank, Area, ManifestSection, Row, WorkingL, Parity, Lean, PrintedSeatList, SingleInventoryFlag, GapReliefEligible, ActiveStatus. Header names are matched loosely. The sheet is auto-picked (name containing "RowRank"); override with `--sheet`. Tiers are the areas (`--tier-by section` to use manifest sections); pass `--floors "tier=dollars,…"` so pools can be generated. PrintedSeatList must list only the working seats, as his V–Y rows do.
+- **Box-office manifest (`.csv` / `.tsv`)** — one line per seat: Section Name, Row Name, SeatName, Price Value, Price Level Name, Hold Group Name, Hold Name / Offer Name. UTF-16 with BOM is fine. Rows are grouped, seats sorted, hold groups become holds (1-TECH → production, 2-HOUS/5-ADA → venue, 3-ARTI → artist, 4-MKTG → comp; `--ignore-holds` to drop), sold seats stay open unless `--sold-as-held`. Tiers are the price levels and floors their prices. **RowRank is derived** (price level, then AA before A, then section order); hand it a sidecar with `--rank-file section,row,rowRank.csv` when the room disagrees. Lean is inward by section name (L → RIGHT, R → LEFT), area guessed from the section name.
 
-Importing Cope's workbook (`.xlsx`) and box-office manifests (`.csv`) directly is slice 2. The Lincoln v4 workbook was converted once by hand for slice 1.
+`import-pool` reads an offer sheet or CSV (same column matching as pools) and writes the normalised `id,size,price,tier,order` CSV a scenario points at.
 
 ## Reading the fill report
 
