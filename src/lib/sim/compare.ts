@@ -75,8 +75,15 @@ const METRICS: { key: string; label: string; fmt: "n" | "pct" | "usd" }[] = [
   { key: "autoBid.privateConverted", label: "Private offers converted", fmt: "n" },
   { key: "bleacher.estSoldSeats", label: "Bleacher est. sold seats", fmt: "n" },
   { key: "bleacher.combinedGrossCents", label: "Gross incl. Bleacher est.", fmt: "usd" },
+  { key: "temporal.displacement.fansToldInThenOut", label: "Told in then out (fans)", fmt: "n" },
+  { key: "temporal.rollingConfirmed.brokenConfirmations", label: "Broken confirmations", fmt: "n" },
+  { key: "temporal.revisions.addedCents", label: "Added by revisions", fmt: "usd" },
+  { key: "temporal.withdrawals.withdrawn", label: "Withdrawals", fmt: "n" },
+  { key: "temporal.returns.refilledSeats", label: "Seats refilled after returns", fmt: "n" },
+  { key: "temporal.returns.grossAfterReturnsCents", label: "Gross after returns", fmt: "usd" },
+  { key: "temporal.registerFirst.acceptedUnseatedValueCents", label: "Accepted but unseated $", fmt: "usd" },
 ];
-const OPTIONAL_KEYS = /^(fill\.holesBySize|policy\.|autoBid\.|bleacher\.)/;
+const OPTIONAL_KEYS = /^(fill\.holesBySize|policy\.|autoBid\.|bleacher\.|temporal\.)/;
 
 export function poolLabel(out: RunOutput): string {
   const p = out.scenario.pool;

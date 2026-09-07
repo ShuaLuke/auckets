@@ -26,3 +26,4 @@ export { ScenarioSchema, VenueFileSchema, TierSpecFileSchema, formatIssues } fro
 export { createRng } from "./rng";
 export type * from "./types";
 export { parseVaryArg, applyVary, normalizePath, labelFor, slimOutput, assembleSweep, renderSweep, renderSweepCsv, renderSweepConsole } from "./sweep";
+export { simulateWindow, finishTimeline, drawArrival } from "./temporal";

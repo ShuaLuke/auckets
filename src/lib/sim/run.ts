@@ -14,6 +14,7 @@ import { checkInvariants } from "./invariants";
 import { computeMetrics } from "./metrics";
 import { parsePolicy } from "./policy";
 import { offerParitySummary } from "./pool";
+import { finishTimeline, simulateWindow } from "./temporal";
 import type { AutoBids, FillMetrics, Percentiles, PolicyAggregate, PolicyName, PolicyRun, RunOutput, Scenario, SimVenue } from "./types";
 import { activeRows, applyShowOverlay, SimInputError, tierOrder, toArchitecture, venueParitySummary } from "./venue";
 
@@ -92,13 +93,21 @@ export function runScenario(input: RunInput): RunOutput {
       const policy = parsed.name;
       const config: AllocationConfig = { ...baseConfig, ...parsed.config };
       const t0 = performance.now();
+      // Slice 5: play the window out first. The binding pool is what arrived,
+      // wasn't withdrawn, and carries revised / auto-raised prices.
+      const ladder = "generate" in scenario.pool ? scenario.pool.generate.priceModel.ladderCents : undefined;
+      const window = scenario.timeline
+        ? simulateWindow(arch, offers, autoBids, scenario.timeline, config, raiseRule, seed, ladder)
+        : undefined;
+      const bindingPool = window ? window.finalOffers : offers;
+      const bindingAutoBids = window ? window.finalAutoBids : autoBids;
       // Auto-bid pre-pass (ADR-0018 fixed point) with THIS policy's config,
       // so a policy is judged on the pool it would actually see.
-      const ab = resolveAutoBids(arch, offers, autoBids, raiseRule, config);
+      const ab = resolveAutoBids(arch, bindingPool, bindingAutoBids, raiseRule, config);
       const seen = ab.offers;
       const result = allocate(arch, seen, config);
       const runtimeMs = performance.now() - t0;
-      const inPool = Object.entries(autoBids).filter(([id]) => offers.some((o) => o.id === id));
+      const inPool = Object.entries(bindingAutoBids).filter(([id]) => bindingPool.some((o) => o.id === id));
       const metrics = computeMetrics(
         resolved.venue,
         seen,
@@ -133,6 +142,10 @@ export function runScenario(input: RunInput): RunOutput {
         config,
         caveat: parsed.caveat,
       };
+      if (window && scenario.timeline) {
+        // finishTimeline reads prices as the engine saw them (auto-raised at binding).
+        run.temporal = finishTimeline(arch, { ...window, finalOffers: seen }, result, scenario.timeline, config, seed);
+      }
       if (!firstResultByPolicy.has(policy)) {
         firstResultByPolicy.add(policy);
         run.result = result;
@@ -216,6 +229,53 @@ const SCALAR_PATHS: ReadonlyArray<[keyof FillMetrics, string]> = [
   ["autoBid", "privateAddedCents"],
 ];
 const BLEACHER_PATHS = ["seats", "estSoldSeats", "estGrossCents", "combinedGrossCents", "overflowTickets"] as const;
+// Dotted paths into TemporalMetrics that aggregate across seeds.
+const TEMPORAL_PATHS = [
+  "previews",
+  "displacement.outEvents",
+  "displacement.downEvents",
+  "displacement.fansToldInThenOut",
+  "displacement.fansEverDisplaced",
+  "displacement.seatedAtFirstPreviewThenUnseatedAtBinding",
+  "revisions.fansRevised",
+  "revisions.revisionsApplied",
+  "revisions.addedCents",
+  "revisions.revisedAndSeatedAtBinding",
+  "autoBidDuringWindow.fansRaised",
+  "autoBidDuringWindow.raises",
+  "autoBidDuringWindow.addedCents",
+  "withdrawals.withdrawn",
+  "withdrawals.withdrawnValueCents",
+  "withdrawals.wereSeatedWhenTheyLeft",
+  "rollingConfirmed.confirmedFans",
+  "rollingConfirmed.confirmedSeats",
+  "rollingConfirmed.brokenConfirmations",
+  "rollingConfirmed.brokenValueCents",
+  "rollingConfirmed.avgHoursToConfirm",
+  "returns.returnedOffers",
+  "returns.returnedSeats",
+  "returns.returnedValueCents",
+  "returns.releasedSeats",
+  "returns.refilledSeats",
+  "returns.refilledOffers",
+  "returns.refilledValueCents",
+  "returns.fillAfterReturns",
+  "returns.grossAfterReturnsCents",
+  "registerFirst.bookedAtCloseCents",
+  "registerFirst.seatedAtBindingCents",
+  "registerFirst.acceptedUnseatedOffers",
+  "registerFirst.acceptedUnseatedValueCents",
+  "registerFirst.acceptedUnseatedShareOfBooked",
+] as const;
+
+function dig(obj: unknown, path: string): number {
+  let cur: unknown = obj;
+  for (const key of path.split(".")) {
+    if (cur === null || cur === undefined || typeof cur !== "object") return 0;
+    cur = (cur as Record<string, unknown>)[key];
+  }
+  return typeof cur === "number" ? cur : 0;
+}
 
 export function percentiles(values: number[]): Percentiles {
   if (values.length === 0) return { p5: 0, p50: 0, p95: 0, mean: 0, stdev: 0, min: 0, max: 0 };
@@ -243,6 +303,9 @@ function aggregate(policy: PolicyName, runs: PolicyRun[]): PolicyAggregate {
   }
   if (runs.some((r) => r.metrics.bleacher !== null)) {
     for (const key of BLEACHER_PATHS) scalars[`bleacher.${key}`] = percentiles(runs.map((r) => r.metrics.bleacher?.[key] ?? 0));
+  }
+  if (runs.some((r) => r.temporal !== undefined)) {
+    for (const path of TEMPORAL_PATHS) scalars[`temporal.${path}`] = percentiles(runs.map((r) => dig(r.temporal, path)));
   }
   const sizes = new Set<number>();
   const tiers = new Set<string>();

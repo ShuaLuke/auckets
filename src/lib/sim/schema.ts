@@ -154,6 +154,24 @@ export const DemandModelSchema = z.strictObject({
     .optional(),
 });
 
+const TimelineSchema = z.strictObject({
+  windowDays: z.number().positive().max(60),
+  arrival: z.enum(["uniform", "front-loaded", "last-day-spike", "s-curve"]).optional(),
+  previewEveryHours: z.number().positive().max(24 * 60).optional(),
+  autoBidAtPreviews: z.boolean().optional(),
+  revisions: z
+    .strictObject({
+      sharePct: z.number().min(0).max(100),
+      stepsUp: z.tuple([z.number().int().min(1), z.number().int().min(1)]).refine(([lo, hi]) => hi >= lo, { message: "stepsUp must be [lo, hi] with hi ≥ lo" }),
+      maxPerFan: z.number().int().min(1).max(20).optional(),
+    })
+    .optional(),
+  withdrawals: z.strictObject({ sharePct: z.number().min(0).max(100) }).optional(),
+  rollingConfirmed: z.strictObject({ afterHours: z.number().positive() }).optional(),
+  returns: z.strictObject({ sharePct: z.number().min(0).max(100), refill: z.enum(["release", "keep-pool-live"]) }).optional(),
+  releases: z.strictObject({ seats: z.number().int().nonnegative() }).optional(),
+});
+
 export const ScenarioSchema = z.strictObject({
   name: z.string().regex(/^[a-z0-9][a-z0-9-]*$/, "kebab-case"),
   venue: z.union([z.string().min(1), z.strictObject({ file: z.string().min(1) })]),
@@ -165,6 +183,7 @@ export const ScenarioSchema = z.strictObject({
   policies: z.array(z.string().regex(POLICY_PATTERN, 'a policy is "greedy", "clean-fit", "parity-tiebreak", "singles-reserve[:k]", or a "+"-joined combination')).min(1).optional(),
   seeds: z.number().int().min(1).max(1000).optional(),
   autoBidRaiseRule: RaiseRuleSchema.optional(),
+  timeline: TimelineSchema.optional(),
 });
 
 // Turn a Zod failure into one readable line per issue.
