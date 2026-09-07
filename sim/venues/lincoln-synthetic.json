@@ -1,0 +1,161 @@
+{
+  "name": "lincoln-synthetic",
+  "displayName": "Lincoln Theatre (synthetic 5-row fixture)",
+  "venueId": "lincoln-theatre",
+  "rows": [
+    {
+      "id": "orch-AA",
+      "area": "orchestra",
+      "section": "center",
+      "rowName": "orch-AA",
+      "rowRank": 1,
+      "capacity": 12,
+      "parity": "ODD",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "AA-1",
+        "AA-2",
+        "AA-3",
+        "AA-4",
+        "AA-5",
+        "AA-6",
+        "AA-7",
+        "AA-8",
+        "AA-9",
+        "AA-10",
+        "AA-11",
+        "AA-12"
+      ],
+      "holds": [],
+      "tier": "premium",
+      "isGa": false
+    },
+    {
+      "id": "orch-BB",
+      "area": "orchestra",
+      "section": "center",
+      "rowName": "orch-BB",
+      "rowRank": 2,
+      "capacity": 12,
+      "parity": "ODD",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "BB-1",
+        "BB-2",
+        "BB-3",
+        "BB-4",
+        "BB-5",
+        "BB-6",
+        "BB-7",
+        "BB-8",
+        "BB-9",
+        "BB-10",
+        "BB-11",
+        "BB-12"
+      ],
+      "holds": [
+        "BB-1",
+        "BB-2"
+      ],
+      "tier": "premium",
+      "isGa": false
+    },
+    {
+      "id": "fbal-A",
+      "area": "front_balcony",
+      "section": "center",
+      "rowName": "fbal-A",
+      "rowRank": 3,
+      "capacity": 10,
+      "parity": "ODD",
+      "lean": "DUAL_AISLE",
+      "seatNumbers": [
+        "FA-1",
+        "FA-2",
+        "FA-3",
+        "FA-4",
+        "FA-5",
+        "FA-6",
+        "FA-7",
+        "FA-8",
+        "FA-9",
+        "FA-10"
+      ],
+      "holds": [],
+      "tier": "mid",
+      "isGa": false
+    },
+    {
+      "id": "fbal-B",
+      "area": "front_balcony",
+      "section": "center",
+      "rowName": "fbal-B",
+      "rowRank": 4,
+      "capacity": 13,
+      "parity": "ODD",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "FB-1",
+        "FB-2",
+        "FB-3",
+        "FB-4",
+        "FB-5",
+        "FB-6",
+        "FB-7",
+        "FB-8",
+        "FB-9",
+        "FB-10",
+        "FB-11",
+        "FB-12",
+        "FB-13"
+      ],
+      "holds": [],
+      "tier": "mid",
+      "isGa": false
+    },
+    {
+      "id": "ubal-A",
+      "area": "upper_balcony",
+      "section": "center",
+      "rowName": "ubal-A",
+      "rowRank": 5,
+      "capacity": 12,
+      "parity": "ODD",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "UA-1",
+        "UA-2",
+        "UA-3",
+        "UA-4",
+        "UA-5",
+        "UA-6",
+        "UA-7",
+        "UA-8",
+        "UA-9",
+        "UA-10",
+        "UA-11",
+        "UA-12"
+      ],
+      "holds": [],
+      "tier": "rear",
+      "isGa": false
+    }
+  ],
+  "activeRowIds": [
+    "orch-AA",
+    "orch-BB",
+    "fbal-A",
+    "fbal-B",
+    "ubal-A"
+  ],
+  "tierFloorsCents": {
+    "premium": 12500,
+    "mid": 8500,
+    "rear": 5000
+  },
+  "notes": "The 5-row scenario pinned by src/lib/gae/fixtures.test.ts fixture 1. Small and fast; use lincoln-v4 for the real room.",
+  "source": {
+    "kind": "fixture",
+    "file": "src/lib/gae/fixtures.test.ts"
+  }
+}
