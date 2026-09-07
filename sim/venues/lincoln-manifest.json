@@ -1,7 +1,7 @@
 {
-  "name": "lincoln-v4",
-  "displayName": "Lincoln Theatre — Cope's 144-row RowRank architecture v4",
-  "venueId": "lincoln-v4",
+  "name": "lincoln-manifest",
+  "displayName": "Lincoln Theatre — box-office manifest (May 2026 onsale snapshot)",
+  "venueId": "lincoln-manifest",
   "rows": [
     {
       "id": "orch_c-aa",
@@ -35,8 +35,7 @@
         "120"
       ],
       "holds": [],
-      "tier": "orchestra",
-      "isGa": false
+      "tier": "p1"
     },
     {
       "id": "orch_c-bb",
@@ -70,8 +69,7 @@
         "120"
       ],
       "holds": [],
-      "tier": "orchestra",
-      "isGa": false
+      "tier": "p1"
     },
     {
       "id": "orch_c-a",
@@ -93,34 +91,14 @@
         "108"
       ],
       "holds": [],
-      "tier": "orchestra",
-      "isGa": false
-    },
-    {
-      "id": "orch_r-a",
-      "area": "orchestra",
-      "section": "ORCH R",
-      "rowName": "A",
-      "rowRank": 4,
-      "capacity": 4,
-      "parity": "EVEN",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "2",
-        "4",
-        "6",
-        "8"
-      ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
+      "tier": "p2"
     },
     {
       "id": "orch_l-a",
       "area": "orchestra",
       "section": "ORCH L",
       "rowName": "A",
-      "rowRank": 5,
+      "rowRank": 4,
       "capacity": 4,
       "parity": "EVEN",
       "lean": "RIGHT",
@@ -131,8 +109,25 @@
         "7"
       ],
       "holds": [],
-      "tier": "orchestra",
-      "isGa": false
+      "tier": "p2"
+    },
+    {
+      "id": "orch_r-a",
+      "area": "orchestra",
+      "section": "ORCH R",
+      "rowName": "A",
+      "rowRank": 5,
+      "capacity": 4,
+      "parity": "EVEN",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "2",
+        "4",
+        "6",
+        "8"
+      ],
+      "holds": [],
+      "tier": "p2"
     },
     {
       "id": "orch_c-b",
@@ -155,34 +150,14 @@
         "109"
       ],
       "holds": [],
-      "tier": "orchestra",
-      "isGa": false
-    },
-    {
-      "id": "orch_r-b",
-      "area": "orchestra",
-      "section": "ORCH R",
-      "rowName": "B",
-      "rowRank": 7,
-      "capacity": 4,
-      "parity": "EVEN",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "2",
-        "4",
-        "6",
-        "8"
-      ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
+      "tier": "p2"
     },
     {
       "id": "orch_l-b",
       "area": "orchestra",
       "section": "ORCH L",
       "rowName": "B",
-      "rowRank": 8,
+      "rowRank": 7,
       "capacity": 4,
       "parity": "EVEN",
       "lean": "RIGHT",
@@ -193,8 +168,25 @@
         "7"
       ],
       "holds": [],
-      "tier": "orchestra",
-      "isGa": false
+      "tier": "p2"
+    },
+    {
+      "id": "orch_r-b",
+      "area": "orchestra",
+      "section": "ORCH R",
+      "rowName": "B",
+      "rowRank": 8,
+      "capacity": 4,
+      "parity": "EVEN",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "2",
+        "4",
+        "6",
+        "8"
+      ],
+      "holds": [],
+      "tier": "p2"
     },
     {
       "id": "orch_c-c",
@@ -218,34 +210,14 @@
         "110"
       ],
       "holds": [],
-      "tier": "orchestra",
-      "isGa": false
-    },
-    {
-      "id": "orch_r-c",
-      "area": "orchestra",
-      "section": "ORCH R",
-      "rowName": "C",
-      "rowRank": 10,
-      "capacity": 4,
-      "parity": "EVEN",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "2",
-        "4",
-        "6",
-        "8"
-      ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
+      "tier": "p2"
     },
     {
       "id": "orch_l-c",
       "area": "orchestra",
       "section": "ORCH L",
       "rowName": "C",
-      "rowRank": 11,
+      "rowRank": 10,
       "capacity": 4,
       "parity": "EVEN",
       "lean": "RIGHT",
@@ -256,8 +228,25 @@
         "7"
       ],
       "holds": [],
-      "tier": "orchestra",
-      "isGa": false
+      "tier": "p2"
+    },
+    {
+      "id": "orch_r-c",
+      "area": "orchestra",
+      "section": "ORCH R",
+      "rowName": "C",
+      "rowRank": 11,
+      "capacity": 4,
+      "parity": "EVEN",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "2",
+        "4",
+        "6",
+        "8"
+      ],
+      "holds": [],
+      "tier": "p2"
     },
     {
       "id": "orch_c-d",
@@ -281,35 +270,20 @@
         "110",
         "111"
       ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
-    },
-    {
-      "id": "orch_r-d",
-      "area": "orchestra",
-      "section": "ORCH R",
-      "rowName": "D",
-      "rowRank": 13,
-      "capacity": 4,
-      "parity": "EVEN",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "2",
-        "4",
-        "6",
-        "8"
+      "holds": [
+        "101",
+        "102",
+        "103",
+        "104"
       ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
+      "tier": "p2"
     },
     {
       "id": "orch_l-d",
       "area": "orchestra",
       "section": "ORCH L",
       "rowName": "D",
-      "rowRank": 14,
+      "rowRank": 13,
       "capacity": 4,
       "parity": "EVEN",
       "lean": "RIGHT",
@@ -320,8 +294,25 @@
         "7"
       ],
       "holds": [],
-      "tier": "orchestra",
-      "isGa": false
+      "tier": "p2"
+    },
+    {
+      "id": "orch_r-d",
+      "area": "orchestra",
+      "section": "ORCH R",
+      "rowName": "D",
+      "rowRank": 14,
+      "capacity": 4,
+      "parity": "EVEN",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "2",
+        "4",
+        "6",
+        "8"
+      ],
+      "holds": [],
+      "tier": "p2"
     },
     {
       "id": "orch_c-e",
@@ -347,34 +338,14 @@
         "112"
       ],
       "holds": [],
-      "tier": "orchestra",
-      "isGa": false
-    },
-    {
-      "id": "orch_r-e",
-      "area": "orchestra",
-      "section": "ORCH R",
-      "rowName": "E",
-      "rowRank": 16,
-      "capacity": 4,
-      "parity": "EVEN",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "2",
-        "4",
-        "6",
-        "8"
-      ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
+      "tier": "p2"
     },
     {
       "id": "orch_l-e",
       "area": "orchestra",
       "section": "ORCH L",
       "rowName": "E",
-      "rowRank": 17,
+      "rowRank": 16,
       "capacity": 4,
       "parity": "EVEN",
       "lean": "RIGHT",
@@ -385,8 +356,25 @@
         "7"
       ],
       "holds": [],
-      "tier": "orchestra",
-      "isGa": false
+      "tier": "p2"
+    },
+    {
+      "id": "orch_r-e",
+      "area": "orchestra",
+      "section": "ORCH R",
+      "rowName": "E",
+      "rowRank": 17,
+      "capacity": 4,
+      "parity": "EVEN",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "2",
+        "4",
+        "6",
+        "8"
+      ],
+      "holds": [],
+      "tier": "p2"
     },
     {
       "id": "orch_c-f",
@@ -411,35 +399,20 @@
         "111",
         "112"
       ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
-    },
-    {
-      "id": "orch_r-f",
-      "area": "orchestra",
-      "section": "ORCH R",
-      "rowName": "F",
-      "rowRank": 19,
-      "capacity": 4,
-      "parity": "EVEN",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "2",
-        "4",
-        "6",
-        "8"
+      "holds": [
+        "101",
+        "102",
+        "103",
+        "104"
       ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
+      "tier": "p2"
     },
     {
       "id": "orch_l-f",
       "area": "orchestra",
       "section": "ORCH L",
       "rowName": "F",
-      "rowRank": 20,
+      "rowRank": 19,
       "capacity": 4,
       "parity": "EVEN",
       "lean": "RIGHT",
@@ -449,9 +422,36 @@
         "5",
         "7"
       ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
+      "holds": [
+        "1",
+        "3",
+        "5",
+        "7"
+      ],
+      "tier": "p2"
+    },
+    {
+      "id": "orch_r-f",
+      "area": "orchestra",
+      "section": "ORCH R",
+      "rowName": "F",
+      "rowRank": 20,
+      "capacity": 4,
+      "parity": "EVEN",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "2",
+        "4",
+        "6",
+        "8"
+      ],
+      "holds": [
+        "2",
+        "4",
+        "6",
+        "8"
+      ],
+      "tier": "p2"
     },
     {
       "id": "orch_c-g",
@@ -478,35 +478,14 @@
         "113"
       ],
       "holds": [],
-      "tier": "orchestra",
-      "isGa": false
-    },
-    {
-      "id": "orch_r-g",
-      "area": "orchestra",
-      "section": "ORCH R",
-      "rowName": "G",
-      "rowRank": 22,
-      "capacity": 5,
-      "parity": "ODD",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "2",
-        "4",
-        "6",
-        "8",
-        "10"
-      ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
+      "tier": "p2"
     },
     {
       "id": "orch_l-g",
       "area": "orchestra",
       "section": "ORCH L",
       "rowName": "G",
-      "rowRank": 23,
+      "rowRank": 22,
       "capacity": 5,
       "parity": "ODD",
       "lean": "RIGHT",
@@ -518,8 +497,26 @@
         "9"
       ],
       "holds": [],
-      "tier": "orchestra",
-      "isGa": false
+      "tier": "p2"
+    },
+    {
+      "id": "orch_r-g",
+      "area": "orchestra",
+      "section": "ORCH R",
+      "rowName": "G",
+      "rowRank": 23,
+      "capacity": 5,
+      "parity": "ODD",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "2",
+        "4",
+        "6",
+        "8",
+        "10"
+      ],
+      "holds": [],
+      "tier": "p2"
     },
     {
       "id": "orch_c-h",
@@ -547,36 +544,14 @@
         "114"
       ],
       "holds": [],
-      "tier": "orchestra",
-      "isGa": false
-    },
-    {
-      "id": "orch_r-h",
-      "area": "orchestra",
-      "section": "ORCH R",
-      "rowName": "H",
-      "rowRank": 25,
-      "capacity": 6,
-      "parity": "EVEN",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "2",
-        "4",
-        "6",
-        "8",
-        "10",
-        "12"
-      ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
+      "tier": "p2"
     },
     {
       "id": "orch_l-h",
       "area": "orchestra",
       "section": "ORCH L",
       "rowName": "H",
-      "rowRank": 26,
+      "rowRank": 25,
       "capacity": 6,
       "parity": "EVEN",
       "lean": "RIGHT",
@@ -589,8 +564,27 @@
         "11"
       ],
       "holds": [],
-      "tier": "orchestra",
-      "isGa": false
+      "tier": "p2"
+    },
+    {
+      "id": "orch_r-h",
+      "area": "orchestra",
+      "section": "ORCH R",
+      "rowName": "H",
+      "rowRank": 26,
+      "capacity": 6,
+      "parity": "EVEN",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "2",
+        "4",
+        "6",
+        "8",
+        "10",
+        "12"
+      ],
+      "holds": [],
+      "tier": "p2"
     },
     {
       "id": "orch_c-j",
@@ -618,36 +612,14 @@
         "114"
       ],
       "holds": [],
-      "tier": "orchestra",
-      "isGa": false
-    },
-    {
-      "id": "orch_r-j",
-      "area": "orchestra",
-      "section": "ORCH R",
-      "rowName": "J",
-      "rowRank": 28,
-      "capacity": 6,
-      "parity": "EVEN",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "2",
-        "4",
-        "6",
-        "8",
-        "10",
-        "12"
-      ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
+      "tier": "p2"
     },
     {
       "id": "orch_l-j",
       "area": "orchestra",
       "section": "ORCH L",
       "rowName": "J",
-      "rowRank": 29,
+      "rowRank": 28,
       "capacity": 6,
       "parity": "EVEN",
       "lean": "RIGHT",
@@ -659,9 +631,42 @@
         "9",
         "11"
       ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
+      "holds": [
+        "1",
+        "3",
+        "5",
+        "7",
+        "9",
+        "11"
+      ],
+      "tier": "p2"
+    },
+    {
+      "id": "orch_r-j",
+      "area": "orchestra",
+      "section": "ORCH R",
+      "rowName": "J",
+      "rowRank": 29,
+      "capacity": 6,
+      "parity": "EVEN",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "2",
+        "4",
+        "6",
+        "8",
+        "10",
+        "12"
+      ],
+      "holds": [
+        "2",
+        "4",
+        "6",
+        "8",
+        "10",
+        "12"
+      ],
+      "tier": "p2"
     },
     {
       "id": "orch_c-k",
@@ -689,8 +694,7 @@
         "114"
       ],
       "holds": [],
-      "tier": "orchestra",
-      "isGa": false
+      "tier": "p2"
     },
     {
       "id": "orch_c-l",
@@ -718,141 +722,15 @@
         "114"
       ],
       "holds": [],
-      "tier": "orchestra",
-      "isGa": false
+      "tier": "p2"
     },
     {
-      "id": "orch_c-m",
-      "area": "orchestra",
-      "section": "ORCH C",
-      "rowName": "M",
+      "id": "fl_bal-a",
+      "area": "front_balcony",
+      "section": "FL BAL",
+      "rowName": "A",
       "rowRank": 32,
-      "capacity": 14,
-      "parity": "EVEN",
-      "lean": "CENTER",
-      "seatNumbers": [
-        "101",
-        "102",
-        "103",
-        "104",
-        "105",
-        "106",
-        "107",
-        "108",
-        "109",
-        "110",
-        "111",
-        "112",
-        "113",
-        "114"
-      ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
-    },
-    {
-      "id": "orch_r-m",
-      "area": "orchestra",
-      "section": "ORCH R",
-      "rowName": "M",
-      "rowRank": 33,
-      "capacity": 7,
-      "parity": "ODD",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "2",
-        "4",
-        "6",
-        "8",
-        "10",
-        "12",
-        "14"
-      ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
-    },
-    {
-      "id": "orch_l-m",
-      "area": "orchestra",
-      "section": "ORCH L",
-      "rowName": "M",
-      "rowRank": 34,
-      "capacity": 7,
-      "parity": "ODD",
-      "lean": "RIGHT",
-      "seatNumbers": [
-        "1",
-        "3",
-        "5",
-        "7",
-        "9",
-        "11",
-        "13"
-      ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
-    },
-    {
-      "id": "orch_c-n",
-      "area": "orchestra",
-      "section": "ORCH C",
-      "rowName": "N",
-      "rowRank": 35,
-      "capacity": 14,
-      "parity": "EVEN",
-      "lean": "CENTER",
-      "seatNumbers": [
-        "101",
-        "102",
-        "103",
-        "104",
-        "105",
-        "106",
-        "107",
-        "108",
-        "109",
-        "110",
-        "111",
-        "112",
-        "113",
-        "114"
-      ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
-    },
-    {
-      "id": "orch_r-n",
-      "area": "orchestra",
-      "section": "ORCH R",
-      "rowName": "N",
-      "rowRank": 36,
-      "capacity": 8,
-      "parity": "EVEN",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "2",
-        "4",
-        "6",
-        "8",
-        "10",
-        "12",
-        "14",
-        "16"
-      ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
-    },
-    {
-      "id": "orch_l-n",
-      "area": "orchestra",
-      "section": "ORCH L",
-      "rowName": "N",
-      "rowRank": 37,
-      "capacity": 8,
+      "capacity": 12,
       "parity": "EVEN",
       "lean": "RIGHT",
       "seatNumbers": [
@@ -863,48 +741,22 @@
         "9",
         "11",
         "13",
-        "15"
+        "15",
+        "17",
+        "19",
+        "21",
+        "23"
       ],
       "holds": [],
-      "tier": "orchestra",
-      "isGa": false
+      "tier": "p3"
     },
     {
-      "id": "orch_c-o",
-      "area": "orchestra",
-      "section": "ORCH C",
-      "rowName": "O",
-      "rowRank": 38,
-      "capacity": 14,
-      "parity": "EVEN",
-      "lean": "CENTER",
-      "seatNumbers": [
-        "101",
-        "102",
-        "103",
-        "104",
-        "105",
-        "106",
-        "107",
-        "108",
-        "109",
-        "110",
-        "111",
-        "112",
-        "113",
-        "114"
-      ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
-    },
-    {
-      "id": "orch_r-o",
-      "area": "orchestra",
-      "section": "ORCH R",
-      "rowName": "O",
-      "rowRank": 39,
-      "capacity": 8,
+      "id": "fr_bal-a",
+      "area": "front_balcony",
+      "section": "FR BAL",
+      "rowName": "A",
+      "rowRank": 33,
+      "capacity": 12,
       "parity": "EVEN",
       "lean": "LEFT",
       "seatNumbers": [
@@ -915,17 +767,166 @@
         "10",
         "12",
         "14",
-        "16"
+        "16",
+        "18",
+        "20",
+        "22",
+        "24"
       ],
       "holds": [],
-      "tier": "orchestra",
-      "isGa": false
+      "tier": "p3"
     },
     {
-      "id": "orch_l-o",
-      "area": "orchestra",
-      "section": "ORCH L",
-      "rowName": "O",
+      "id": "fl_bal-b",
+      "area": "front_balcony",
+      "section": "FL BAL",
+      "rowName": "B",
+      "rowRank": 34,
+      "capacity": 12,
+      "parity": "EVEN",
+      "lean": "RIGHT",
+      "seatNumbers": [
+        "1",
+        "3",
+        "5",
+        "7",
+        "9",
+        "11",
+        "13",
+        "15",
+        "17",
+        "19",
+        "21",
+        "23"
+      ],
+      "holds": [],
+      "tier": "p3"
+    },
+    {
+      "id": "fr_bal-b",
+      "area": "front_balcony",
+      "section": "FR BAL",
+      "rowName": "B",
+      "rowRank": 35,
+      "capacity": 12,
+      "parity": "EVEN",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "2",
+        "4",
+        "6",
+        "8",
+        "10",
+        "12",
+        "14",
+        "16",
+        "18",
+        "20",
+        "22",
+        "24"
+      ],
+      "holds": [],
+      "tier": "p3"
+    },
+    {
+      "id": "fc_bal-c",
+      "area": "front_balcony",
+      "section": "FC BAL",
+      "rowName": "C",
+      "rowRank": 36,
+      "capacity": 7,
+      "parity": "ODD",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "101",
+        "102",
+        "103",
+        "104",
+        "105",
+        "106",
+        "107"
+      ],
+      "holds": [],
+      "tier": "p3"
+    },
+    {
+      "id": "fl_bal-c",
+      "area": "front_balcony",
+      "section": "FL BAL",
+      "rowName": "C",
+      "rowRank": 37,
+      "capacity": 12,
+      "parity": "EVEN",
+      "lean": "RIGHT",
+      "seatNumbers": [
+        "1",
+        "3",
+        "5",
+        "7",
+        "9",
+        "11",
+        "13",
+        "15",
+        "17",
+        "19",
+        "21",
+        "23"
+      ],
+      "holds": [],
+      "tier": "p3"
+    },
+    {
+      "id": "fr_bal-c",
+      "area": "front_balcony",
+      "section": "FR BAL",
+      "rowName": "C",
+      "rowRank": 38,
+      "capacity": 12,
+      "parity": "EVEN",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "2",
+        "4",
+        "6",
+        "8",
+        "10",
+        "12",
+        "14",
+        "16",
+        "18",
+        "20",
+        "22",
+        "24"
+      ],
+      "holds": [],
+      "tier": "p3"
+    },
+    {
+      "id": "fc_bal-d",
+      "area": "front_balcony",
+      "section": "FC BAL",
+      "rowName": "D",
+      "rowRank": 39,
+      "capacity": 7,
+      "parity": "ODD",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "101",
+        "102",
+        "103",
+        "104",
+        "105",
+        "106",
+        "107"
+      ],
+      "holds": [],
+      "tier": "p3"
+    },
+    {
+      "id": "fl_bal-d",
+      "area": "front_balcony",
+      "section": "FL BAL",
+      "rowName": "D",
       "rowRank": 40,
       "capacity": 8,
       "parity": "EVEN",
@@ -941,44 +942,14 @@
         "15"
       ],
       "holds": [],
-      "tier": "orchestra",
-      "isGa": false
+      "tier": "p3"
     },
     {
-      "id": "orch_c-p",
-      "area": "orchestra",
-      "section": "ORCH C",
-      "rowName": "P",
+      "id": "fr_bal-d",
+      "area": "front_balcony",
+      "section": "FR BAL",
+      "rowName": "D",
       "rowRank": 41,
-      "capacity": 14,
-      "parity": "EVEN",
-      "lean": "CENTER",
-      "seatNumbers": [
-        "101",
-        "102",
-        "103",
-        "104",
-        "105",
-        "106",
-        "107",
-        "108",
-        "109",
-        "110",
-        "111",
-        "112",
-        "113",
-        "114"
-      ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
-    },
-    {
-      "id": "orch_r-p",
-      "area": "orchestra",
-      "section": "ORCH R",
-      "rowName": "P",
-      "rowRank": 42,
       "capacity": 8,
       "parity": "EVEN",
       "lean": "LEFT",
@@ -993,16 +964,15 @@
         "16"
       ],
       "holds": [],
-      "tier": "orchestra",
-      "isGa": false
+      "tier": "p3"
     },
     {
-      "id": "orch_l-p",
+      "id": "orch_l-k",
       "area": "orchestra",
       "section": "ORCH L",
-      "rowName": "P",
-      "rowRank": 43,
-      "capacity": 8,
+      "rowName": "K",
+      "rowRank": 42,
+      "capacity": 6,
       "parity": "EVEN",
       "lean": "RIGHT",
       "seatNumbers": [
@@ -1011,19 +981,50 @@
         "5",
         "7",
         "9",
-        "11",
-        "13",
-        "15"
+        "11"
       ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
+      "holds": [
+        "1",
+        "3",
+        "5",
+        "7",
+        "9",
+        "11"
+      ],
+      "tier": "p3"
     },
     {
-      "id": "orch_c-r",
+      "id": "orch_r-k",
+      "area": "orchestra",
+      "section": "ORCH R",
+      "rowName": "K",
+      "rowRank": 43,
+      "capacity": 6,
+      "parity": "EVEN",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "2",
+        "4",
+        "6",
+        "8",
+        "10",
+        "12"
+      ],
+      "holds": [
+        "2",
+        "4",
+        "6",
+        "8",
+        "10",
+        "12"
+      ],
+      "tier": "p3"
+    },
+    {
+      "id": "orch_c-m",
       "area": "orchestra",
       "section": "ORCH C",
-      "rowName": "R",
+      "rowName": "M",
       "rowRank": 44,
       "capacity": 14,
       "parity": "EVEN",
@@ -1045,40 +1046,16 @@
         "114"
       ],
       "holds": [],
-      "tier": "orchestra",
-      "isGa": false
+      "tier": "p3"
     },
     {
-      "id": "orch_r-r",
-      "area": "orchestra",
-      "section": "ORCH R",
-      "rowName": "R",
-      "rowRank": 45,
-      "capacity": 8,
-      "parity": "EVEN",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "2",
-        "4",
-        "6",
-        "8",
-        "10",
-        "12",
-        "14",
-        "16"
-      ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
-    },
-    {
-      "id": "orch_l-r",
+      "id": "orch_l-m",
       "area": "orchestra",
       "section": "ORCH L",
-      "rowName": "R",
-      "rowRank": 46,
-      "capacity": 8,
-      "parity": "EVEN",
+      "rowName": "M",
+      "rowRank": 45,
+      "capacity": 7,
+      "parity": "ODD",
       "lean": "RIGHT",
       "seatNumbers": [
         "1",
@@ -1087,18 +1064,47 @@
         "7",
         "9",
         "11",
-        "13",
-        "15"
+        "13"
       ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
+      "holds": [
+        "1",
+        "3",
+        "5",
+        "7"
+      ],
+      "tier": "p3"
     },
     {
-      "id": "orch_c-s",
+      "id": "orch_r-m",
+      "area": "orchestra",
+      "section": "ORCH R",
+      "rowName": "M",
+      "rowRank": 46,
+      "capacity": 7,
+      "parity": "ODD",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "2",
+        "4",
+        "6",
+        "8",
+        "10",
+        "12",
+        "14"
+      ],
+      "holds": [
+        "2",
+        "4",
+        "6",
+        "8"
+      ],
+      "tier": "p3"
+    },
+    {
+      "id": "orch_c-n",
       "area": "orchestra",
       "section": "ORCH C",
-      "rowName": "S",
+      "rowName": "N",
       "rowRank": 47,
       "capacity": 14,
       "parity": "EVEN",
@@ -1120,38 +1126,14 @@
         "114"
       ],
       "holds": [],
-      "tier": "orchestra",
-      "isGa": false
+      "tier": "p3"
     },
     {
-      "id": "orch_r-s",
-      "area": "orchestra",
-      "section": "ORCH R",
-      "rowName": "S",
-      "rowRank": 48,
-      "capacity": 8,
-      "parity": "EVEN",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "2",
-        "4",
-        "6",
-        "8",
-        "10",
-        "12",
-        "14",
-        "16"
-      ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
-    },
-    {
-      "id": "orch_l-s",
+      "id": "orch_l-n",
       "area": "orchestra",
       "section": "ORCH L",
-      "rowName": "S",
-      "rowRank": 49,
+      "rowName": "N",
+      "rowRank": 48,
       "capacity": 8,
       "parity": "EVEN",
       "lean": "RIGHT",
@@ -1166,14 +1148,35 @@
         "15"
       ],
       "holds": [],
-      "tier": "orchestra",
-      "isGa": false
+      "tier": "p3"
     },
     {
-      "id": "orch_c-t",
+      "id": "orch_r-n",
+      "area": "orchestra",
+      "section": "ORCH R",
+      "rowName": "N",
+      "rowRank": 49,
+      "capacity": 8,
+      "parity": "EVEN",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "2",
+        "4",
+        "6",
+        "8",
+        "10",
+        "12",
+        "14",
+        "16"
+      ],
+      "holds": [],
+      "tier": "p3"
+    },
+    {
+      "id": "orch_c-o",
       "area": "orchestra",
       "section": "ORCH C",
-      "rowName": "T",
+      "rowName": "O",
       "rowRank": 50,
       "capacity": 14,
       "parity": "EVEN",
@@ -1194,39 +1197,20 @@
         "113",
         "114"
       ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
-    },
-    {
-      "id": "orch_r-t",
-      "area": "orchestra",
-      "section": "ORCH R",
-      "rowName": "T",
-      "rowRank": 51,
-      "capacity": 8,
-      "parity": "EVEN",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "2",
-        "4",
-        "6",
-        "8",
-        "10",
-        "12",
-        "14",
-        "16"
+      "holds": [
+        "111",
+        "112",
+        "113",
+        "114"
       ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
+      "tier": "p3"
     },
     {
-      "id": "orch_l-t",
+      "id": "orch_l-o",
       "area": "orchestra",
       "section": "ORCH L",
-      "rowName": "T",
-      "rowRank": 52,
+      "rowName": "O",
+      "rowRank": 51,
       "capacity": 8,
       "parity": "EVEN",
       "lean": "RIGHT",
@@ -1241,14 +1225,35 @@
         "15"
       ],
       "holds": [],
-      "tier": "orchestra",
-      "isGa": false
+      "tier": "p3"
     },
     {
-      "id": "orch_c-u",
+      "id": "orch_r-o",
+      "area": "orchestra",
+      "section": "ORCH R",
+      "rowName": "O",
+      "rowRank": 52,
+      "capacity": 8,
+      "parity": "EVEN",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "2",
+        "4",
+        "6",
+        "8",
+        "10",
+        "12",
+        "14",
+        "16"
+      ],
+      "holds": [],
+      "tier": "p3"
+    },
+    {
+      "id": "orch_c-p",
       "area": "orchestra",
       "section": "ORCH C",
-      "rowName": "U",
+      "rowName": "P",
       "rowRank": 53,
       "capacity": 14,
       "parity": "EVEN",
@@ -1269,16 +1274,42 @@
         "113",
         "114"
       ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
+      "holds": [
+        "101",
+        "102",
+        "103",
+        "104"
+      ],
+      "tier": "p3"
     },
     {
-      "id": "orch_r-u",
+      "id": "orch_l-p",
+      "area": "orchestra",
+      "section": "ORCH L",
+      "rowName": "P",
+      "rowRank": 54,
+      "capacity": 8,
+      "parity": "EVEN",
+      "lean": "RIGHT",
+      "seatNumbers": [
+        "1",
+        "3",
+        "5",
+        "7",
+        "9",
+        "11",
+        "13",
+        "15"
+      ],
+      "holds": [],
+      "tier": "p3"
+    },
+    {
+      "id": "orch_r-p",
       "area": "orchestra",
       "section": "ORCH R",
-      "rowName": "U",
-      "rowRank": 54,
+      "rowName": "P",
+      "rowRank": 55,
       "capacity": 8,
       "parity": "EVEN",
       "lean": "LEFT",
@@ -1293,15 +1324,271 @@
         "16"
       ],
       "holds": [],
-      "tier": "orchestra",
-      "isGa": false
+      "tier": "p3"
+    },
+    {
+      "id": "orch_c-r",
+      "area": "orchestra",
+      "section": "ORCH C",
+      "rowName": "R",
+      "rowRank": 56,
+      "capacity": 14,
+      "parity": "EVEN",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "101",
+        "102",
+        "103",
+        "104",
+        "105",
+        "106",
+        "107",
+        "108",
+        "109",
+        "110",
+        "111",
+        "112",
+        "113",
+        "114"
+      ],
+      "holds": [],
+      "tier": "p3"
+    },
+    {
+      "id": "orch_l-r",
+      "area": "orchestra",
+      "section": "ORCH L",
+      "rowName": "R",
+      "rowRank": 57,
+      "capacity": 8,
+      "parity": "EVEN",
+      "lean": "RIGHT",
+      "seatNumbers": [
+        "1",
+        "3",
+        "5",
+        "7",
+        "9",
+        "11",
+        "13",
+        "15"
+      ],
+      "holds": [
+        "1",
+        "3",
+        "5",
+        "7"
+      ],
+      "tier": "p3"
+    },
+    {
+      "id": "orch_r-r",
+      "area": "orchestra",
+      "section": "ORCH R",
+      "rowName": "R",
+      "rowRank": 58,
+      "capacity": 8,
+      "parity": "EVEN",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "2",
+        "4",
+        "6",
+        "8",
+        "10",
+        "12",
+        "14",
+        "16"
+      ],
+      "holds": [],
+      "tier": "p3"
+    },
+    {
+      "id": "orch_c-s",
+      "area": "orchestra",
+      "section": "ORCH C",
+      "rowName": "S",
+      "rowRank": 59,
+      "capacity": 14,
+      "parity": "EVEN",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "101",
+        "102",
+        "103",
+        "104",
+        "105",
+        "106",
+        "107",
+        "108",
+        "109",
+        "110",
+        "111",
+        "112",
+        "113",
+        "114"
+      ],
+      "holds": [
+        "111",
+        "112",
+        "113",
+        "114"
+      ],
+      "tier": "p3"
+    },
+    {
+      "id": "orch_l-s",
+      "area": "orchestra",
+      "section": "ORCH L",
+      "rowName": "S",
+      "rowRank": 60,
+      "capacity": 8,
+      "parity": "EVEN",
+      "lean": "RIGHT",
+      "seatNumbers": [
+        "1",
+        "3",
+        "5",
+        "7",
+        "9",
+        "11",
+        "13",
+        "15"
+      ],
+      "holds": [],
+      "tier": "p3"
+    },
+    {
+      "id": "orch_r-s",
+      "area": "orchestra",
+      "section": "ORCH R",
+      "rowName": "S",
+      "rowRank": 61,
+      "capacity": 8,
+      "parity": "EVEN",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "2",
+        "4",
+        "6",
+        "8",
+        "10",
+        "12",
+        "14",
+        "16"
+      ],
+      "holds": [],
+      "tier": "p3"
+    },
+    {
+      "id": "orch_c-t",
+      "area": "orchestra",
+      "section": "ORCH C",
+      "rowName": "T",
+      "rowRank": 62,
+      "capacity": 14,
+      "parity": "EVEN",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "101",
+        "102",
+        "103",
+        "104",
+        "105",
+        "106",
+        "107",
+        "108",
+        "109",
+        "110",
+        "111",
+        "112",
+        "113",
+        "114"
+      ],
+      "holds": [],
+      "tier": "p3"
+    },
+    {
+      "id": "orch_l-t",
+      "area": "orchestra",
+      "section": "ORCH L",
+      "rowName": "T",
+      "rowRank": 63,
+      "capacity": 8,
+      "parity": "EVEN",
+      "lean": "RIGHT",
+      "seatNumbers": [
+        "1",
+        "3",
+        "5",
+        "7",
+        "9",
+        "11",
+        "13",
+        "15"
+      ],
+      "holds": [],
+      "tier": "p3"
+    },
+    {
+      "id": "orch_r-t",
+      "area": "orchestra",
+      "section": "ORCH R",
+      "rowName": "T",
+      "rowRank": 64,
+      "capacity": 8,
+      "parity": "EVEN",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "2",
+        "4",
+        "6",
+        "8",
+        "10",
+        "12",
+        "14",
+        "16"
+      ],
+      "holds": [
+        "2",
+        "4"
+      ],
+      "tier": "p3"
+    },
+    {
+      "id": "orch_c-u",
+      "area": "orchestra",
+      "section": "ORCH C",
+      "rowName": "U",
+      "rowRank": 65,
+      "capacity": 14,
+      "parity": "EVEN",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "101",
+        "102",
+        "103",
+        "104",
+        "105",
+        "106",
+        "107",
+        "108",
+        "109",
+        "110",
+        "111",
+        "112",
+        "113",
+        "114"
+      ],
+      "holds": [],
+      "tier": "p3"
     },
     {
       "id": "orch_l-u",
       "area": "orchestra",
       "section": "ORCH L",
       "rowName": "U",
-      "rowRank": 55,
+      "rowRank": 66,
       "capacity": 8,
       "parity": "EVEN",
       "lean": "RIGHT",
@@ -1316,16 +1603,37 @@
         "15"
       ],
       "holds": [],
-      "tier": "orchestra",
-      "isGa": false
+      "tier": "p3"
+    },
+    {
+      "id": "orch_r-u",
+      "area": "orchestra",
+      "section": "ORCH R",
+      "rowName": "U",
+      "rowRank": 67,
+      "capacity": 8,
+      "parity": "EVEN",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "2",
+        "4",
+        "6",
+        "8",
+        "10",
+        "12",
+        "14",
+        "16"
+      ],
+      "holds": [],
+      "tier": "p3"
     },
     {
       "id": "orch_c-v",
       "area": "orchestra",
       "section": "ORCH C",
       "rowName": "V",
-      "rowRank": 56,
-      "capacity": 8,
+      "rowRank": 68,
+      "capacity": 14,
       "parity": "EVEN",
       "lean": "CENTER",
       "seatNumbers": [
@@ -1336,289 +1644,37 @@
         "105",
         "106",
         "107",
-        "108"
+        "108",
+        "109",
+        "110",
+        "111",
+        "112",
+        "113",
+        "114"
       ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
-    },
-    {
-      "id": "orch_r-v",
-      "area": "orchestra",
-      "section": "ORCH R",
-      "rowName": "V",
-      "rowRank": 57,
-      "capacity": 8,
-      "parity": "EVEN",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "2",
-        "4",
-        "6",
-        "8",
-        "10",
-        "12",
-        "14",
-        "16"
+      "holds": [
+        "101",
+        "102",
+        "103",
+        "104",
+        "105",
+        "106",
+        "107",
+        "108",
+        "109",
+        "110",
+        "111",
+        "112",
+        "113",
+        "114"
       ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
+      "tier": "p3"
     },
     {
       "id": "orch_l-v",
       "area": "orchestra",
       "section": "ORCH L",
       "rowName": "V",
-      "rowRank": 58,
-      "capacity": 8,
-      "parity": "EVEN",
-      "lean": "RIGHT",
-      "seatNumbers": [
-        "1",
-        "3",
-        "5",
-        "7",
-        "9",
-        "11",
-        "13",
-        "15"
-      ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
-    },
-    {
-      "id": "orch_c-w",
-      "area": "orchestra",
-      "section": "ORCH C",
-      "rowName": "W",
-      "rowRank": 59,
-      "capacity": 8,
-      "parity": "EVEN",
-      "lean": "CENTER",
-      "seatNumbers": [
-        "101",
-        "102",
-        "103",
-        "104",
-        "105",
-        "106",
-        "107",
-        "108"
-      ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
-    },
-    {
-      "id": "orch_r-w",
-      "area": "orchestra",
-      "section": "ORCH R",
-      "rowName": "W",
-      "rowRank": 60,
-      "capacity": 8,
-      "parity": "EVEN",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "2",
-        "4",
-        "6",
-        "8",
-        "10",
-        "12",
-        "14",
-        "16"
-      ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
-    },
-    {
-      "id": "orch_l-w",
-      "area": "orchestra",
-      "section": "ORCH L",
-      "rowName": "W",
-      "rowRank": 61,
-      "capacity": 8,
-      "parity": "EVEN",
-      "lean": "RIGHT",
-      "seatNumbers": [
-        "1",
-        "3",
-        "5",
-        "7",
-        "9",
-        "11",
-        "13",
-        "15"
-      ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
-    },
-    {
-      "id": "orch_c-x",
-      "area": "orchestra",
-      "section": "ORCH C",
-      "rowName": "X",
-      "rowRank": 62,
-      "capacity": 6,
-      "parity": "EVEN",
-      "lean": "CENTER",
-      "seatNumbers": [
-        "101",
-        "102",
-        "103",
-        "104",
-        "105",
-        "106"
-      ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
-    },
-    {
-      "id": "orch_r-x",
-      "area": "orchestra",
-      "section": "ORCH R",
-      "rowName": "X",
-      "rowRank": 63,
-      "capacity": 8,
-      "parity": "EVEN",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "2",
-        "4",
-        "6",
-        "8",
-        "10",
-        "12",
-        "14",
-        "16"
-      ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
-    },
-    {
-      "id": "orch_l-x",
-      "area": "orchestra",
-      "section": "ORCH L",
-      "rowName": "X",
-      "rowRank": 64,
-      "capacity": 8,
-      "parity": "EVEN",
-      "lean": "RIGHT",
-      "seatNumbers": [
-        "1",
-        "3",
-        "5",
-        "7",
-        "9",
-        "11",
-        "13",
-        "15"
-      ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
-    },
-    {
-      "id": "orch_c-y",
-      "area": "orchestra",
-      "section": "ORCH C",
-      "rowName": "Y",
-      "rowRank": 65,
-      "capacity": 6,
-      "parity": "EVEN",
-      "lean": "CENTER",
-      "seatNumbers": [
-        "101",
-        "102",
-        "103",
-        "104",
-        "105",
-        "106"
-      ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
-    },
-    {
-      "id": "orch_r-y",
-      "area": "orchestra",
-      "section": "ORCH R",
-      "rowName": "Y",
-      "rowRank": 66,
-      "capacity": 8,
-      "parity": "EVEN",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "2",
-        "4",
-        "6",
-        "8",
-        "10",
-        "12",
-        "14",
-        "16"
-      ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
-    },
-    {
-      "id": "orch_l-y",
-      "area": "orchestra",
-      "section": "ORCH L",
-      "rowName": "Y",
-      "rowRank": 67,
-      "capacity": 8,
-      "parity": "EVEN",
-      "lean": "RIGHT",
-      "seatNumbers": [
-        "1",
-        "3",
-        "5",
-        "7",
-        "9",
-        "11",
-        "13",
-        "15"
-      ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
-    },
-    {
-      "id": "orch_r-z",
-      "area": "orchestra",
-      "section": "ORCH R",
-      "rowName": "Z",
-      "rowRank": 68,
-      "capacity": 8,
-      "parity": "EVEN",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "2",
-        "4",
-        "6",
-        "8",
-        "10",
-        "12",
-        "14",
-        "16"
-      ],
-      "holds": [],
-      "tier": "orchestra",
-      "isGa": false
-    },
-    {
-      "id": "orch_l-z",
-      "area": "orchestra",
-      "section": "ORCH L",
-      "rowName": "Z",
       "rowRank": 69,
       "capacity": 8,
       "parity": "EVEN",
@@ -1634,221 +1690,14 @@
         "15"
       ],
       "holds": [],
-      "tier": "orchestra",
-      "isGa": false
+      "tier": "p3"
     },
     {
-      "id": "fl_bal-a",
-      "area": "front_balcony",
-      "section": "FL BAL",
-      "rowName": "A",
+      "id": "orch_r-v",
+      "area": "orchestra",
+      "section": "ORCH R",
+      "rowName": "V",
       "rowRank": 70,
-      "capacity": 12,
-      "parity": "EVEN",
-      "lean": "RIGHT",
-      "seatNumbers": [
-        "1",
-        "3",
-        "5",
-        "7",
-        "9",
-        "11",
-        "13",
-        "15",
-        "17",
-        "19",
-        "21",
-        "23"
-      ],
-      "holds": [],
-      "tier": "front_balcony",
-      "isGa": false
-    },
-    {
-      "id": "fr_bal-a",
-      "area": "front_balcony",
-      "section": "FR BAL",
-      "rowName": "A",
-      "rowRank": 71,
-      "capacity": 12,
-      "parity": "EVEN",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "2",
-        "4",
-        "6",
-        "8",
-        "10",
-        "12",
-        "14",
-        "16",
-        "18",
-        "20",
-        "22",
-        "24"
-      ],
-      "holds": [],
-      "tier": "front_balcony",
-      "isGa": false
-    },
-    {
-      "id": "fl_bal-b",
-      "area": "front_balcony",
-      "section": "FL BAL",
-      "rowName": "B",
-      "rowRank": 72,
-      "capacity": 12,
-      "parity": "EVEN",
-      "lean": "RIGHT",
-      "seatNumbers": [
-        "1",
-        "3",
-        "5",
-        "7",
-        "9",
-        "11",
-        "13",
-        "15",
-        "17",
-        "19",
-        "21",
-        "23"
-      ],
-      "holds": [],
-      "tier": "front_balcony",
-      "isGa": false
-    },
-    {
-      "id": "fr_bal-b",
-      "area": "front_balcony",
-      "section": "FR BAL",
-      "rowName": "B",
-      "rowRank": 73,
-      "capacity": 12,
-      "parity": "EVEN",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "2",
-        "4",
-        "6",
-        "8",
-        "10",
-        "12",
-        "14",
-        "16",
-        "18",
-        "20",
-        "22",
-        "24"
-      ],
-      "holds": [],
-      "tier": "front_balcony",
-      "isGa": false
-    },
-    {
-      "id": "fc_bal-c",
-      "area": "front_balcony",
-      "section": "FC BAL",
-      "rowName": "C",
-      "rowRank": 74,
-      "capacity": 7,
-      "parity": "ODD",
-      "lean": "CENTER",
-      "seatNumbers": [
-        "101",
-        "102",
-        "103",
-        "104",
-        "105",
-        "106",
-        "107"
-      ],
-      "holds": [],
-      "tier": "front_balcony",
-      "isGa": false
-    },
-    {
-      "id": "fr_bal-c",
-      "area": "front_balcony",
-      "section": "FR BAL",
-      "rowName": "C",
-      "rowRank": 75,
-      "capacity": 12,
-      "parity": "EVEN",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "2",
-        "4",
-        "6",
-        "8",
-        "10",
-        "12",
-        "14",
-        "16",
-        "18",
-        "20",
-        "22",
-        "24"
-      ],
-      "holds": [],
-      "tier": "front_balcony",
-      "isGa": false
-    },
-    {
-      "id": "fl_bal-c",
-      "area": "front_balcony",
-      "section": "FL BAL",
-      "rowName": "C",
-      "rowRank": 76,
-      "capacity": 12,
-      "parity": "EVEN",
-      "lean": "RIGHT",
-      "seatNumbers": [
-        "1",
-        "3",
-        "5",
-        "7",
-        "9",
-        "11",
-        "13",
-        "15",
-        "17",
-        "19",
-        "21",
-        "23"
-      ],
-      "holds": [],
-      "tier": "front_balcony",
-      "isGa": false
-    },
-    {
-      "id": "fc_bal-d",
-      "area": "front_balcony",
-      "section": "FC BAL",
-      "rowName": "D",
-      "rowRank": 77,
-      "capacity": 7,
-      "parity": "ODD",
-      "lean": "CENTER",
-      "seatNumbers": [
-        "101",
-        "102",
-        "103",
-        "104",
-        "105",
-        "106",
-        "107"
-      ],
-      "holds": [],
-      "tier": "front_balcony",
-      "isGa": false
-    },
-    {
-      "id": "fr_bal-d",
-      "area": "front_balcony",
-      "section": "FR BAL",
-      "rowName": "D",
-      "rowRank": 78,
       "capacity": 8,
       "parity": "EVEN",
       "lean": "LEFT",
@@ -1862,16 +1711,55 @@
         "14",
         "16"
       ],
-      "holds": [],
-      "tier": "front_balcony",
-      "isGa": false
+      "holds": [
+        "2",
+        "4",
+        "6",
+        "8"
+      ],
+      "tier": "p3"
     },
     {
-      "id": "fl_bal-d",
-      "area": "front_balcony",
-      "section": "FL BAL",
-      "rowName": "D",
-      "rowRank": 79,
+      "id": "orch_c-w",
+      "area": "orchestra",
+      "section": "ORCH C",
+      "rowName": "W",
+      "rowRank": 71,
+      "capacity": 14,
+      "parity": "EVEN",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "101",
+        "102",
+        "103",
+        "104",
+        "105",
+        "106",
+        "107",
+        "108",
+        "109",
+        "110",
+        "111",
+        "112",
+        "113",
+        "114"
+      ],
+      "holds": [
+        "105",
+        "106",
+        "107",
+        "108",
+        "109",
+        "110"
+      ],
+      "tier": "p3"
+    },
+    {
+      "id": "orch_l-w",
+      "area": "orchestra",
+      "section": "ORCH L",
+      "rowName": "W",
+      "rowRank": 72,
       "capacity": 8,
       "parity": "EVEN",
       "lean": "RIGHT",
@@ -1886,16 +1774,15 @@
         "15"
       ],
       "holds": [],
-      "tier": "front_balcony",
-      "isGa": false
+      "tier": "p3"
     },
     {
-      "id": "cr_bal-e",
-      "area": "upper_balcony",
-      "section": "CR BAL",
-      "rowName": "E",
-      "rowRank": 80,
-      "capacity": 12,
+      "id": "orch_r-w",
+      "area": "orchestra",
+      "section": "ORCH R",
+      "rowName": "W",
+      "rowRank": 73,
+      "capacity": 8,
       "parity": "EVEN",
       "lean": "LEFT",
       "seatNumbers": [
@@ -1906,279 +1793,491 @@
         "10",
         "12",
         "14",
-        "16",
-        "18",
-        "20",
-        "22",
-        "24"
+        "16"
       ],
       "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
+      "tier": "p3"
+    },
+    {
+      "id": "orch_c-x",
+      "area": "orchestra",
+      "section": "ORCH C",
+      "rowName": "X",
+      "rowRank": 74,
+      "capacity": 14,
+      "parity": "EVEN",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "101",
+        "102",
+        "103",
+        "104",
+        "105",
+        "106",
+        "107",
+        "108",
+        "109",
+        "110",
+        "111",
+        "112",
+        "113",
+        "114"
+      ],
+      "holds": [
+        "104",
+        "105",
+        "106",
+        "107",
+        "108",
+        "109",
+        "110",
+        "111"
+      ],
+      "tier": "p3"
+    },
+    {
+      "id": "orch_l-x",
+      "area": "orchestra",
+      "section": "ORCH L",
+      "rowName": "X",
+      "rowRank": 75,
+      "capacity": 8,
+      "parity": "EVEN",
+      "lean": "RIGHT",
+      "seatNumbers": [
+        "1",
+        "3",
+        "5",
+        "7",
+        "9",
+        "11",
+        "13",
+        "15"
+      ],
+      "holds": [],
+      "tier": "p3"
+    },
+    {
+      "id": "orch_r-x",
+      "area": "orchestra",
+      "section": "ORCH R",
+      "rowName": "X",
+      "rowRank": 76,
+      "capacity": 8,
+      "parity": "EVEN",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "2",
+        "4",
+        "6",
+        "8",
+        "10",
+        "12",
+        "14",
+        "16"
+      ],
+      "holds": [],
+      "tier": "p3"
+    },
+    {
+      "id": "orch_c-y",
+      "area": "orchestra",
+      "section": "ORCH C",
+      "rowName": "Y",
+      "rowRank": 77,
+      "capacity": 14,
+      "parity": "EVEN",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "101",
+        "102",
+        "103",
+        "104",
+        "105",
+        "106",
+        "107",
+        "108",
+        "109",
+        "110",
+        "111",
+        "112",
+        "113",
+        "114"
+      ],
+      "holds": [
+        "104",
+        "105",
+        "106",
+        "107",
+        "108",
+        "109",
+        "110",
+        "111"
+      ],
+      "tier": "p3"
+    },
+    {
+      "id": "orch_l-y",
+      "area": "orchestra",
+      "section": "ORCH L",
+      "rowName": "Y",
+      "rowRank": 78,
+      "capacity": 8,
+      "parity": "EVEN",
+      "lean": "RIGHT",
+      "seatNumbers": [
+        "1",
+        "3",
+        "5",
+        "7",
+        "9",
+        "11",
+        "13",
+        "15"
+      ],
+      "holds": [],
+      "tier": "p3"
+    },
+    {
+      "id": "orch_r-y",
+      "area": "orchestra",
+      "section": "ORCH R",
+      "rowName": "Y",
+      "rowRank": 79,
+      "capacity": 8,
+      "parity": "EVEN",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "2",
+        "4",
+        "6",
+        "8",
+        "10",
+        "12",
+        "14",
+        "16"
+      ],
+      "holds": [],
+      "tier": "p3"
+    },
+    {
+      "id": "orch_c-z",
+      "area": "orchestra",
+      "section": "ORCH C",
+      "rowName": "Z",
+      "rowRank": 80,
+      "capacity": 13,
+      "parity": "ODD",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "101",
+        "102",
+        "103",
+        "104",
+        "105",
+        "106",
+        "107",
+        "108",
+        "109",
+        "110",
+        "111",
+        "112",
+        "113"
+      ],
+      "holds": [
+        "101",
+        "102",
+        "103",
+        "104",
+        "105",
+        "106",
+        "107",
+        "108",
+        "109",
+        "110",
+        "111",
+        "112",
+        "113"
+      ],
+      "tier": "p3"
+    },
+    {
+      "id": "orch_l-z",
+      "area": "orchestra",
+      "section": "ORCH L",
+      "rowName": "Z",
+      "rowRank": 81,
+      "capacity": 8,
+      "parity": "EVEN",
+      "lean": "RIGHT",
+      "seatNumbers": [
+        "1",
+        "3",
+        "5",
+        "7",
+        "9",
+        "11",
+        "13",
+        "15"
+      ],
+      "holds": [],
+      "tier": "p3"
+    },
+    {
+      "id": "orch_r-z",
+      "area": "orchestra",
+      "section": "ORCH R",
+      "rowName": "Z",
+      "rowRank": 82,
+      "capacity": 8,
+      "parity": "EVEN",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "2",
+        "4",
+        "6",
+        "8",
+        "10",
+        "12",
+        "14",
+        "16"
+      ],
+      "holds": [],
+      "tier": "p3"
+    },
+    {
+      "id": "box_a-ga1",
+      "area": "boxes",
+      "section": "BOX A",
+      "rowName": "GA1",
+      "rowRank": 83,
+      "capacity": 6,
+      "parity": "EVEN",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6"
+      ],
+      "holds": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6"
+      ],
+      "tier": "p3"
+    },
+    {
+      "id": "box_b-ga1",
+      "area": "boxes",
+      "section": "BOX B",
+      "rowName": "GA1",
+      "rowRank": 84,
+      "capacity": 6,
+      "parity": "EVEN",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6"
+      ],
+      "holds": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6"
+      ],
+      "tier": "p3"
+    },
+    {
+      "id": "box_c-ga1",
+      "area": "boxes",
+      "section": "BOX C",
+      "rowName": "GA1",
+      "rowRank": 85,
+      "capacity": 6,
+      "parity": "EVEN",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6"
+      ],
+      "holds": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6"
+      ],
+      "tier": "p3"
+    },
+    {
+      "id": "box_d-ga1",
+      "area": "boxes",
+      "section": "BOX D",
+      "rowName": "GA1",
+      "rowRank": 86,
+      "capacity": 6,
+      "parity": "EVEN",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6"
+      ],
+      "holds": [],
+      "tier": "p3"
+    },
+    {
+      "id": "box_e-ga1",
+      "area": "boxes",
+      "section": "BOX E",
+      "rowName": "GA1",
+      "rowRank": 87,
+      "capacity": 6,
+      "parity": "EVEN",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6"
+      ],
+      "holds": [],
+      "tier": "p3"
+    },
+    {
+      "id": "box_f-ga1",
+      "area": "boxes",
+      "section": "BOX F",
+      "rowName": "GA1",
+      "rowRank": 88,
+      "capacity": 6,
+      "parity": "EVEN",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6"
+      ],
+      "holds": [],
+      "tier": "p3"
+    },
+    {
+      "id": "box_g-ga1",
+      "area": "boxes",
+      "section": "BOX G",
+      "rowName": "GA1",
+      "rowRank": 89,
+      "capacity": 6,
+      "parity": "EVEN",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6"
+      ],
+      "holds": [],
+      "tier": "p3"
+    },
+    {
+      "id": "box_h-ga1",
+      "area": "boxes",
+      "section": "BOX H",
+      "rowName": "GA1",
+      "rowRank": 90,
+      "capacity": 6,
+      "parity": "EVEN",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6"
+      ],
+      "holds": [],
+      "tier": "p3"
+    },
+    {
+      "id": "box_j-ga1",
+      "area": "boxes",
+      "section": "BOX J",
+      "rowName": "GA1",
+      "rowRank": 91,
+      "capacity": 6,
+      "parity": "EVEN",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6"
+      ],
+      "holds": [],
+      "tier": "p3"
+    },
+    {
+      "id": "box_k-ga1",
+      "area": "boxes",
+      "section": "BOX K",
+      "rowName": "GA1",
+      "rowRank": 92,
+      "capacity": 6,
+      "parity": "EVEN",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6"
+      ],
+      "holds": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6"
+      ],
+      "tier": "p3"
     },
     {
       "id": "cl_bal-e",
       "area": "upper_balcony",
       "section": "CL BAL",
       "rowName": "E",
-      "rowRank": 81,
-      "capacity": 12,
-      "parity": "EVEN",
-      "lean": "RIGHT",
-      "seatNumbers": [
-        "1",
-        "3",
-        "5",
-        "7",
-        "9",
-        "11",
-        "13",
-        "15",
-        "17",
-        "19",
-        "21",
-        "23"
-      ],
-      "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
-    },
-    {
-      "id": "r_balc-e",
-      "area": "upper_balcony",
-      "section": "R BALC",
-      "rowName": "E",
-      "rowRank": 82,
-      "capacity": 1,
-      "parity": "ODD",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "26"
-      ],
-      "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
-    },
-    {
-      "id": "l_balc-e",
-      "area": "upper_balcony",
-      "section": "L BALC",
-      "rowName": "E",
-      "rowRank": 83,
-      "capacity": 1,
-      "parity": "ODD",
-      "lean": "RIGHT",
-      "seatNumbers": [
-        "25"
-      ],
-      "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
-    },
-    {
-      "id": "cr_bal-f",
-      "area": "upper_balcony",
-      "section": "CR BAL",
-      "rowName": "F",
-      "rowRank": 84,
-      "capacity": 12,
-      "parity": "EVEN",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "2",
-        "4",
-        "6",
-        "8",
-        "10",
-        "12",
-        "14",
-        "16",
-        "18",
-        "20",
-        "22",
-        "24"
-      ],
-      "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
-    },
-    {
-      "id": "cl_bal-f",
-      "area": "upper_balcony",
-      "section": "CL BAL",
-      "rowName": "F",
-      "rowRank": 85,
-      "capacity": 12,
-      "parity": "EVEN",
-      "lean": "RIGHT",
-      "seatNumbers": [
-        "1",
-        "3",
-        "5",
-        "7",
-        "9",
-        "11",
-        "13",
-        "15",
-        "17",
-        "19",
-        "21",
-        "23"
-      ],
-      "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
-    },
-    {
-      "id": "r_balc-f",
-      "area": "upper_balcony",
-      "section": "R BALC",
-      "rowName": "F",
-      "rowRank": 86,
-      "capacity": 1,
-      "parity": "ODD",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "26"
-      ],
-      "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
-    },
-    {
-      "id": "l_balc-f",
-      "area": "upper_balcony",
-      "section": "L BALC",
-      "rowName": "F",
-      "rowRank": 87,
-      "capacity": 1,
-      "parity": "ODD",
-      "lean": "RIGHT",
-      "seatNumbers": [
-        "25"
-      ],
-      "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
-    },
-    {
-      "id": "cr_bal-g",
-      "area": "upper_balcony",
-      "section": "CR BAL",
-      "rowName": "G",
-      "rowRank": 88,
-      "capacity": 12,
-      "parity": "EVEN",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "2",
-        "4",
-        "6",
-        "8",
-        "10",
-        "12",
-        "14",
-        "16",
-        "18",
-        "20",
-        "22",
-        "24"
-      ],
-      "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
-    },
-    {
-      "id": "cl_bal-g",
-      "area": "upper_balcony",
-      "section": "CL BAL",
-      "rowName": "G",
-      "rowRank": 89,
-      "capacity": 12,
-      "parity": "EVEN",
-      "lean": "RIGHT",
-      "seatNumbers": [
-        "1",
-        "3",
-        "5",
-        "7",
-        "9",
-        "11",
-        "13",
-        "15",
-        "17",
-        "19",
-        "21",
-        "23"
-      ],
-      "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
-    },
-    {
-      "id": "r_balc-g",
-      "area": "upper_balcony",
-      "section": "R BALC",
-      "rowName": "G",
-      "rowRank": 90,
-      "capacity": 1,
-      "parity": "ODD",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "26"
-      ],
-      "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
-    },
-    {
-      "id": "l_balc-g",
-      "area": "upper_balcony",
-      "section": "L BALC",
-      "rowName": "G",
-      "rowRank": 91,
-      "capacity": 1,
-      "parity": "ODD",
-      "lean": "RIGHT",
-      "seatNumbers": [
-        "25"
-      ],
-      "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
-    },
-    {
-      "id": "cr_bal-h",
-      "area": "upper_balcony",
-      "section": "CR BAL",
-      "rowName": "H",
-      "rowRank": 92,
-      "capacity": 12,
-      "parity": "EVEN",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "2",
-        "4",
-        "6",
-        "8",
-        "10",
-        "12",
-        "14",
-        "16",
-        "18",
-        "20",
-        "22",
-        "24"
-      ],
-      "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
-    },
-    {
-      "id": "cl_bal-h",
-      "area": "upper_balcony",
-      "section": "CL BAL",
-      "rowName": "H",
       "rowRank": 93,
       "capacity": 12,
       "parity": "EVEN",
@@ -2198,53 +2297,14 @@
         "23"
       ],
       "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
+      "tier": "p4"
     },
     {
-      "id": "r_balc-h",
-      "area": "upper_balcony",
-      "section": "R BALC",
-      "rowName": "H",
-      "rowRank": 94,
-      "capacity": 4,
-      "parity": "EVEN",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "26",
-        "28",
-        "30",
-        "32"
-      ],
-      "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
-    },
-    {
-      "id": "l_balc-h",
-      "area": "upper_balcony",
-      "section": "L BALC",
-      "rowName": "H",
-      "rowRank": 95,
-      "capacity": 4,
-      "parity": "EVEN",
-      "lean": "RIGHT",
-      "seatNumbers": [
-        "25",
-        "27",
-        "29",
-        "31"
-      ],
-      "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
-    },
-    {
-      "id": "cr_bal-j",
+      "id": "cr_bal-e",
       "area": "upper_balcony",
       "section": "CR BAL",
-      "rowName": "J",
-      "rowRank": 96,
+      "rowName": "E",
+      "rowRank": 94,
       "capacity": 12,
       "parity": "EVEN",
       "lean": "LEFT",
@@ -2263,14 +2323,43 @@
         "24"
       ],
       "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
+      "tier": "p4"
     },
     {
-      "id": "cl_bal-j",
+      "id": "l_balc-e",
+      "area": "upper_balcony",
+      "section": "L BALC",
+      "rowName": "E",
+      "rowRank": 95,
+      "capacity": 1,
+      "parity": "ODD",
+      "lean": "RIGHT",
+      "seatNumbers": [
+        "25"
+      ],
+      "holds": [],
+      "tier": "p4"
+    },
+    {
+      "id": "r_balc-e",
+      "area": "upper_balcony",
+      "section": "R BALC",
+      "rowName": "E",
+      "rowRank": 96,
+      "capacity": 1,
+      "parity": "ODD",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "26"
+      ],
+      "holds": [],
+      "tier": "p4"
+    },
+    {
+      "id": "cl_bal-f",
       "area": "upper_balcony",
       "section": "CL BAL",
-      "rowName": "J",
+      "rowName": "F",
       "rowRank": 97,
       "capacity": 12,
       "parity": "EVEN",
@@ -2290,53 +2379,14 @@
         "23"
       ],
       "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
+      "tier": "p4"
     },
     {
-      "id": "r_balc-j",
-      "area": "upper_balcony",
-      "section": "R BALC",
-      "rowName": "J",
-      "rowRank": 98,
-      "capacity": 4,
-      "parity": "EVEN",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "26",
-        "28",
-        "30",
-        "32"
-      ],
-      "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
-    },
-    {
-      "id": "l_balc-j",
-      "area": "upper_balcony",
-      "section": "L BALC",
-      "rowName": "J",
-      "rowRank": 99,
-      "capacity": 4,
-      "parity": "EVEN",
-      "lean": "RIGHT",
-      "seatNumbers": [
-        "25",
-        "27",
-        "29",
-        "31"
-      ],
-      "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
-    },
-    {
-      "id": "cr_bal-k",
+      "id": "cr_bal-f",
       "area": "upper_balcony",
       "section": "CR BAL",
-      "rowName": "K",
-      "rowRank": 100,
+      "rowName": "F",
+      "rowRank": 98,
       "capacity": 12,
       "parity": "EVEN",
       "lean": "LEFT",
@@ -2355,14 +2405,43 @@
         "24"
       ],
       "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
+      "tier": "p4"
     },
     {
-      "id": "cl_bal-k",
+      "id": "l_balc-f",
+      "area": "upper_balcony",
+      "section": "L BALC",
+      "rowName": "F",
+      "rowRank": 99,
+      "capacity": 1,
+      "parity": "ODD",
+      "lean": "RIGHT",
+      "seatNumbers": [
+        "25"
+      ],
+      "holds": [],
+      "tier": "p4"
+    },
+    {
+      "id": "r_balc-f",
+      "area": "upper_balcony",
+      "section": "R BALC",
+      "rowName": "F",
+      "rowRank": 100,
+      "capacity": 1,
+      "parity": "ODD",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "26"
+      ],
+      "holds": [],
+      "tier": "p4"
+    },
+    {
+      "id": "cl_bal-g",
       "area": "upper_balcony",
       "section": "CL BAL",
-      "rowName": "K",
+      "rowName": "G",
       "rowRank": 101,
       "capacity": 12,
       "parity": "EVEN",
@@ -2382,49 +2461,14 @@
         "23"
       ],
       "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
+      "tier": "p4"
     },
     {
-      "id": "r_balc-k",
-      "area": "upper_balcony",
-      "section": "R BALC",
-      "rowName": "K",
-      "rowRank": 102,
-      "capacity": 2,
-      "parity": "EVEN",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "26",
-        "28"
-      ],
-      "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
-    },
-    {
-      "id": "l_balc-k",
-      "area": "upper_balcony",
-      "section": "L BALC",
-      "rowName": "K",
-      "rowRank": 103,
-      "capacity": 2,
-      "parity": "EVEN",
-      "lean": "RIGHT",
-      "seatNumbers": [
-        "25",
-        "27"
-      ],
-      "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
-    },
-    {
-      "id": "cr_bal-l",
+      "id": "cr_bal-g",
       "area": "upper_balcony",
       "section": "CR BAL",
-      "rowName": "L",
-      "rowRank": 104,
+      "rowName": "G",
+      "rowRank": 102,
       "capacity": 12,
       "parity": "EVEN",
       "lean": "LEFT",
@@ -2443,14 +2487,43 @@
         "24"
       ],
       "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
+      "tier": "p4"
     },
     {
-      "id": "cl_bal-l",
+      "id": "l_balc-g",
+      "area": "upper_balcony",
+      "section": "L BALC",
+      "rowName": "G",
+      "rowRank": 103,
+      "capacity": 1,
+      "parity": "ODD",
+      "lean": "RIGHT",
+      "seatNumbers": [
+        "25"
+      ],
+      "holds": [],
+      "tier": "p4"
+    },
+    {
+      "id": "r_balc-g",
+      "area": "upper_balcony",
+      "section": "R BALC",
+      "rowName": "G",
+      "rowRank": 104,
+      "capacity": 1,
+      "parity": "ODD",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "26"
+      ],
+      "holds": [],
+      "tier": "p4"
+    },
+    {
+      "id": "cl_bal-h",
       "area": "upper_balcony",
       "section": "CL BAL",
-      "rowName": "L",
+      "rowName": "H",
       "rowRank": 105,
       "capacity": 12,
       "parity": "EVEN",
@@ -2470,49 +2543,14 @@
         "23"
       ],
       "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
+      "tier": "p4"
     },
     {
-      "id": "r_balc-l",
-      "area": "upper_balcony",
-      "section": "R BALC",
-      "rowName": "L",
-      "rowRank": 106,
-      "capacity": 2,
-      "parity": "EVEN",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "26",
-        "28"
-      ],
-      "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
-    },
-    {
-      "id": "l_balc-l",
-      "area": "upper_balcony",
-      "section": "L BALC",
-      "rowName": "L",
-      "rowRank": 107,
-      "capacity": 2,
-      "parity": "EVEN",
-      "lean": "RIGHT",
-      "seatNumbers": [
-        "25",
-        "27"
-      ],
-      "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
-    },
-    {
-      "id": "cr_bal-m",
+      "id": "cr_bal-h",
       "area": "upper_balcony",
       "section": "CR BAL",
-      "rowName": "M",
-      "rowRank": 108,
+      "rowName": "H",
+      "rowRank": 106,
       "capacity": 12,
       "parity": "EVEN",
       "lean": "LEFT",
@@ -2531,14 +2569,49 @@
         "24"
       ],
       "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
+      "tier": "p4"
     },
     {
-      "id": "cl_bal-m",
+      "id": "l_balc-h",
+      "area": "upper_balcony",
+      "section": "L BALC",
+      "rowName": "H",
+      "rowRank": 107,
+      "capacity": 4,
+      "parity": "EVEN",
+      "lean": "RIGHT",
+      "seatNumbers": [
+        "25",
+        "27",
+        "29",
+        "31"
+      ],
+      "holds": [],
+      "tier": "p4"
+    },
+    {
+      "id": "r_balc-h",
+      "area": "upper_balcony",
+      "section": "R BALC",
+      "rowName": "H",
+      "rowRank": 108,
+      "capacity": 4,
+      "parity": "EVEN",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "26",
+        "28",
+        "30",
+        "32"
+      ],
+      "holds": [],
+      "tier": "p4"
+    },
+    {
+      "id": "cl_bal-j",
       "area": "upper_balcony",
       "section": "CL BAL",
-      "rowName": "M",
+      "rowName": "J",
       "rowRank": 109,
       "capacity": 12,
       "parity": "EVEN",
@@ -2558,49 +2631,14 @@
         "23"
       ],
       "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
+      "tier": "p4"
     },
     {
-      "id": "r_balc-m",
-      "area": "upper_balcony",
-      "section": "R BALC",
-      "rowName": "M",
-      "rowRank": 110,
-      "capacity": 2,
-      "parity": "EVEN",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "26",
-        "28"
-      ],
-      "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
-    },
-    {
-      "id": "l_balc-m",
-      "area": "upper_balcony",
-      "section": "L BALC",
-      "rowName": "M",
-      "rowRank": 111,
-      "capacity": 2,
-      "parity": "EVEN",
-      "lean": "RIGHT",
-      "seatNumbers": [
-        "25",
-        "27"
-      ],
-      "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
-    },
-    {
-      "id": "cr_bal-n",
+      "id": "cr_bal-j",
       "area": "upper_balcony",
       "section": "CR BAL",
-      "rowName": "N",
-      "rowRank": 112,
+      "rowName": "J",
+      "rowRank": 110,
       "capacity": 12,
       "parity": "EVEN",
       "lean": "LEFT",
@@ -2619,14 +2657,49 @@
         "24"
       ],
       "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
+      "tier": "p4"
     },
     {
-      "id": "cl_bal-n",
+      "id": "l_balc-j",
+      "area": "upper_balcony",
+      "section": "L BALC",
+      "rowName": "J",
+      "rowRank": 111,
+      "capacity": 4,
+      "parity": "EVEN",
+      "lean": "RIGHT",
+      "seatNumbers": [
+        "25",
+        "27",
+        "29",
+        "31"
+      ],
+      "holds": [],
+      "tier": "p4"
+    },
+    {
+      "id": "r_balc-j",
+      "area": "upper_balcony",
+      "section": "R BALC",
+      "rowName": "J",
+      "rowRank": 112,
+      "capacity": 4,
+      "parity": "EVEN",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "26",
+        "28",
+        "30",
+        "32"
+      ],
+      "holds": [],
+      "tier": "p4"
+    },
+    {
+      "id": "cl_bal-k",
       "area": "upper_balcony",
       "section": "CL BAL",
-      "rowName": "N",
+      "rowName": "K",
       "rowRank": 113,
       "capacity": 12,
       "parity": "EVEN",
@@ -2646,49 +2719,14 @@
         "23"
       ],
       "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
+      "tier": "p4"
     },
     {
-      "id": "r_balc-n",
-      "area": "upper_balcony",
-      "section": "R BALC",
-      "rowName": "N",
-      "rowRank": 114,
-      "capacity": 2,
-      "parity": "EVEN",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "26",
-        "28"
-      ],
-      "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
-    },
-    {
-      "id": "l_balc-n",
-      "area": "upper_balcony",
-      "section": "L BALC",
-      "rowName": "N",
-      "rowRank": 115,
-      "capacity": 2,
-      "parity": "EVEN",
-      "lean": "RIGHT",
-      "seatNumbers": [
-        "25",
-        "27"
-      ],
-      "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
-    },
-    {
-      "id": "cr_bal-o",
+      "id": "cr_bal-k",
       "area": "upper_balcony",
       "section": "CR BAL",
-      "rowName": "O",
-      "rowRank": 116,
+      "rowName": "K",
+      "rowRank": 114,
       "capacity": 12,
       "parity": "EVEN",
       "lean": "LEFT",
@@ -2707,14 +2745,45 @@
         "24"
       ],
       "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
+      "tier": "p4"
     },
     {
-      "id": "cl_bal-o",
+      "id": "l_balc-k",
+      "area": "upper_balcony",
+      "section": "L BALC",
+      "rowName": "K",
+      "rowRank": 115,
+      "capacity": 2,
+      "parity": "EVEN",
+      "lean": "RIGHT",
+      "seatNumbers": [
+        "25",
+        "27"
+      ],
+      "holds": [],
+      "tier": "p4"
+    },
+    {
+      "id": "r_balc-k",
+      "area": "upper_balcony",
+      "section": "R BALC",
+      "rowName": "K",
+      "rowRank": 116,
+      "capacity": 2,
+      "parity": "EVEN",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "26",
+        "28"
+      ],
+      "holds": [],
+      "tier": "p4"
+    },
+    {
+      "id": "cl_bal-l",
       "area": "upper_balcony",
       "section": "CL BAL",
-      "rowName": "O",
+      "rowName": "L",
       "rowRank": 117,
       "capacity": 12,
       "parity": "EVEN",
@@ -2734,49 +2803,14 @@
         "23"
       ],
       "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
+      "tier": "p4"
     },
     {
-      "id": "r_balc-o",
-      "area": "upper_balcony",
-      "section": "R BALC",
-      "rowName": "O",
-      "rowRank": 118,
-      "capacity": 2,
-      "parity": "EVEN",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "26",
-        "28"
-      ],
-      "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
-    },
-    {
-      "id": "l_balc-o",
-      "area": "upper_balcony",
-      "section": "L BALC",
-      "rowName": "O",
-      "rowRank": 119,
-      "capacity": 2,
-      "parity": "EVEN",
-      "lean": "RIGHT",
-      "seatNumbers": [
-        "25",
-        "27"
-      ],
-      "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
-    },
-    {
-      "id": "cr_bal-p",
+      "id": "cr_bal-l",
       "area": "upper_balcony",
       "section": "CR BAL",
-      "rowName": "P",
-      "rowRank": 120,
+      "rowName": "L",
+      "rowRank": 118,
       "capacity": 12,
       "parity": "EVEN",
       "lean": "LEFT",
@@ -2795,14 +2829,45 @@
         "24"
       ],
       "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
+      "tier": "p4"
     },
     {
-      "id": "cl_bal-p",
+      "id": "l_balc-l",
+      "area": "upper_balcony",
+      "section": "L BALC",
+      "rowName": "L",
+      "rowRank": 119,
+      "capacity": 2,
+      "parity": "EVEN",
+      "lean": "RIGHT",
+      "seatNumbers": [
+        "25",
+        "27"
+      ],
+      "holds": [],
+      "tier": "p4"
+    },
+    {
+      "id": "r_balc-l",
+      "area": "upper_balcony",
+      "section": "R BALC",
+      "rowName": "L",
+      "rowRank": 120,
+      "capacity": 2,
+      "parity": "EVEN",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "26",
+        "28"
+      ],
+      "holds": [],
+      "tier": "p4"
+    },
+    {
+      "id": "cl_bal-m",
       "area": "upper_balcony",
       "section": "CL BAL",
-      "rowName": "P",
+      "rowName": "M",
       "rowRank": 121,
       "capacity": 12,
       "parity": "EVEN",
@@ -2822,49 +2887,14 @@
         "23"
       ],
       "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
+      "tier": "p4"
     },
     {
-      "id": "r_balc-p",
-      "area": "upper_balcony",
-      "section": "R BALC",
-      "rowName": "P",
-      "rowRank": 122,
-      "capacity": 2,
-      "parity": "EVEN",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "26",
-        "28"
-      ],
-      "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
-    },
-    {
-      "id": "l_balc-p",
-      "area": "upper_balcony",
-      "section": "L BALC",
-      "rowName": "P",
-      "rowRank": 123,
-      "capacity": 2,
-      "parity": "EVEN",
-      "lean": "RIGHT",
-      "seatNumbers": [
-        "25",
-        "27"
-      ],
-      "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
-    },
-    {
-      "id": "cr_bal-r",
+      "id": "cr_bal-m",
       "area": "upper_balcony",
       "section": "CR BAL",
-      "rowName": "R",
-      "rowRank": 124,
+      "rowName": "M",
+      "rowRank": 122,
       "capacity": 12,
       "parity": "EVEN",
       "lean": "LEFT",
@@ -2883,14 +2913,45 @@
         "24"
       ],
       "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
+      "tier": "p4"
     },
     {
-      "id": "cl_bal-r",
+      "id": "l_balc-m",
+      "area": "upper_balcony",
+      "section": "L BALC",
+      "rowName": "M",
+      "rowRank": 123,
+      "capacity": 2,
+      "parity": "EVEN",
+      "lean": "RIGHT",
+      "seatNumbers": [
+        "25",
+        "27"
+      ],
+      "holds": [],
+      "tier": "p4"
+    },
+    {
+      "id": "r_balc-m",
+      "area": "upper_balcony",
+      "section": "R BALC",
+      "rowName": "M",
+      "rowRank": 124,
+      "capacity": 2,
+      "parity": "EVEN",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "26",
+        "28"
+      ],
+      "holds": [],
+      "tier": "p4"
+    },
+    {
+      "id": "cl_bal-n",
       "area": "upper_balcony",
       "section": "CL BAL",
-      "rowName": "R",
+      "rowName": "N",
       "rowRank": 125,
       "capacity": 12,
       "parity": "EVEN",
@@ -2910,49 +2971,14 @@
         "23"
       ],
       "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
+      "tier": "p4"
     },
     {
-      "id": "r_balc-r",
-      "area": "upper_balcony",
-      "section": "R BALC",
-      "rowName": "R",
-      "rowRank": 126,
-      "capacity": 2,
-      "parity": "EVEN",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "26",
-        "28"
-      ],
-      "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
-    },
-    {
-      "id": "l_balc-r",
-      "area": "upper_balcony",
-      "section": "L BALC",
-      "rowName": "R",
-      "rowRank": 127,
-      "capacity": 2,
-      "parity": "EVEN",
-      "lean": "RIGHT",
-      "seatNumbers": [
-        "25",
-        "27"
-      ],
-      "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
-    },
-    {
-      "id": "cr_bal-s",
+      "id": "cr_bal-n",
       "area": "upper_balcony",
       "section": "CR BAL",
-      "rowName": "S",
-      "rowRank": 128,
+      "rowName": "N",
+      "rowRank": 126,
       "capacity": 12,
       "parity": "EVEN",
       "lean": "LEFT",
@@ -2971,14 +2997,45 @@
         "24"
       ],
       "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
+      "tier": "p4"
     },
     {
-      "id": "cl_bal-s",
+      "id": "l_balc-n",
+      "area": "upper_balcony",
+      "section": "L BALC",
+      "rowName": "N",
+      "rowRank": 127,
+      "capacity": 2,
+      "parity": "EVEN",
+      "lean": "RIGHT",
+      "seatNumbers": [
+        "25",
+        "27"
+      ],
+      "holds": [],
+      "tier": "p4"
+    },
+    {
+      "id": "r_balc-n",
+      "area": "upper_balcony",
+      "section": "R BALC",
+      "rowName": "N",
+      "rowRank": 128,
+      "capacity": 2,
+      "parity": "EVEN",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "26",
+        "28"
+      ],
+      "holds": [],
+      "tier": "p4"
+    },
+    {
+      "id": "cl_bal-o",
       "area": "upper_balcony",
       "section": "CL BAL",
-      "rowName": "S",
+      "rowName": "O",
       "rowRank": 129,
       "capacity": 12,
       "parity": "EVEN",
@@ -2998,49 +3055,14 @@
         "23"
       ],
       "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
+      "tier": "p4"
     },
     {
-      "id": "r_balc-s",
-      "area": "upper_balcony",
-      "section": "R BALC",
-      "rowName": "S",
-      "rowRank": 130,
-      "capacity": 2,
-      "parity": "EVEN",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "26",
-        "28"
-      ],
-      "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
-    },
-    {
-      "id": "l_balc-s",
-      "area": "upper_balcony",
-      "section": "L BALC",
-      "rowName": "S",
-      "rowRank": 131,
-      "capacity": 2,
-      "parity": "EVEN",
-      "lean": "RIGHT",
-      "seatNumbers": [
-        "25",
-        "27"
-      ],
-      "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
-    },
-    {
-      "id": "cr_bal-t",
+      "id": "cr_bal-o",
       "area": "upper_balcony",
       "section": "CR BAL",
-      "rowName": "T",
-      "rowRank": 132,
+      "rowName": "O",
+      "rowRank": 130,
       "capacity": 12,
       "parity": "EVEN",
       "lean": "LEFT",
@@ -3059,14 +3081,45 @@
         "24"
       ],
       "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
+      "tier": "p4"
     },
     {
-      "id": "cl_bal-t",
+      "id": "l_balc-o",
+      "area": "upper_balcony",
+      "section": "L BALC",
+      "rowName": "O",
+      "rowRank": 131,
+      "capacity": 2,
+      "parity": "EVEN",
+      "lean": "RIGHT",
+      "seatNumbers": [
+        "25",
+        "27"
+      ],
+      "holds": [],
+      "tier": "p4"
+    },
+    {
+      "id": "r_balc-o",
+      "area": "upper_balcony",
+      "section": "R BALC",
+      "rowName": "O",
+      "rowRank": 132,
+      "capacity": 2,
+      "parity": "EVEN",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "26",
+        "28"
+      ],
+      "holds": [],
+      "tier": "p4"
+    },
+    {
+      "id": "cl_bal-p",
       "area": "upper_balcony",
       "section": "CL BAL",
-      "rowName": "T",
+      "rowName": "P",
       "rowRank": 133,
       "capacity": 12,
       "parity": "EVEN",
@@ -3086,49 +3139,14 @@
         "23"
       ],
       "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
+      "tier": "p4"
     },
     {
-      "id": "r_balc-t",
-      "area": "upper_balcony",
-      "section": "R BALC",
-      "rowName": "T",
-      "rowRank": 134,
-      "capacity": 2,
-      "parity": "EVEN",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "26",
-        "28"
-      ],
-      "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
-    },
-    {
-      "id": "l_balc-t",
-      "area": "upper_balcony",
-      "section": "L BALC",
-      "rowName": "T",
-      "rowRank": 135,
-      "capacity": 2,
-      "parity": "EVEN",
-      "lean": "RIGHT",
-      "seatNumbers": [
-        "25",
-        "27"
-      ],
-      "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
-    },
-    {
-      "id": "cr_bal-u",
+      "id": "cr_bal-p",
       "area": "upper_balcony",
       "section": "CR BAL",
-      "rowName": "U",
-      "rowRank": 136,
+      "rowName": "P",
+      "rowRank": 134,
       "capacity": 12,
       "parity": "EVEN",
       "lean": "LEFT",
@@ -3147,14 +3165,45 @@
         "24"
       ],
       "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
+      "tier": "p4"
     },
     {
-      "id": "cl_bal-u",
+      "id": "l_balc-p",
+      "area": "upper_balcony",
+      "section": "L BALC",
+      "rowName": "P",
+      "rowRank": 135,
+      "capacity": 2,
+      "parity": "EVEN",
+      "lean": "RIGHT",
+      "seatNumbers": [
+        "25",
+        "27"
+      ],
+      "holds": [],
+      "tier": "p4"
+    },
+    {
+      "id": "r_balc-p",
+      "area": "upper_balcony",
+      "section": "R BALC",
+      "rowName": "P",
+      "rowRank": 136,
+      "capacity": 2,
+      "parity": "EVEN",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "26",
+        "28"
+      ],
+      "holds": [],
+      "tier": "p4"
+    },
+    {
+      "id": "cl_bal-r",
       "area": "upper_balcony",
       "section": "CL BAL",
-      "rowName": "U",
+      "rowName": "R",
       "rowRank": 137,
       "capacity": 12,
       "parity": "EVEN",
@@ -3174,49 +3223,14 @@
         "23"
       ],
       "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
+      "tier": "p4"
     },
     {
-      "id": "r_balc-u",
-      "area": "upper_balcony",
-      "section": "R BALC",
-      "rowName": "U",
-      "rowRank": 138,
-      "capacity": 2,
-      "parity": "EVEN",
-      "lean": "LEFT",
-      "seatNumbers": [
-        "26",
-        "28"
-      ],
-      "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
-    },
-    {
-      "id": "l_balc-u",
-      "area": "upper_balcony",
-      "section": "L BALC",
-      "rowName": "U",
-      "rowRank": 139,
-      "capacity": 2,
-      "parity": "EVEN",
-      "lean": "RIGHT",
-      "seatNumbers": [
-        "25",
-        "27"
-      ],
-      "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
-    },
-    {
-      "id": "cr_bal-v",
+      "id": "cr_bal-r",
       "area": "upper_balcony",
       "section": "CR BAL",
-      "rowName": "V",
-      "rowRank": 140,
+      "rowName": "R",
+      "rowRank": 138,
       "capacity": 12,
       "parity": "EVEN",
       "lean": "LEFT",
@@ -3235,14 +3249,45 @@
         "24"
       ],
       "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
+      "tier": "p4"
     },
     {
-      "id": "cl_bal-v",
+      "id": "l_balc-r",
+      "area": "upper_balcony",
+      "section": "L BALC",
+      "rowName": "R",
+      "rowRank": 139,
+      "capacity": 2,
+      "parity": "EVEN",
+      "lean": "RIGHT",
+      "seatNumbers": [
+        "25",
+        "27"
+      ],
+      "holds": [],
+      "tier": "p4"
+    },
+    {
+      "id": "r_balc-r",
+      "area": "upper_balcony",
+      "section": "R BALC",
+      "rowName": "R",
+      "rowRank": 140,
+      "capacity": 2,
+      "parity": "EVEN",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "26",
+        "28"
+      ],
+      "holds": [],
+      "tier": "p4"
+    },
+    {
+      "id": "cl_bal-s",
       "area": "upper_balcony",
       "section": "CL BAL",
-      "rowName": "V",
+      "rowName": "S",
       "rowRank": 141,
       "capacity": 12,
       "parity": "EVEN",
@@ -3262,30 +3307,39 @@
         "23"
       ],
       "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
+      "tier": "p4"
     },
     {
-      "id": "r_balc-v",
+      "id": "cr_bal-s",
       "area": "upper_balcony",
-      "section": "R BALC",
-      "rowName": "V",
+      "section": "CR BAL",
+      "rowName": "S",
       "rowRank": 142,
-      "capacity": 1,
-      "parity": "ODD",
+      "capacity": 12,
+      "parity": "EVEN",
       "lean": "LEFT",
       "seatNumbers": [
-        "26"
+        "2",
+        "4",
+        "6",
+        "8",
+        "10",
+        "12",
+        "14",
+        "16",
+        "18",
+        "20",
+        "22",
+        "24"
       ],
       "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
+      "tier": "p4"
     },
     {
-      "id": "l_balc-v",
+      "id": "l_balc-s",
       "area": "upper_balcony",
       "section": "L BALC",
-      "rowName": "V",
+      "rowName": "S",
       "rowRank": 143,
       "capacity": 2,
       "parity": "EVEN",
@@ -3295,15 +3349,82 @@
         "27"
       ],
       "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
+      "tier": "p4"
     },
     {
-      "id": "l_balc-w",
+      "id": "r_balc-s",
+      "area": "upper_balcony",
+      "section": "R BALC",
+      "rowName": "S",
+      "rowRank": 144,
+      "capacity": 2,
+      "parity": "EVEN",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "26",
+        "28"
+      ],
+      "holds": [],
+      "tier": "p4"
+    },
+    {
+      "id": "cl_bal-t",
+      "area": "upper_balcony",
+      "section": "CL BAL",
+      "rowName": "T",
+      "rowRank": 145,
+      "capacity": 12,
+      "parity": "EVEN",
+      "lean": "RIGHT",
+      "seatNumbers": [
+        "1",
+        "3",
+        "5",
+        "7",
+        "9",
+        "11",
+        "13",
+        "15",
+        "17",
+        "19",
+        "21",
+        "23"
+      ],
+      "holds": [],
+      "tier": "p4"
+    },
+    {
+      "id": "cr_bal-t",
+      "area": "upper_balcony",
+      "section": "CR BAL",
+      "rowName": "T",
+      "rowRank": 146,
+      "capacity": 12,
+      "parity": "EVEN",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "2",
+        "4",
+        "6",
+        "8",
+        "10",
+        "12",
+        "14",
+        "16",
+        "18",
+        "20",
+        "22",
+        "24"
+      ],
+      "holds": [],
+      "tier": "p4"
+    },
+    {
+      "id": "l_balc-t",
       "area": "upper_balcony",
       "section": "L BALC",
-      "rowName": "W",
-      "rowRank": 144,
+      "rowName": "T",
+      "rowRank": 147,
       "capacity": 2,
       "parity": "EVEN",
       "lean": "RIGHT",
@@ -3312,261 +3433,378 @@
         "27"
       ],
       "holds": [],
-      "tier": "upper_balcony",
-      "isGa": false
+      "tier": "p4"
+    },
+    {
+      "id": "r_balc-t",
+      "area": "upper_balcony",
+      "section": "R BALC",
+      "rowName": "T",
+      "rowRank": 148,
+      "capacity": 2,
+      "parity": "EVEN",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "26",
+        "28"
+      ],
+      "holds": [],
+      "tier": "p4"
+    },
+    {
+      "id": "cl_bal-u",
+      "area": "upper_balcony",
+      "section": "CL BAL",
+      "rowName": "U",
+      "rowRank": 149,
+      "capacity": 12,
+      "parity": "EVEN",
+      "lean": "RIGHT",
+      "seatNumbers": [
+        "1",
+        "3",
+        "5",
+        "7",
+        "9",
+        "11",
+        "13",
+        "15",
+        "17",
+        "19",
+        "21",
+        "23"
+      ],
+      "holds": [],
+      "tier": "p5"
+    },
+    {
+      "id": "cr_bal-u",
+      "area": "upper_balcony",
+      "section": "CR BAL",
+      "rowName": "U",
+      "rowRank": 150,
+      "capacity": 12,
+      "parity": "EVEN",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "2",
+        "4",
+        "6",
+        "8",
+        "10",
+        "12",
+        "14",
+        "16",
+        "18",
+        "20",
+        "22",
+        "24"
+      ],
+      "holds": [],
+      "tier": "p5"
+    },
+    {
+      "id": "l_balc-u",
+      "area": "upper_balcony",
+      "section": "L BALC",
+      "rowName": "U",
+      "rowRank": 151,
+      "capacity": 2,
+      "parity": "EVEN",
+      "lean": "RIGHT",
+      "seatNumbers": [
+        "25",
+        "27"
+      ],
+      "holds": [],
+      "tier": "p5"
+    },
+    {
+      "id": "r_balc-u",
+      "area": "upper_balcony",
+      "section": "R BALC",
+      "rowName": "U",
+      "rowRank": 152,
+      "capacity": 2,
+      "parity": "EVEN",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "26",
+        "28"
+      ],
+      "holds": [],
+      "tier": "p5"
+    },
+    {
+      "id": "cl_bal-v",
+      "area": "upper_balcony",
+      "section": "CL BAL",
+      "rowName": "V",
+      "rowRank": 153,
+      "capacity": 12,
+      "parity": "EVEN",
+      "lean": "RIGHT",
+      "seatNumbers": [
+        "1",
+        "3",
+        "5",
+        "7",
+        "9",
+        "11",
+        "13",
+        "15",
+        "17",
+        "19",
+        "21",
+        "23"
+      ],
+      "holds": [],
+      "tier": "p5"
+    },
+    {
+      "id": "cr_bal-v",
+      "area": "upper_balcony",
+      "section": "CR BAL",
+      "rowName": "V",
+      "rowRank": 154,
+      "capacity": 12,
+      "parity": "EVEN",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "2",
+        "4",
+        "6",
+        "8",
+        "10",
+        "12",
+        "14",
+        "16",
+        "18",
+        "20",
+        "22",
+        "24"
+      ],
+      "holds": [],
+      "tier": "p5"
+    },
+    {
+      "id": "l_balc-v",
+      "area": "upper_balcony",
+      "section": "L BALC",
+      "rowName": "V",
+      "rowRank": 155,
+      "capacity": 2,
+      "parity": "EVEN",
+      "lean": "RIGHT",
+      "seatNumbers": [
+        "25",
+        "27"
+      ],
+      "holds": [],
+      "tier": "p5"
+    },
+    {
+      "id": "r_balc-v",
+      "area": "upper_balcony",
+      "section": "R BALC",
+      "rowName": "V",
+      "rowRank": 156,
+      "capacity": 1,
+      "parity": "ODD",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "26"
+      ],
+      "holds": [],
+      "tier": "p5"
+    },
+    {
+      "id": "l_balc-w",
+      "area": "upper_balcony",
+      "section": "L BALC",
+      "rowName": "W",
+      "rowRank": 157,
+      "capacity": 2,
+      "parity": "EVEN",
+      "lean": "RIGHT",
+      "seatNumbers": [
+        "25",
+        "27"
+      ],
+      "holds": [],
+      "tier": "p5"
     }
   ],
   "activeRowIds": [
     "orch_c-aa",
     "orch_c-bb",
     "orch_c-a",
-    "orch_r-a",
     "orch_l-a",
+    "orch_r-a",
     "orch_c-b",
-    "orch_r-b",
     "orch_l-b",
+    "orch_r-b",
     "orch_c-c",
-    "orch_r-c",
     "orch_l-c",
+    "orch_r-c",
     "orch_c-d",
-    "orch_r-d",
     "orch_l-d",
+    "orch_r-d",
     "orch_c-e",
-    "orch_r-e",
     "orch_l-e",
+    "orch_r-e",
     "orch_c-f",
-    "orch_r-f",
     "orch_l-f",
+    "orch_r-f",
     "orch_c-g",
-    "orch_r-g",
     "orch_l-g",
+    "orch_r-g",
     "orch_c-h",
-    "orch_r-h",
     "orch_l-h",
+    "orch_r-h",
     "orch_c-j",
-    "orch_r-j",
     "orch_l-j",
+    "orch_r-j",
     "orch_c-k",
     "orch_c-l",
-    "orch_c-m",
-    "orch_r-m",
-    "orch_l-m",
-    "orch_c-n",
-    "orch_r-n",
-    "orch_l-n",
-    "orch_c-o",
-    "orch_r-o",
-    "orch_l-o",
-    "orch_c-p",
-    "orch_r-p",
-    "orch_l-p",
-    "orch_c-r",
-    "orch_r-r",
-    "orch_l-r",
-    "orch_c-s",
-    "orch_r-s",
-    "orch_l-s",
-    "orch_c-t",
-    "orch_r-t",
-    "orch_l-t",
-    "orch_c-u",
-    "orch_r-u",
-    "orch_l-u",
-    "orch_c-v",
-    "orch_r-v",
-    "orch_l-v",
-    "orch_c-w",
-    "orch_r-w",
-    "orch_l-w",
-    "orch_c-x",
-    "orch_r-x",
-    "orch_l-x",
-    "orch_c-y",
-    "orch_r-y",
-    "orch_l-y",
-    "orch_r-z",
-    "orch_l-z",
     "fl_bal-a",
     "fr_bal-a",
     "fl_bal-b",
     "fr_bal-b",
     "fc_bal-c",
-    "fr_bal-c",
     "fl_bal-c",
+    "fr_bal-c",
     "fc_bal-d",
-    "fr_bal-d",
     "fl_bal-d",
-    "cr_bal-e",
+    "fr_bal-d",
+    "orch_l-k",
+    "orch_r-k",
+    "orch_c-m",
+    "orch_l-m",
+    "orch_r-m",
+    "orch_c-n",
+    "orch_l-n",
+    "orch_r-n",
+    "orch_c-o",
+    "orch_l-o",
+    "orch_r-o",
+    "orch_c-p",
+    "orch_l-p",
+    "orch_r-p",
+    "orch_c-r",
+    "orch_l-r",
+    "orch_r-r",
+    "orch_c-s",
+    "orch_l-s",
+    "orch_r-s",
+    "orch_c-t",
+    "orch_l-t",
+    "orch_r-t",
+    "orch_c-u",
+    "orch_l-u",
+    "orch_r-u",
+    "orch_c-v",
+    "orch_l-v",
+    "orch_r-v",
+    "orch_c-w",
+    "orch_l-w",
+    "orch_r-w",
+    "orch_c-x",
+    "orch_l-x",
+    "orch_r-x",
+    "orch_c-y",
+    "orch_l-y",
+    "orch_r-y",
+    "orch_c-z",
+    "orch_l-z",
+    "orch_r-z",
+    "box_a-ga1",
+    "box_b-ga1",
+    "box_c-ga1",
+    "box_d-ga1",
+    "box_e-ga1",
+    "box_f-ga1",
+    "box_g-ga1",
+    "box_h-ga1",
+    "box_j-ga1",
+    "box_k-ga1",
     "cl_bal-e",
-    "r_balc-e",
+    "cr_bal-e",
     "l_balc-e",
-    "cr_bal-f",
+    "r_balc-e",
     "cl_bal-f",
-    "r_balc-f",
+    "cr_bal-f",
     "l_balc-f",
-    "cr_bal-g",
+    "r_balc-f",
     "cl_bal-g",
-    "r_balc-g",
+    "cr_bal-g",
     "l_balc-g",
-    "cr_bal-h",
+    "r_balc-g",
     "cl_bal-h",
-    "r_balc-h",
+    "cr_bal-h",
     "l_balc-h",
-    "cr_bal-j",
+    "r_balc-h",
     "cl_bal-j",
-    "r_balc-j",
+    "cr_bal-j",
     "l_balc-j",
-    "cr_bal-k",
+    "r_balc-j",
     "cl_bal-k",
-    "r_balc-k",
+    "cr_bal-k",
     "l_balc-k",
-    "cr_bal-l",
+    "r_balc-k",
     "cl_bal-l",
-    "r_balc-l",
+    "cr_bal-l",
     "l_balc-l",
-    "cr_bal-m",
+    "r_balc-l",
     "cl_bal-m",
-    "r_balc-m",
+    "cr_bal-m",
     "l_balc-m",
-    "cr_bal-n",
+    "r_balc-m",
     "cl_bal-n",
-    "r_balc-n",
+    "cr_bal-n",
     "l_balc-n",
-    "cr_bal-o",
+    "r_balc-n",
     "cl_bal-o",
-    "r_balc-o",
+    "cr_bal-o",
     "l_balc-o",
-    "cr_bal-p",
+    "r_balc-o",
     "cl_bal-p",
-    "r_balc-p",
+    "cr_bal-p",
     "l_balc-p",
-    "cr_bal-r",
+    "r_balc-p",
     "cl_bal-r",
-    "r_balc-r",
+    "cr_bal-r",
     "l_balc-r",
-    "cr_bal-s",
+    "r_balc-r",
     "cl_bal-s",
-    "r_balc-s",
+    "cr_bal-s",
     "l_balc-s",
-    "cr_bal-t",
+    "r_balc-s",
     "cl_bal-t",
-    "r_balc-t",
+    "cr_bal-t",
     "l_balc-t",
-    "cr_bal-u",
+    "r_balc-t",
     "cl_bal-u",
-    "r_balc-u",
+    "cr_bal-u",
     "l_balc-u",
-    "cr_bal-v",
+    "r_balc-u",
     "cl_bal-v",
-    "r_balc-v",
+    "cr_bal-v",
     "l_balc-v",
+    "r_balc-v",
     "l_balc-w"
   ],
-  "relief": {
-    "r_balc-e": {
-      "single": true,
-      "gapRelief": true
-    },
-    "l_balc-e": {
-      "single": true,
-      "gapRelief": true
-    },
-    "r_balc-f": {
-      "single": true,
-      "gapRelief": true
-    },
-    "l_balc-f": {
-      "single": true,
-      "gapRelief": true
-    },
-    "r_balc-g": {
-      "single": true,
-      "gapRelief": true
-    },
-    "l_balc-g": {
-      "single": true,
-      "gapRelief": true
-    },
-    "r_balc-k": {
-      "gapRelief": true
-    },
-    "l_balc-k": {
-      "gapRelief": true
-    },
-    "r_balc-l": {
-      "gapRelief": true
-    },
-    "l_balc-l": {
-      "gapRelief": true
-    },
-    "r_balc-m": {
-      "gapRelief": true
-    },
-    "l_balc-m": {
-      "gapRelief": true
-    },
-    "r_balc-n": {
-      "gapRelief": true
-    },
-    "l_balc-n": {
-      "gapRelief": true
-    },
-    "r_balc-o": {
-      "gapRelief": true
-    },
-    "l_balc-o": {
-      "gapRelief": true
-    },
-    "r_balc-p": {
-      "gapRelief": true
-    },
-    "l_balc-p": {
-      "gapRelief": true
-    },
-    "r_balc-r": {
-      "gapRelief": true
-    },
-    "l_balc-r": {
-      "gapRelief": true
-    },
-    "r_balc-s": {
-      "gapRelief": true
-    },
-    "l_balc-s": {
-      "gapRelief": true
-    },
-    "r_balc-t": {
-      "gapRelief": true
-    },
-    "l_balc-t": {
-      "gapRelief": true
-    },
-    "r_balc-u": {
-      "gapRelief": true
-    },
-    "l_balc-u": {
-      "gapRelief": true
-    },
-    "r_balc-v": {
-      "single": true,
-      "gapRelief": true
-    },
-    "l_balc-v": {
-      "gapRelief": true
-    },
-    "l_balc-w": {
-      "gapRelief": true
-    }
-  },
-  "notes": "Imported from a Cope RowRank architecture sheet: 144 rows, 1152 working seats, tiers by area (orchestra, front_balcony, upper_balcony). Held seats are those his sheet already excludes from WorkingL; relief flags are SingleInventoryFlag / GapReliefEligible.",
+  "notes": "Imported from a box-office seat manifest: 157 rows, 1265 seats, 143 held (2-HOUS 30, 3-ARTI 30, 4-MKTG 30, 1-TECH 41, 5-ADA 12). Tiers are the manifest price levels (P1 $125, P2 $85, P3 $70, P4 $50, P5 $25); floors are those prices. RowRank is derived — price level, then row letter (AA before A), then section order — adjust with a rank file (section,row,rowRank) if the room disagrees. Lean is inward by section name; area is guessed from the section name.",
   "source": {
-    "kind": "cope-rowrank-xlsx",
-    "file": "GAE_Lincoln_Full_RowRank_Architecture_v4_with_Full_Offer_Pool.xlsx · sheet \"Full RowRank Architecture\"",
+    "kind": "manifest-csv",
+    "file": "Lincoln there seat manifest Alice Smith (Tuesday, May 19, 2026 12 59 PM).csv",
     "importedAt": "2026-09-07"
   },
   "tierFloorsCents": {
-    "orchestra": 8500,
-    "front_balcony": 7000,
-    "upper_balcony": 5000
+    "p1": 12500,
+    "p2": 8500,
+    "p3": 7000,
+    "p4": 5000,
+    "p5": 2500
   }
 }

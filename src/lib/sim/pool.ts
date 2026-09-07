@@ -10,7 +10,7 @@ import type { RankedOffer, TierPreference } from "@/lib/gae/types";
 import type { OfferParitySummary } from "./types";
 import { SimInputError } from "./venue";
 
-export function parseCsv(text: string): string[][] {
+export function parseCsv(text: string, delimiter = ","): string[][] {
   const rows: string[][] = [];
   let field = "";
   let row: string[] = [];
@@ -25,7 +25,7 @@ export function parseCsv(text: string): string[][] {
         } else inQuotes = false;
       } else field += c;
     } else if (c === '"') inQuotes = true;
-    else if (c === ",") {
+    else if (c === delimiter) {
       row.push(field);
       field = "";
     } else if (c === "\n" || c === "\r") {
@@ -95,15 +95,36 @@ export function formatTierPref(p: TierPreference): string {
 
 export const SUBMITTED_BASE_MS = Date.UTC(2026, 0, 1);
 
-export function offersFromCsv(
-  text: string,
-  opts: { priceMode?: "dollars" | "cents"; label?: string } = {},
-): RankedOffer[] {
+export type PoolOptions = { priceMode?: "dollars" | "cents"; label?: string };
+
+export function offersFromCsv(text: string, opts: PoolOptions = {}): RankedOffer[] {
+  const rows = parseCsv(text);
+  if (rows.length < 2) throw new SimInputError(`${opts.label ?? "pool"}: CSV has no data rows`);
+  return offersFromTable(rows[0]!, rows.slice(1), opts);
+}
+
+// A sheet read as row objects (the CLI's xlsx path). Cells become strings;
+// numbers keep their digits so "500" and 500 load the same.
+export function offersFromSheet(sheetRows: Record<string, unknown>[], opts: PoolOptions = {}): RankedOffer[] {
+  if (sheetRows.length === 0) throw new SimInputError(`${opts.label ?? "pool"}: sheet has no rows`);
+  const headers = Object.keys(sheetRows[0]!);
+  const rows = sheetRows.map((r) => headers.map((h) => (r[h] === null || r[h] === undefined ? "" : String(r[h]))));
+  return offersFromTable(headers, rows.filter((r) => r.some((c) => c.trim() !== "")), opts);
+}
+
+// Normalised pool CSV, the shape import-pool writes and every scenario reads.
+export function poolToCsv(offers: RankedOffer[]): string {
+  const lines = ["id,size,price,tier,order"];
+  const base = SUBMITTED_BASE_MS;
+  for (const o of offers) {
+    lines.push([o.id, o.groupSize, (o.pricePerTicketCents / 100).toFixed(2), formatTierPref(o.tierPreference), Math.round((o.submittedAt.getTime() - base) / 1000)].join(","));
+  }
+  return lines.join("\n") + "\n";
+}
+
+function offersFromTable(headers: string[], rows: string[][], opts: PoolOptions): RankedOffer[] {
   const label = opts.label ?? "pool";
   const priceMode = opts.priceMode ?? "dollars";
-  const rows = parseCsv(text);
-  if (rows.length < 2) throw new SimInputError(`${label}: CSV has no data rows`);
-  const headers = rows[0]!;
   const gi = findColumn(headers, "groupSize");
   const pi = findColumn(headers, "price");
   const ti = findColumn(headers, "tier");
@@ -115,7 +136,7 @@ export function offersFromCsv(
     );
   }
   const seen = new Set<string>();
-  return rows.slice(1).map((r, idx) => {
+  return rows.map((r, idx) => {
     const line = idx + 2;
     const groupSize = Math.round(Number(r[gi]?.trim()));
     if (!Number.isFinite(groupSize) || groupSize < 1) throw new SimInputError(`${label} line ${line}: bad group size "${r[gi]}"`);
