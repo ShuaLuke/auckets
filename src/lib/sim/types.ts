@@ -168,6 +168,97 @@ export type OfferParitySummary = {
   priceMedianCents: number;
 };
 
+// --- Timeline (slice 5) ----------------------------------------------------
+//
+// Simulate the offer window as time instead of a single pool: offers arrive,
+// previews run, fans see themselves displaced, some revise or withdraw,
+// binding happens, then seats come back. Everything here answers an open
+// product question (Q3 rolling admission, Q4 post-binding inventory, Q5
+// "ring the register", Q12 revisions, NEW-9 withdrawals) — the numbers are
+// for the decision, not evidence of one already made.
+
+export type ArrivalCurve = "uniform" | "front-loaded" | "last-day-spike" | "s-curve";
+
+export type TimelineSpec = {
+  windowDays: number; // Q17 default 14; NEW-1 working assumption ≤ 6
+  arrival?: ArrivalCurve; // default uniform
+  previewEveryHours?: number; // default 12
+  autoBidAtPreviews?: boolean; // default true (production resolves at each preview)
+  // Q12: fans who raise their price after a preview shows them displaced.
+  revisions?: { sharePct: number; stepsUp: [number, number]; maxPerFan?: number };
+  // NEW-9: fans who withdraw before binding (uniformly between arrival and close).
+  withdrawals?: { sharePct: number };
+  // Q3: an offer seated for this many consecutive hours would have been told
+  // "Admission Confirmed". Measured, not enforced.
+  rollingConfirmed?: { afterHours: number };
+  // Q4: after binding, this share of seated offers return their seats.
+  returns?: { sharePct: number; refill: "release" | "keep-pool-live" };
+  // Production releases after binding: held seats (source production or
+  // venue) freed and, under keep-pool-live, backfilled from the unplaced pool.
+  releases?: { seats: number };
+};
+
+export type TimelineTick = {
+  hour: number;
+  arrivedOffers: number;
+  activeOffers: number; // arrived and not withdrawn
+  placedSeats: number;
+  fillRate: number;
+  displacedOut: number; // fans seated last tick, not seated now
+  displacedDown: number; // fans moved to a worse tier since last tick
+  revisionsApplied: number;
+  withdrawalsApplied: number;
+  bookedCents: number; // Σ price × size of every active offer (register-first view)
+  seatedValueCents: number; // Σ price × size of seated offers at this tick
+};
+
+export type TemporalMetrics = {
+  windowHours: number;
+  previews: number;
+  ticks: TimelineTick[];
+  displacement: {
+    outEvents: number;
+    downEvents: number;
+    fansToldInThenOut: number; // fans with ≥1 out event after having been seated
+    fansEverDisplaced: number; // out or down
+    avgOutEventsPerDisplacedFan: number;
+    seatedAtFirstPreviewThenUnseatedAtBinding: number;
+  };
+  revisions: { revisers: number; fansRevised: number; revisionsApplied: number; addedCents: number; revisedAndSeatedAtBinding: number };
+  // Auto-bid raises that happened at previews (they persist into the binding
+  // pool, so the binding-level Auto-bid section will show few or none).
+  autoBidDuringWindow: { fansRaised: number; raises: number; addedCents: number };
+  withdrawals: { withdrawers: number; withdrawn: number; withdrawnValueCents: number; wereSeatedWhenTheyLeft: number };
+  rollingConfirmed: {
+    afterHours: number;
+    confirmedFans: number;
+    confirmedSeats: number;
+    brokenConfirmations: number; // confirmed, then not seated at binding
+    brokenValueCents: number;
+    avgHoursToConfirm: number;
+  } | null;
+  returns: {
+    refill: "release" | "keep-pool-live";
+    returnedOffers: number;
+    returnedSeats: number;
+    returnedValueCents: number;
+    releasedSeats: number;
+    refilledSeats: number;
+    refilledOffers: number;
+    refilledValueCents: number;
+    fillAfterReturns: number;
+    grossAfterReturnsCents: number;
+  } | null;
+  registerFirst: {
+    bookedByDayCents: number[]; // cumulative, index = day
+    bookedAtCloseCents: number;
+    seatedAtBindingCents: number;
+    acceptedUnseatedOffers: number;
+    acceptedUnseatedValueCents: number;
+    acceptedUnseatedShareOfBooked: number;
+  };
+};
+
 // --- Scenario --------------------------------------------------------------
 
 // "greedy" | "clean-fit" | "parity-tiebreak" | "singles-reserve[:k]" and
@@ -184,6 +275,8 @@ export type Scenario = {
   // Applies to every auto-bidder in the pool (generated or from a file with
   // a cap column). Default: fixed $5, the shipped rule (ADR-0018).
   autoBidRaiseRule?: RaiseRule;
+  // Slice 5: simulate the window as time. Omit for a single-pool run.
+  timeline?: TimelineSpec;
 };
 
 // --- Metrics ---------------------------------------------------------------
@@ -339,6 +432,7 @@ export type PolicyRun = {
   raises?: AutoBidRaise[];
   config: AllocationConfig;
   caveat: string; // what the policy trades away, for the report
+  temporal?: TemporalMetrics; // present when scenario.timeline is set
 };
 
 export type Percentiles = { p5: number; p50: number; p95: number; mean: number; stdev: number; min: number; max: number };

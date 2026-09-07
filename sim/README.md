@@ -28,6 +28,8 @@ npm run sim -- run sim/scenarios/lincoln-v4-autobid.json --raise percent:5     #
 npm run sim -- sweep sim/scenarios/lincoln-v4-mix.json --vary pool.oversubscription=0.6:2.0:0.1 --seeds 20    # yield curve
 npm run sim -- sweep sim/scenarios/lincoln-v4-mix.json --vary pool.groupSizeMix=even-heavy,odd-heavy,singles-rich,couples,big-groups --seeds 20 --policies greedy,clean-fit
 npm run sim -- run sim/scenarios/lincoln-v4-channels.json      # auto-bid + private offers + Bleacher carve-out, 10 seeds
+npm run sim -- run sim/scenarios/lincoln-v4-window.json        # the window as a timeline: previews, displacement, revisions, returns
+npm run sim -- sweep sim/scenarios/lincoln-v4-window.json --vary timeline.windowDays=3,6,14 --seeds 10   # NEW-1 vs Q17
 ```
 
 Every `run` prints the fill report and writes `sim/runs/<name>/`:
@@ -72,6 +74,25 @@ A generated pool can carry a share of private offers (`generate.privateOffers: {
 
 `show.bleacher: { "sharePct": 6, "priceCents": 4000 }` holds whole seated rows from the worst rank up until the share of seats on sale is met, tagged `bleacher`, so the engine allocates the rest. The report estimates the channel outside the engine: seats × price if sold out, and a demand-bounded estimate `min(seats, tickets requested by unplaced offers) × price`, added to the GAE gross as "combined". Compare against the same scenario without the carve-out to see what those rows earn inside the engine.
 
+## Timeline (Q3, Q4, Q5, Q12, NEW-9 — all still open)
+
+`timeline` turns a run into the offer window played out in time. Offers arrive over `windowDays` on an arrival curve (`uniform`, `front-loaded`, `last-day-spike`, `s-curve`); a preview allocation runs every `previewEveryHours` (auto-bid resolves at each one unless `autoBidAtPreviews: false`); binding runs at close on what arrived and wasn't withdrawn, at revised and auto-raised prices; then returns and releases play out.
+
+```jsonc
+"timeline": {
+  "windowDays": 6,                                   // Q17 default is 14; NEW-1 working assumption ≤ 6
+  "arrival": "last-day-spike",
+  "previewEveryHours": 12,
+  "revisions": { "sharePct": 25, "stepsUp": [1, 2], "maxPerFan": 3 },   // Q12: displaced fans who raise for the next preview
+  "withdrawals": { "sharePct": 3 },                  // NEW-9: fans who pull out before binding
+  "rollingConfirmed": { "afterHours": 24 },          // Q3: seated this long straight = would have been told "Admission Confirmed"
+  "returns": { "sharePct": 5, "refill": "release" }, // Q4: after binding; "release" (today's rule) or "keep-pool-live" (Cope's playbook)
+  "releases": { "seats": 0 }                         // production releases after binding, backfilled under keep-pool-live
+}
+```
+
+The report's Timeline section shows: a day-by-day table (arrivals, fill, told-out and moved-down events, revisions, withdrawals, booked vs seated value); displacement counts including fans seated at a preview and unseated later; how many would have been "Admission Confirmed" and how many of those confirmations binding would break; revisions, auto-bid raises and withdrawals during the window; returns, releases and refill; and the register-first view (booked by close vs seated at binding, and the accepted-but-unseated share). Rolling confirmation is measured, never enforced — the engine still runs ADR-0004's preview + binding. Compare `refill: "release"` against `"keep-pool-live"` with `compare-runs` to see what a live pool recovers.
+
 ## Scenario file
 
 ```jsonc
@@ -106,7 +127,8 @@ A generated pool can carry a share of private offers (`generate.privateOffers: {
   },
   "policies": ["greedy", "clean-fit"],        // see Policies above
   "seeds": 1,
-  "autoBidRaiseRule": { "kind": "fixed", "cents": 500 }   // optional; see Auto-bid
+  "autoBidRaiseRule": { "kind": "fixed", "cents": 500 },  // optional; see Auto-bid
+  "timeline": { "windowDays": 6 }                          // optional; see Timeline
 }
 ```
 

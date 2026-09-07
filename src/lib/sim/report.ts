@@ -221,6 +221,7 @@ function renderPolicySection(out: RunOutput, agg: PolicyAggregate, first: Policy
       L.push("");
     }
   }
+  if (first.temporal) L.push(...renderTimeline(out, agg, first, multi, hdr, sep, cell));
   if (first.metrics.bleacher) {
     const b = first.metrics.bleacher;
     L.push("### Bleacher carve-out (NEW-8 — not confirmed by Cope)");
@@ -267,6 +268,110 @@ function renderPolicySection(out: RunOutput, agg: PolicyAggregate, first: Policy
   return L;
 }
 
+function renderTimeline(
+  out: RunOutput,
+  agg: PolicyAggregate,
+  first: PolicyRun,
+  multi: boolean,
+  hdr: string,
+  sep: string,
+  cell: (key: string, fmt: (v: number) => string) => string,
+): string[] {
+  const L: string[] = [];
+  const t = first.temporal!;
+  const tl = out.scenario.timeline!;
+  L.push("### Timeline");
+  L.push("");
+  L.push(`Window ${tl.windowDays} days · arrivals ${tl.arrival ?? "uniform"} · preview every ${tl.previewEveryHours ?? 12}h (${t.previews} previews) · binding at close${tl.autoBidAtPreviews === false ? " · auto-bid resolved at binding only" : ""}. These answer questions that are still open (Q3, Q4, Q5, Q12, NEW-9); the model is described in sim/README.md.`);
+  L.push("");
+  L.push(`#### Day by day${multi ? " (first seed)" : ""}`);
+  L.push("");
+  L.push("| Day | Offers arrived | Active | Fill at end of day | Told out that day | Moved down | Revisions | Withdrawals | Booked (cumulative) | Seated value |");
+  L.push("|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
+  const byDay = new Map<number, typeof t.ticks>();
+  for (const tick of t.ticks) {
+    const day = Math.min(tl.windowDays - 1, Math.floor((tick.hour - 1e-9) / 24));
+    const list = byDay.get(day) ?? [];
+    list.push(tick);
+    byDay.set(day, list);
+  }
+  for (const [day, ticks] of [...byDay.entries()].sort((a, b) => a[0] - b[0])) {
+    const last = ticks[ticks.length - 1]!;
+    const sum = (k: "displacedOut" | "displacedDown" | "revisionsApplied" | "withdrawalsApplied"): number => ticks.reduce((s, x) => s + x[k], 0);
+    L.push(`| ${day + 1} | ${n(last.arrivedOffers)} | ${n(last.activeOffers)} | ${pct(last.fillRate)} | ${n(sum("displacedOut"))} | ${n(sum("displacedDown"))} | ${n(sum("revisionsApplied"))} | ${n(sum("withdrawalsApplied"))} | ${usd(last.bookedCents)} | ${usd(last.seatedValueCents)} |`);
+  }
+  L.push("");
+  L.push("#### Displacement (Q3 — what fans were told, then untold)");
+  L.push("");
+  L.push(hdr);
+  L.push(sep);
+  L.push(`| Fans seated at a preview, then unseated at a later one | ${cell("temporal.displacement.fansToldInThenOut", n)} |`);
+  L.push(`| Fans ever displaced (out or to a worse tier) | ${cell("temporal.displacement.fansEverDisplaced", n)} |`);
+  L.push(`| "You're out" events | ${cell("temporal.displacement.outEvents", n)} |`);
+  L.push(`| "You moved down a tier" events | ${cell("temporal.displacement.downEvents", n)} |`);
+  L.push(`| Seated at the first preview, not seated at binding | ${cell("temporal.displacement.seatedAtFirstPreviewThenUnseatedAtBinding", n)} |`);
+  if (t.rollingConfirmed) {
+    L.push(`| Would have been "Admission Confirmed" (seated ${t.rollingConfirmed.afterHours}h straight) | ${cell("temporal.rollingConfirmed.confirmedFans", n)} |`);
+    L.push(`| &nbsp;&nbsp;…and NOT seated at binding (broken confirmations) | ${cell("temporal.rollingConfirmed.brokenConfirmations", n)} |`);
+    L.push(`| &nbsp;&nbsp;value of broken confirmations | ${cell("temporal.rollingConfirmed.brokenValueCents", usd)} |`);
+    L.push(`| &nbsp;&nbsp;avg hours from arrival to confirmation | ${cell("temporal.rollingConfirmed.avgHoursToConfirm", (v) => v.toFixed(1))} |`);
+  }
+  L.push("");
+  if (tl.revisions || tl.withdrawals || t.autoBidDuringWindow.fansRaised > 0) {
+    L.push("#### Revisions, auto-bid and withdrawals during the window (Q12, ADR-0018, NEW-9)");
+    L.push("");
+    L.push(hdr);
+    L.push(sep);
+    if (t.autoBidDuringWindow.fansRaised > 0 || first.metrics.autoBid.bidders > 0) {
+      L.push(`| Auto-bidders raised at previews | ${cell("temporal.autoBidDuringWindow.fansRaised", n)} |`);
+      L.push(`| &nbsp;&nbsp;steps taken | ${cell("temporal.autoBidDuringWindow.raises", n)} |`);
+      L.push(`| &nbsp;&nbsp;added to the pool by auto-bid | ${cell("temporal.autoBidDuringWindow.addedCents", usd)} |`);
+    }
+    if (tl.revisions) {
+      L.push(`| Fans who revised upward after being displaced | ${cell("temporal.revisions.fansRevised", n)} |`);
+      L.push(`| Revisions applied | ${cell("temporal.revisions.revisionsApplied", n)} |`);
+      L.push(`| Added to the pool by revisions | ${cell("temporal.revisions.addedCents", usd)} |`);
+      L.push(`| Revisers seated at binding | ${cell("temporal.revisions.revisedAndSeatedAtBinding", n)} |`);
+    }
+    if (tl.withdrawals) {
+      L.push(`| Withdrawals before binding | ${cell("temporal.withdrawals.withdrawn", n)} |`);
+      L.push(`| &nbsp;&nbsp;value withdrawn | ${cell("temporal.withdrawals.withdrawnValueCents", usd)} |`);
+      L.push(`| &nbsp;&nbsp;were seated when they left | ${cell("temporal.withdrawals.wereSeatedWhenTheyLeft", n)} |`);
+    }
+    L.push("");
+  }
+  if (t.returns) {
+    L.push(`#### After binding (Q4) — returns ${tl.returns ? `${tl.returns.sharePct}%` : "0%"}, releases ${tl.releases?.seats ?? 0} seats, refill \`${t.returns.refill}\``);
+    L.push("");
+    L.push(hdr);
+    L.push(sep);
+    L.push(`| Offers that returned their seats | ${cell("temporal.returns.returnedOffers", n)} |`);
+    L.push(`| Seats returned | ${cell("temporal.returns.returnedSeats", n)} |`);
+    L.push(`| Value returned | ${cell("temporal.returns.returnedValueCents", usd)} |`);
+    L.push(`| Seats released from holds | ${cell("temporal.returns.releasedSeats", n)} |`);
+    L.push(`| Seats refilled from the unplaced pool | ${cell("temporal.returns.refilledSeats", n)} |`);
+    L.push(`| Value recovered by refilling | ${cell("temporal.returns.refilledValueCents", usd)} |`);
+    L.push(`| Fill after returns | ${cell("temporal.returns.fillAfterReturns", (v) => pct(v))} |`);
+    L.push(`| Gross after returns | ${cell("temporal.returns.grossAfterReturnsCents", usd)} |`);
+    L.push("");
+    L.push(t.returns.refill === "release" ? "Refill \"release\" is today's rule (May Q13/Q14: outbid offers are released immediately, no waitlist): returned seats stay empty. Run the same scenario with `keep-pool-live` to see what a live pool recovers." : "Refill \"keep-pool-live\" keeps unplaced offers alive after binding and re-seats them in rank order into returned and released seats. Today's rule (May Q13/Q14) is \"release\"; this is Cope's playbook reading.");
+    L.push("");
+  }
+  L.push("#### Register-first view (Q5 — booked vs seated)");
+  L.push("");
+  L.push(hdr);
+  L.push(sep);
+  L.push(`| Booked by close (every active offer's price × size) | ${cell("temporal.registerFirst.bookedAtCloseCents", usd)} |`);
+  L.push(`| Seated at binding | ${cell("temporal.registerFirst.seatedAtBindingCents", usd)} |`);
+  L.push(`| Accepted but unseated — offers | ${cell("temporal.registerFirst.acceptedUnseatedOffers", n)} |`);
+  L.push(`| Accepted but unseated — value | ${cell("temporal.registerFirst.acceptedUnseatedValueCents", usd)} |`);
+  L.push(`| &nbsp;&nbsp;as a share of booked | ${cell("temporal.registerFirst.acceptedUnseatedShareOfBooked", (v) => pct(v))} |`);
+  L.push("");
+  L.push(`Booked by day${multi ? " (first seed)" : ""}: ${t.registerFirst.bookedByDayCents.map((c, i) => `d${i + 1} ${usd(c)}`).join(" · ")}. "Ring the register" means taking the booked number during the window; the accepted-but-unseated line is what would have to be refunded or waitlisted at binding.`);
+  L.push("");
+  return L;
+}
+
 function heldBreakdown(bySource: Record<string, number>): string {
   const parts = Object.entries(bySource)
     .filter(([, v]) => v > 0)
@@ -303,6 +408,13 @@ export function renderConsoleSummary(out: RunOutput): string {
     L.push(row("Passed over (rank-respect)", "rankRespect.passedOver", n));
     if (agg.policy !== "greedy") L.push(row("Clean-fit deferrals / parity picks", "policy.cleanFitDeferrals", n) + `   parity ${n(s["policy.parityTiebreaks"]!.p50)} · reserved ${n(s["policy.reservedSinglesPlaced"]!.p50)}`);
     if (first.metrics.autoBid.bidders > 0) L.push(row("Auto-bid raised / added", "autoBid.raised", n) + `   ${usd(s["autoBid.totalRaiseCents"]!.p50)} · held section ${n(s["autoBid.heldSectionAfterRaise"]!.p50)}${first.metrics.autoBid.privateOffers > 0 ? ` · private converted ${n(s["autoBid.privateConverted"]!.p50)}` : ""}`);
+    if (first.temporal) {
+      L.push(row("Told in then out (fans)", "temporal.displacement.fansToldInThenOut", n) + `   ${n(s["temporal.displacement.outEvents"]!.p50)} out events over ${first.temporal.previews} previews`);
+      if (first.temporal.autoBidDuringWindow.fansRaised > 0) L.push(row("Auto-bid raised at previews", "temporal.autoBidDuringWindow.fansRaised", n) + `   ${usd(s["temporal.autoBidDuringWindow.addedCents"]!.p50)} added`);
+      if (first.temporal.rollingConfirmed) L.push(row("Rolling confirmed / broken", "temporal.rollingConfirmed.confirmedFans", n) + `   broken ${n(s["temporal.rollingConfirmed.brokenConfirmations"]!.p50)} (${usd(s["temporal.rollingConfirmed.brokenValueCents"]!.p50)})`);
+      if (first.temporal.returns) L.push(row("Returned / refilled seats", "temporal.returns.returnedSeats", n) + `   refilled ${n(s["temporal.returns.refilledSeats"]!.p50)} · fill after ${pct(s["temporal.returns.fillAfterReturns"]!.p50)}`);
+      L.push(row("Booked vs seated $", "temporal.registerFirst.bookedAtCloseCents", usd) + `   seated ${usd(s["temporal.registerFirst.seatedAtBindingCents"]!.p50)} · unseated ${pct(s["temporal.registerFirst.acceptedUnseatedShareOfBooked"]!.p50)} of booked`);
+    }
     if (first.metrics.bleacher) L.push(row("Bleacher est. sold / combined $", "bleacher.estSoldSeats", n) + `   ${usd(s["bleacher.combinedGrossCents"]!.p50)}  (${n(first.metrics.bleacher.seats)} seats @ ${usd(first.metrics.bleacher.priceCents)}, unconfirmed)`);
     L.push("");
     L.push(`  By group size${multi ? " (p50)" : ""}:   size   offers   placed   placed%   median row rank`);

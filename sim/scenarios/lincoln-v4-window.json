@@ -1,0 +1,26 @@
+{
+  "name": "lincoln-v4-window",
+  "venue": "lincoln-v4",
+  "pool": {
+    "generate": {
+      "seed": 1,
+      "oversubscription": 1.25,
+      "groupSizeMix": "lincoln-v4",
+      "priceModel": { "kind": "ladder", "ladderCents": 2500, "meanStepsAboveFloor": 3 },
+      "tierPreferenceMix": { "specific": 30, "this_or_worse": 55, "this_or_better": 5, "any": 10 },
+      "autoBid": { "sharePct": 15, "capMultiplier": [1.2, 1.5] }
+    }
+  },
+  "timeline": {
+    "windowDays": 6,
+    "arrival": "last-day-spike",
+    "previewEveryHours": 12,
+    "revisions": { "sharePct": 25, "stepsUp": [1, 2], "maxPerFan": 3 },
+    "withdrawals": { "sharePct": 3 },
+    "rollingConfirmed": { "afterHours": 24 },
+    "returns": { "sharePct": 5, "refill": "release" },
+    "releases": { "seats": 0 }
+  },
+  "policies": ["greedy"],
+  "seeds": 5
+}
