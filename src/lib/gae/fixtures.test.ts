@@ -399,6 +399,11 @@ describe("fixture 1 — the Lincoln Theatre scenario", () => {
       orphanSeats: 6, // BB×2 + FA×1 + UA×3
       unfilledSeats: 0,
       fillRate: 51 / totalAvailable,
+      emptySeats: 6,
+      holesBySize: { 1: 4, 2: 1 }, // UA's 3 + FA's 1 are 1-seat holes; BB's 2 is one hole
+      oddHoleSeats: 4,
+      emptySeatsOddRows: 0,
+      emptySeatsEvenRows: 6,
     });
     expect(
       result.stats.placedSeats +
@@ -571,6 +576,11 @@ describe("fixture 2 — Cope's place, 50-seat untraditional venue", () => {
       orphanSeats: 20, // table-3×5 + bench×5 + GA×10
       unfilledSeats: 6, // table-4, untouched
       fillRate: 24 / 50,
+      emptySeats: 26, // orphan 20 + unfilled 6
+      holesBySize: { 2: 1, 3: 1, 5: 1, 6: 1 },
+      oddHoleSeats: 8, // the 3- and 5-seat holes
+      emptySeatsOddRows: 0,
+      emptySeatsEvenRows: 16, // 26 total minus GA's 10 (excluded); seated rows are even
     });
     expect(
       result.stats.placedSeats +
@@ -751,6 +761,11 @@ describe("fixture 3 — sectioned-off Austin theater (partial activation, mixed 
       orphanSeats: 0,
       unfilledSeats: 0,
       fillRate: 1,
+      emptySeats: 0,
+      holesBySize: {},
+      oddHoleSeats: 0,
+      emptySeatsOddRows: 0,
+      emptySeatsEvenRows: 0,
     });
   });
 });
