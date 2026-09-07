@@ -181,6 +181,14 @@ export const env = createEnv({
     // file). Default "false" — the real path lands in its own slice
     // once Cope settles the hold-window question.
     ALLOW_DEV_OFFER_STUB: z.enum(["true", "false"]).default("false"),
+    // Pre-launch site-wide password gate. When set, src/middleware.ts
+    // redirects every human-facing request to /unlock until the shared
+    // password is entered; the Inngest + Stripe webhooks stay reachable so
+    // background jobs keep firing. Optional + dormant when unset, so
+    // local/dev/CI and post-launch production run wide open. NOT a
+    // NEXT_PUBLIC_ var — the value never reaches the client; the unlock
+    // form posts it to a Server Action. See src/lib/site-gate.ts.
+    SITE_PASSWORD: z.string().min(1).optional(),
   },
   client: {
     NEXT_PUBLIC_APP_URL: z.url(),
@@ -215,6 +223,7 @@ export const env = createEnv({
     NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,
     NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
     ALLOW_DEV_OFFER_STUB: process.env.ALLOW_DEV_OFFER_STUB,
+    SITE_PASSWORD: process.env.SITE_PASSWORD,
   },
   skipValidation: process.env.SKIP_ENV_VALIDATION === "1",
   emptyStringAsUndefined: true,

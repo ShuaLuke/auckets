@@ -148,3 +148,5 @@ export {
   type LiveProjectionInput,
   type LiveStandingView,
 } from "./live-preview";
+
+export { buildTierBands, type TierBand } from "./room-heat";
