@@ -113,6 +113,13 @@ const PriceModelSchema = z.union([
   }),
 ]);
 
+const RaiseRuleSchema = z.union([
+  z.strictObject({ kind: z.literal("fixed"), cents: z.number().int().positive() }),
+  z.strictObject({ kind: z.literal("percent"), pct: z.number().positive().max(100) }),
+]);
+
+export const POLICY_PATTERN = /^(greedy|clean-fit|parity-tiebreak|singles-reserve(:\d+)?)(\+(clean-fit|parity-tiebreak|singles-reserve(:\d+)?))*$/;
+
 export const DemandModelSchema = z.strictObject({
   seed: z.number().int().nonnegative(),
   oversubscription: z.number().positive().max(20),
@@ -127,6 +134,12 @@ export const DemandModelSchema = z.strictObject({
     })
     .optional(),
   tierChoice: z.enum(["premium-biased", "uniform"]).optional(),
+  autoBid: z
+    .strictObject({
+      sharePct: z.number().min(0).max(100),
+      capMultiplier: z.tuple([z.number().min(1), z.number().min(1)]).refine(([lo, hi]) => hi >= lo, { message: "capMultiplier must be [lo, hi] with hi ≥ lo" }),
+    })
+    .optional(),
 });
 
 export const ScenarioSchema = z.strictObject({
@@ -137,8 +150,9 @@ export const ScenarioSchema = z.strictObject({
     z.strictObject({ file: z.string().min(1) }),
     z.strictObject({ generate: DemandModelSchema }),
   ]),
-  policies: z.array(z.enum(["greedy"])).min(1).optional(),
+  policies: z.array(z.string().regex(POLICY_PATTERN, 'a policy is "greedy", "clean-fit", "parity-tiebreak", "singles-reserve[:k]", or a "+"-joined combination')).min(1).optional(),
   seeds: z.number().int().min(1).max(1000).optional(),
+  autoBidRaiseRule: RaiseRuleSchema.optional(),
 });
 
 // Turn a Zod failure into one readable line per issue.

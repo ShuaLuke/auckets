@@ -3,6 +3,7 @@
 // File reading lives only in scripts/sim.ts.
 
 import type {
+  AllocationConfig,
   AllocationResult,
   AllocationStats,
   RankedOffer,
@@ -100,6 +101,21 @@ export type TierPreferenceMix = {
   any: number;
 };
 
+export type RaiseRule = { kind: "fixed"; cents: number } | { kind: "percent"; pct: number };
+
+// Auto-bid share of a generated pool (ADR-0017/0018). Each auto-bidder gets a
+// cap = price × U(lo, hi) snapped to the ladder; the raise rule is set on
+// the scenario so file pools can use it too.
+export type AutoBidModel = {
+  sharePct: number; // percent of offers with auto-bid on
+  capMultiplier: [number, number];
+};
+
+export type AutoBidSpec = { capCents: number };
+export type AutoBids = Record<string, AutoBidSpec>; // offerId → spec
+
+export type AutoBidRaise = { offerId: string; fromCents: number; toCents: number; steps: number; heldSection: boolean };
+
 export type DemandModel = {
   seed: number;
   // tickets requested ÷ available seats
@@ -111,6 +127,7 @@ export type DemandModel = {
   // How a fan picks the tier they anchor to. "premium-biased" halves the
   // weight each tier down; "uniform" is flat.
   tierChoice?: "premium-biased" | "uniform";
+  autoBid?: AutoBidModel;
 };
 
 export type PoolSource = { file: string } | { generate: DemandModel };
@@ -133,7 +150,9 @@ export type OfferParitySummary = {
 
 // --- Scenario --------------------------------------------------------------
 
-export type PolicyName = "greedy";
+// "greedy" | "clean-fit" | "parity-tiebreak" | "singles-reserve[:k]" and
+// "+"-joined composites, e.g. "clean-fit+singles-reserve". See policy.ts.
+export type PolicyName = string;
 
 export type Scenario = {
   name: string;
@@ -142,6 +161,9 @@ export type Scenario = {
   pool: PoolSource;
   policies?: PolicyName[];
   seeds?: number;
+  // Applies to every auto-bidder in the pool (generated or from a file with
+  // a cap column). Default: fixed $5, the shipped rule (ADR-0018).
+  autoBidRaiseRule?: RaiseRule;
 };
 
 // --- Metrics ---------------------------------------------------------------
@@ -191,6 +213,25 @@ export type RankRespectMetrics = {
   passedOverOfferIds: string[];
 };
 
+export type PolicyActivity = {
+  cleanFitDeferrals: number; // FIT_RESOLVED with snapshot.policy === "clean_fit"
+  seatsSavedByCleanFit: number; // Σ strandedSeatsAvoided
+  parityTiebreaks: number; // PLACED with snapshot.parityTiebreak
+  reservedSinglesPlaced: number;
+  reservedSinglesUnplaced: number;
+};
+
+export type AutoBidMetrics = {
+  bidders: number;
+  raised: number; // bidders whose price moved
+  totalRaiseCents: number;
+  maxRaiseCents: number;
+  avgStepsPerRaised: number;
+  heldSectionAfterRaise: number; // raised AND seated in their preferred tier
+  cappedOut: number; // raised to their cap and still displaced
+  rounds: number;
+};
+
 export type FillMetrics = {
   capacity: {
     totalSeats: number;
@@ -233,6 +274,8 @@ export type FillMetrics = {
   byGroupSize: Record<number, GroupSizeMetrics>;
   preference: Record<TierPreference["type"], PreferenceMetrics>;
   rankRespect: RankRespectMetrics;
+  policy: PolicyActivity;
+  autoBid: AutoBidMetrics;
   runtimeMs: number;
 };
 
@@ -253,7 +296,10 @@ export type PolicyRun = {
   // Full engine output. Kept for the first seed of each policy only, so a
   // 50-seed sweep doesn't produce a 50× result.json.
   result?: AllocationResult;
-  offers?: RankedOffer[];
+  offers?: RankedOffer[]; // the pool AFTER auto-bid resolution (what the engine saw)
+  raises?: AutoBidRaise[];
+  config: AllocationConfig;
+  caveat: string; // what the policy trades away, for the report
 };
 
 export type Percentiles = { p5: number; p50: number; p95: number; mean: number };

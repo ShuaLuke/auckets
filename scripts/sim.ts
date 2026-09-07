@@ -9,6 +9,8 @@
 //   npm run sim -- import-pool <file.xlsx|.csv> [--sheet "Full Offer Pool v4"] --out sim/pools/x.csv
 //   npm run sim -- run sim/scenarios/<name>.json [--venue x] [--group-mix "1:10,2:45,..."]
 //                       [--seeds N] [--seed N] [--oversub X] [--active "A,B"] [--name run] [--price=cents]
+//                       [--policies greedy,clean-fit,clean-fit+singles-reserve] [--raise fixed:5|percent:5]
+//   npm run sim -- compare <scenario.json> --policies a,b[,c]     (same as run; a report with policies side by side)
 //   npm run sim -- compare-runs sim/runs/<a> sim/runs/<b> [...] [--out dir]
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -20,8 +22,9 @@ import {
   applyShowOverlay,
   compareRuns,
   formatIssues,
-  offersFromCsv,
+  loadPoolCsv,
   offersFromSheet,
+  POLICY_HELP,
   poolToCsv,
   renderComparison,
   renderComparisonConsole,
@@ -40,10 +43,12 @@ import {
   venueParitySummary,
   tierOrder,
   usd,
+  type AutoBids,
   type RunOutput,
   type Scenario,
   type SimVenue,
 } from "../src/lib/sim";
+import type { RankedOffer } from "../src/lib/gae/types";
 
 const ROOT = process.cwd();
 const VENUES_DIR = join(ROOT, "sim", "venues");
@@ -259,20 +264,31 @@ function cmdRun(args: Args): number {
     if (oversub) g.oversubscription = Number(oversub);
     scenario = { ...scenario, pool: { generate: g } };
   }
+  const policiesFlag = flagStr(args, "policies");
+  if (policiesFlag) scenario = { ...scenario, policies: policiesFlag.split(",").map((p) => p.trim()) };
+  if (args.positional[0] === "compare" && (scenario.policies ?? []).length < 2) {
+    throw new SimInputError(`compare needs two or more policies: --policies greedy,clean-fit (${POLICY_HELP})`);
+  }
+  const raise = flagStr(args, "raise");
+  if (raise) {
+    const m = /^(fixed|percent):([\d.]+)$/.exec(raise);
+    if (!m) throw new SimInputError('--raise: want "fixed:5" (dollars per step) or "percent:5"');
+    scenario = { ...scenario, autoBidRaiseRule: m[1] === "fixed" ? { kind: "fixed", cents: Math.round(Number(m[2]) * 100) } : { kind: "percent", pct: Number(m[2]) } };
+  }
   const check = ScenarioSchema.safeParse(scenario);
   if (!check.success) throw new SimInputError(formatIssues("overrides", check.error));
 
   const venue = loadVenue(scenario.venue);
-  const poolOffers =
+  const loaded =
     "file" in scenario.pool
-      ? offersFromCsv(readFileSync(resolve(ROOT, scenario.pool.file), "utf8"), {
+      ? loadPoolCsv(readText(resolve(ROOT, scenario.pool.file)), {
           priceMode: flagStr(args, "price") === "cents" ? "cents" : "dollars",
           label: scenario.pool.file,
         })
       : undefined;
 
   const t0 = performance.now();
-  const output = runScenario(poolOffers ? { scenario, venue, poolOffers } : { scenario, venue });
+  const output = runScenario(loaded ? { scenario, venue, poolOffers: loaded.offers, poolAutoBids: loaded.autoBids } : { scenario, venue });
   const elapsed = performance.now() - t0;
 
   const runName = flagStr(args, "name") ?? `${scenario.name}-${output.generatedAt.replace(/[-:]/g, "").replace(/\..*$/, "").replace("T", "-")}`;
@@ -324,20 +340,23 @@ function cmdImportPool(args: Args): void {
   if (!existsSync(path)) throw new SimInputError(`no such file: ${path}`);
   const priceMode = flagStr(args, "price") === "cents" ? "cents" : "dollars";
   const lower = path.toLowerCase();
-  let offers;
+  let offers: RankedOffer[];
+  let autoBids: AutoBids = {};
   let sourceLabel = basename(file);
   if (lower.endsWith(".xlsx") || lower.endsWith(".xlsm") || lower.endsWith(".xls")) {
     const { name, rows } = readSheet(path, flagStr(args, "sheet"), [/full offer pool/i, /offer pool/i, /pool/i, /offers/i]);
     sourceLabel += ` · sheet "${name}"`;
     offers = offersFromSheet(rows, { priceMode, label: sourceLabel });
   } else {
-    offers = offersFromCsv(readText(path), { priceMode, label: sourceLabel });
+    const loaded = loadPoolCsv(readText(path), { priceMode, label: sourceLabel });
+    offers = loaded.offers;
+    autoBids = loaded.autoBids;
   }
   const out = flagStr(args, "out") ?? join("sim", "pools", `${basename(file).replace(/\.[^.]+$/, "").toLowerCase().replace(/[^a-z0-9]+/g, "-")}.csv`);
   const dest = resolve(ROOT, out);
   if (existsSync(dest) && args.flags.force !== true) throw new SimInputError(`${dest} already exists. Pass --force to replace it, or --out to pick another path.`);
   mkdirSync(join(dest, ".."), { recursive: true });
-  writeFileSync(dest, poolToCsv(offers));
+  writeFileSync(dest, poolToCsv(offers, autoBids));
   const tickets = offers.reduce((s, o) => s + o.groupSize, 0);
   const sizes = new Map<number, number>();
   for (const o of offers) sizes.set(o.groupSize, (sizes.get(o.groupSize) ?? 0) + 1);
@@ -384,6 +403,9 @@ function usage(): string {
     "  npm run sim -- run <scenario.json> [--venue name] [--group-mix \"1:10,2:45,3:10,4:25,5:5,6:5\"]",
     "                                     [--seeds N] [--seed N] [--oversub 1.25] [--active \"ORCH C,FC BAL\"]",
     "                                     [--name run-name] [--out dir] [--price=cents]",
+    "                                     [--policies greedy,clean-fit,parity-tiebreak,singles-reserve[:k],clean-fit+singles-reserve]",
+    "                                     [--raise fixed:5 | percent:5]   (auto-bid step rule)",
+    "  npm run sim -- compare <scenario.json> --policies greedy,clean-fit    (run with policies side by side)",
   ].join("\n");
 }
 
@@ -396,6 +418,7 @@ function main(): number {
         cmdVenue(args);
         return 0;
       case "run":
+      case "compare":
         return cmdRun(args);
       case "import-pool":
         cmdImportPool(args);

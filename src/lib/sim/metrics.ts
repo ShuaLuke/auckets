@@ -6,7 +6,7 @@ import { sortRankedOffers } from "@/lib/gae/rankkey";
 import type { AllocationResult, RankedOffer, TierPreference, VenueRow } from "@/lib/gae/types";
 
 import { median } from "./pool";
-import type { FillMetrics, GroupSizeMetrics, PreferenceMetrics, SimVenue, SliceMetrics } from "./types";
+import type { AutoBidMetrics, AutoBidRaise, FillMetrics, GroupSizeMetrics, PreferenceMetrics, SimVenue, SliceMetrics } from "./types";
 import { activeRows, maxRunLength, tierOrder } from "./venue";
 
 type Placement = { row: VenueRow; seats: number };
@@ -30,6 +30,7 @@ export function computeMetrics(
   result: AllocationResult,
   heldBySource: Record<string, number>,
   runtimeMs: number,
+  autoBid: { bidders: number; raises: AutoBidRaise[]; rounds: number } = { bidders: 0, raises: [], rounds: 0 },
 ): FillMetrics {
   const rows = activeRows(venue);
   const rowById = new Map(rows.map((r) => [r.id, r]));
@@ -311,7 +312,30 @@ export function computeMetrics(
       waterfalled: result.decisions.filter((d) => d.action === "WATERFALLED").length,
       passedOverOfferIds,
     },
+    policy: {
+      cleanFitDeferrals: result.decisions.filter((d) => d.snapshot.policy === "clean_fit").length,
+      seatsSavedByCleanFit: result.decisions.reduce((s, d) => s + (d.snapshot.policy === "clean_fit" ? Number(d.snapshot.strandedSeatsAvoided ?? 0) : 0), 0),
+      parityTiebreaks: result.decisions.filter((d) => d.snapshot.parityTiebreak === true).length,
+      reservedSinglesPlaced: new Set(result.decisions.filter((d) => d.snapshot.singlesReserve === true && d.offerId).map((d) => d.offerId)).size,
+      reservedSinglesUnplaced: 0, // filled in by run.ts, which knows the reserve set
+    },
+    autoBid: autoBidMetrics(autoBid),
     runtimeMs,
+  };
+}
+
+function autoBidMetrics(ab: { bidders: number; raises: AutoBidRaise[]; rounds: number }): AutoBidMetrics {
+  const raised = ab.raises.length;
+  const total = ab.raises.reduce((s, r) => s + (r.toCents - r.fromCents), 0);
+  return {
+    bidders: ab.bidders,
+    raised,
+    totalRaiseCents: total,
+    maxRaiseCents: ab.raises.reduce((m, r) => Math.max(m, r.toCents - r.fromCents), 0),
+    avgStepsPerRaised: raised === 0 ? 0 : ab.raises.reduce((s, r) => s + r.steps, 0) / raised,
+    heldSectionAfterRaise: ab.raises.filter((r) => r.heldSection).length,
+    cappedOut: ab.raises.filter((r) => !r.heldSection).length,
+    rounds: ab.rounds,
   };
 }
 

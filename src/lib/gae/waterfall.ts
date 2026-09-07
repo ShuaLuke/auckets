@@ -41,6 +41,7 @@
 
 import {
   launchPad,
+  type LaunchPadPolicies,
   type LaunchPadResult,
   type TierMatcher,
 } from "./launchpad";
@@ -67,6 +68,7 @@ export function waterfall(
   venue: VenueArchitecture,
   unplacedFromLaunchPad: RankedOffer[],
   alreadyPlaced: SeatAssignment[],
+  policies: LaunchPadPolicies = {},
 ): WaterfallResult {
   if (unplacedFromLaunchPad.length === 0) {
     return { assignments: [], decisions: [], unplaced: [] };
@@ -90,6 +92,7 @@ export function waterfall(
     const workingVenue = venueWithExtraHolds(venue, extraHolds);
     const pass: LaunchPadResult = launchPad(workingVenue, remaining, {
       matcher,
+      policies,
     });
 
     if (pass.assignments.length === 0) break; // spec stop condition
@@ -119,7 +122,7 @@ export function waterfall(
 // Rows enabled for THIS show (NEW-4 partial venue activation). Same
 // idiom as launchpad's getActiveRowsByRank, minus the sort — the tier
 // index computes its own min-rank ordering.
-function getActiveRows(venue: VenueArchitecture): VenueRow[] {
+export function getActiveRows(venue: VenueArchitecture): VenueRow[] {
   const activeSet = new Set(venue.activeRowIds);
   return venue.rows.filter((r) => activeSet.has(r.id));
 }
@@ -135,7 +138,7 @@ function getActiveRows(venue: VenueArchitecture): VenueRow[] {
 // tier whose rows are all inactive must be absent from the index so
 // offers anchored to it classify as `no_compatible_tier` (spec §"Tier
 // preferences with no compatible rows").
-function buildTierIndex(rows: VenueRow[]): Map<string, number> {
+export function buildTierIndex(rows: VenueRow[]): Map<string, number> {
   const minRankByTier = new Map<string, number>();
   for (const row of rows) {
     if (row.tier === undefined) continue;
@@ -152,7 +155,7 @@ function buildTierIndex(rows: VenueRow[]): Map<string, number> {
   return new Map(sorted.map(([tier], idx) => [tier, idx]));
 }
 
-function makeRelaxedMatcher(tierIdx: Map<string, number>): TierMatcher {
+export function makeRelaxedMatcher(tierIdx: Map<string, number>): TierMatcher {
   return (offer, row) => {
     const pref = offer.tierPreference;
     if (pref.type === "any") return true;
@@ -176,7 +179,7 @@ function makeRelaxedMatcher(tierIdx: Map<string, number>): TierMatcher {
   };
 }
 
-function venueWithExtraHolds(
+export function venueWithExtraHolds(
   venue: VenueArchitecture,
   extraHolds: Map<string, Set<string>>,
 ): VenueArchitecture {
