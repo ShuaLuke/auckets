@@ -8,7 +8,7 @@ import type { RankedOffer, TierPreference } from "@/lib/gae/types";
 
 import { SUBMITTED_BASE_MS } from "./pool";
 import { createRng } from "./rng";
-import type { AutoBids, DemandModel, GroupMixPreset, GroupSizeMix, TierPreferenceMix } from "./types";
+import type { AutoBids, DemandModel, GroupMixPreset, GroupSizeMix, SeatPrefKind, SeatPrefs, TierPreferenceMix } from "./types";
 import { SimInputError } from "./venue";
 
 // Percent of OFFERS by group size. `lincoln-v4` is fitted to Cope's 512-offer
@@ -62,6 +62,8 @@ export type GeneratedPool = {
   realizedMixPct: GroupSizeMix;
   // offerId → cap, for the auto-bid share of the pool (empty when off).
   autoBids: AutoBids;
+  // offerId → aisle | centre | front, for the seat-preference share (empty when off).
+  seatPrefs: SeatPrefs;
 };
 
 export function generatePool(model: DemandModel, ctx: DemandContext, seedOverride?: number): GeneratedPool {
@@ -156,13 +158,26 @@ export function generatePool(model: DemandModel, ctx: DemandContext, seedOverrid
     });
   }
 
+  // Seat preferences beyond tier — scored only, never enforced (see types.ts).
+  const seatPrefs: SeatPrefs = {};
+  const sp = model.seatPrefs;
+  if (sp && sp.sharePct > 0) {
+    const mix = sp.mix ?? { aisle: 40, centre: 40, front: 20 };
+    const kinds: SeatPrefKind[] = ["aisle", "centre", "front"];
+    const weights = [mix.aisle, mix.centre, mix.front];
+    for (const o of offers) {
+      if (rng.next() * 100 >= sp.sharePct) continue;
+      seatPrefs[o.id] = kinds[rng.weightedIndex(weights)]!;
+    }
+  }
+
   const realizedMixPct: GroupSizeMix = {};
   for (const o of offers) realizedMixPct[o.groupSize] = (realizedMixPct[o.groupSize] ?? 0) + 1;
   for (const k of Object.keys(realizedMixPct)) {
     const size = Number(k);
     realizedMixPct[size] = offers.length === 0 ? 0 : (100 * realizedMixPct[size]!) / offers.length;
   }
-  return { offers, realizedMixPct, autoBids };
+  return { offers, realizedMixPct, autoBids, seatPrefs };
 }
 
 function drawPrice(model: DemandModel, floorCents: number, rng: ReturnType<typeof createRng>): number {

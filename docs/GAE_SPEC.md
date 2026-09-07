@@ -128,7 +128,7 @@ type TierPreference =
 
 ### `AllocationConfig`
 
-Per-allocation behavior toggles. Since 2026-09-07 the config also carries three **opt-in policy fields** (`fitPolicy: "clean_fit"`, `parityTiebreak`, `singlesReserve`), all off by default so production runs the greedy path below unchanged. They exist so the simulator (`docs/GAE_SIMULATOR.md`) can A/B them on real pools; flipping a default requires an ADR. Definitions and caveats are in `src/lib/gae/types.ts`.
+Per-allocation behavior toggles. Since 2026-09-07 the config also carries **opt-in policy fields** (`fitPolicy: "clean_fit" | "lookahead"` with `lookaheadRows`, `parityTiebreak`, `singlesReserve`, `unitPolicy: "protect"` for tables/boxes), all off by default so production runs the greedy path below unchanged. They exist so the simulator (`docs/GAE_SIMULATOR.md`) can A/B them on real pools; flipping a default requires an ADR. Definitions and caveats are in `src/lib/gae/types.ts`.
 
 ```typescript
 type AllocationConfig = {

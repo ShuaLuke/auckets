@@ -46,6 +46,7 @@ import type {
   AllocationDecision,
   FitPolicy,
   RankedOffer,
+  UnitPolicy,
   SeatAssignment,
   VenueArchitecture,
   VenueRow,
@@ -60,7 +61,15 @@ export type LaunchPadResult = {
 export type LaunchPadPolicies = {
   fitPolicy?: FitPolicy | undefined;
   parityTiebreak?: boolean | undefined;
+  lookaheadRows?: number | undefined;
+  unitPolicy?: UnitPolicy | undefined;
 };
+
+// Tables and boxes are "atomic units" (NEW-14). The generator marks them by
+// area; a hand-built venue can use the same labels.
+export function isAtomicUnit(row: VenueRow): boolean {
+  return row.area === "tables" || row.area === "boxes";
+}
 
 export function launchPad(
   venue: VenueArchitecture,
@@ -73,11 +82,16 @@ export function launchPad(
   const decisions: AllocationDecision[] = [];
   let pool = sortRankedOffers(offers);
 
-  for (const row of getActiveRowsByRank(venue)) {
+  const activeRows = getActiveRowsByRank(venue);
+  for (const [rowIdx, row] of activeRows.entries()) {
     const runs = contiguousRuns(row);
     if (runs.length === 0) continue; // entire row held; spec: no decision
 
-    const filled = fillRow(row, runs, pool, matcher, policies);
+    const selection =
+      policies.fitPolicy === "lookahead" && row.isGa !== true
+        ? selectWithLookahead(row, runs, pool, matcher, policies, activeRows.slice(rowIdx + 1, rowIdx + 1 + (policies.lookaheadRows ?? 2)))
+        : selectForRow(row, runs, pool, matcher, policies, EMPTY_BAN);
+    const filled = fillRow(row, runs, pool, selection);
     assignments.push(...filled.assignments);
     decisions.push(...filled.decisions);
     if (filled.placedOfferIds.size > 0) {
@@ -146,7 +160,7 @@ type Selection = {
   // resolved offer.
   skippedOfferIds?: string[];
   // Opt-in policies annotate the decision they made (see types.ts).
-  policy?: "clean_fit";
+  policy?: "clean_fit" | "lookahead";
   strandedSeatsAvoided?: number;
   parityTiebreak?: boolean;
   tiedOverOfferIds?: string[];
@@ -158,21 +172,32 @@ type FillRowResult = {
   placedOfferIds: Set<string>;
 };
 
-function fillRow(
+type RowSelection = {
+  selections: Selection[];
+  placedOfferIds: Set<string>;
+  runLengths: number[]; // remaining per run after selection
+};
+
+const EMPTY_BAN: ReadonlySet<string> = new Set();
+
+// Selection phase: decide which offers go in which runs. We only track each
+// run's remaining length here; the position math waits until we know every
+// selection, because lean-aware placement is batch-shaped (CENTER and
+// DUAL_AISLE both want to see the full cluster before assigning positions).
+// `ban` excludes offers from this row only (lookahead uses it to try
+// deferring one offer).
+function selectForRow(
   row: VenueRow,
   initialRuns: Run[],
   pool: RankedOffer[],
   matcher: TierMatcher,
   policies: LaunchPadPolicies,
-): FillRowResult {
-  // Selection phase: decide which offers go in which runs. We only
-  // track each run's remaining length here; the position math waits
-  // until we know every selection, because lean-aware placement is
-  // batch-shaped (CENTER and DUAL_AISLE both want to see the full
-  // cluster before assigning positions).
+  ban: ReadonlySet<string>,
+): RowSelection {
   const selections: Selection[] = [];
   const placedOfferIds = new Set<string>();
   const runLengths = initialRuns.map((r) => r.positions.length);
+  const protect = policies.unitPolicy === "protect" && isAtomicUnit(row);
 
   // Policies are seat-layout ideas; GA rows are buckets, so they run pure
   // greedy there. With no policy on, this loop is byte-for-byte the shipped
@@ -184,7 +209,7 @@ function fillRow(
   const sizeCounts = new Map<number, number>();
   if (cleanFit) {
     for (const o of pool) {
-      if (matcher(o, row)) sizeCounts.set(o.groupSize, (sizeCounts.get(o.groupSize) ?? 0) + 1);
+      if (!ban.has(o.id) && matcher(o, row)) sizeCounts.set(o.groupSize, (sizeCounts.get(o.groupSize) ?? 0) + 1);
     }
   }
   const take = (sel: Selection): void => {
@@ -197,8 +222,10 @@ function fillRow(
 
   let i = 0;
   while (i < pool.length) {
+    // NEW-14 protect: one group per table/box.
+    if (protect && placedOfferIds.size > 0) break;
     const current = pool[i]!;
-    if (placedOfferIds.has(current.id) || !matcher(current, row)) {
+    if (placedOfferIds.has(current.id) || ban.has(current.id) || !matcher(current, row)) {
       i++;
       continue;
     }
@@ -215,7 +242,7 @@ function fillRow(
       if (cleanFit) {
         const remainder = runLengths[directRunIdx]! - current.groupSize;
         if (remainder > 0 && !exactlyFillable(remainder, sizeCounts, current.groupSize)) {
-          const alt = cleanFitAlternative(pool, i + 1, row, matcher, placedOfferIds, runLengths, sizeCounts);
+          const alt = cleanFitAlternative(pool, i + 1, row, matcher, placedOfferIds, runLengths, sizeCounts, ban);
           if (alt !== null) {
             take({ offer: alt.offer, runIdx: alt.runIdx, action: "FIT_RESOLVED", skippedOfferIds: [current.id], policy: "clean_fit", strandedSeatsAvoided: remainder });
             continue; // the cursor stays in the pool and is re-examined
@@ -232,7 +259,7 @@ function fillRow(
       pool,
       i + 1,
       runLengths.map((len) => ({ length: len })),
-      (o) => !placedOfferIds.has(o.id) && matcher(o, row),
+      (o) => !placedOfferIds.has(o.id) && !ban.has(o.id) && matcher(o, row),
     );
 
     if (scan.foundIdx === -1) {
@@ -252,6 +279,70 @@ function fillRow(
     // because the skipped offers may now fit or fill cleanly.
     i = cleanFit || parity ? i : scan.foundIdx + 1;
   }
+  return { selections, placedOfferIds, runLengths };
+}
+
+// Lookahead (types.ts FitPolicy "lookahead"): take the greedy selection for
+// this row, then try deferring each selected offer in turn and score every
+// candidate by the seats left stranded across this row and the next
+// `nextRows` (filled greedily from what would remain). Keep the greedy
+// selection unless a deferral strictly reduces stranding — one deferral per
+// row at most, so the rank cost stays bounded and visible.
+function selectWithLookahead(
+  row: VenueRow,
+  initialRuns: Run[],
+  pool: RankedOffer[],
+  matcher: TierMatcher,
+  policies: LaunchPadPolicies,
+  nextRows: VenueRow[],
+): RowSelection {
+  const greedyPolicies: LaunchPadPolicies = { ...policies, fitPolicy: "greedy" };
+  const base = selectForRow(row, initialRuns, pool, matcher, greedyPolicies, EMPTY_BAN);
+  // Stranded seats across this row + the window, and which offers the
+  // window would seat — a deferral only counts if the deferred offer is
+  // seated within the window (defer, never drop).
+  const cost = (sel: RowSelection): { stranded: number; seatedAhead: Set<string> } => {
+    let stranded = sel.runLengths.reduce((s, len) => s + len, 0);
+    let remaining = pool.filter((o) => !sel.placedOfferIds.has(o.id));
+    const seatedAhead = new Set<string>();
+    for (const next of nextRows) {
+      const runs = contiguousRuns(next);
+      if (runs.length === 0) continue;
+      const r = selectForRow(next, runs, remaining, matcher, greedyPolicies, EMPTY_BAN);
+      stranded += r.runLengths.reduce((s, len) => s + len, 0);
+      for (const id of r.placedOfferIds) seatedAhead.add(id);
+      if (r.placedOfferIds.size > 0) remaining = remaining.filter((o) => !r.placedOfferIds.has(o.id));
+    }
+    return { stranded, seatedAhead };
+  };
+  const baseCost = cost(base).stranded;
+  if (baseCost === 0 || base.selections.length === 0 || nextRows.length === 0) return base;
+  let best = base;
+  let bestCost = baseCost;
+  let banned: string | null = null;
+  for (const sel of base.selections) {
+    const cand = selectForRow(row, initialRuns, pool, matcher, greedyPolicies, new Set([sel.offer.id]));
+    const c = cost(cand);
+    if (c.stranded < bestCost && c.seatedAhead.has(sel.offer.id)) {
+      best = cand;
+      bestCost = c.stranded;
+      banned = sel.offer.id;
+    }
+  }
+  if (banned === null || best.selections.length === 0) return base;
+  const first = best.selections[0]!;
+  best.selections[0] = {
+    ...first,
+    action: "FIT_RESOLVED",
+    skippedOfferIds: [banned, ...(first.skippedOfferIds ?? []).filter((id) => id !== banned)],
+    policy: "lookahead",
+    strandedSeatsAvoided: baseCost - bestCost,
+  };
+  return best;
+}
+
+function fillRow(row: VenueRow, initialRuns: Run[], pool: RankedOffer[], selection: RowSelection): FillRowResult {
+  const { selections, placedOfferIds, runLengths } = selection;
 
   // Placement phase: per run, ask placement.ts to assign positions
   // according to the row's lean. GA rows force LEFT — they're a bucket,
@@ -320,13 +411,15 @@ function fillRow(
         reason:
           sel.policy === "clean_fit"
             ? `placed group of ${sel.offer.groupSize}, deferring a fitting larger offer that would have stranded ${sel.strandedSeatsAvoided} seat(s) (clean-fit)`
-            : `placed group of ${sel.offer.groupSize}, deferring ${skipped.length} larger compatible offer(s) to next row`,
+            : sel.policy === "lookahead"
+              ? `deferred a fitting offer from this row; ${sel.strandedSeatsAvoided} fewer seat(s) stranded across the lookahead window`
+              : `placed group of ${sel.offer.groupSize}, deferring ${skipped.length} larger compatible offer(s) to next row`,
         snapshot: {
           groupSize: sel.offer.groupSize,
           startPosition,
           rankKey: sel.offer.rankKey,
           skippedOfferIds: skipped,
-          ...(sel.policy === "clean_fit" && { policy: "clean_fit", strandedSeatsAvoided: sel.strandedSeatsAvoided }),
+          ...(sel.policy !== undefined && { policy: sel.policy, strandedSeatsAvoided: sel.strandedSeatsAvoided }),
         },
       });
     }
@@ -410,10 +503,11 @@ function cleanFitAlternative(
   selected: Set<string>,
   runLengths: number[],
   sizeCounts: Map<number, number>,
+  ban: ReadonlySet<string>,
 ): { offer: RankedOffer; runIdx: number } | null {
   for (let j = startIdx; j < pool.length; j++) {
     const o = pool[j]!;
-    if (selected.has(o.id) || !matcher(o, row)) continue;
+    if (selected.has(o.id) || ban.has(o.id) || !matcher(o, row)) continue;
     for (let r = 0; r < runLengths.length; r++) {
       const len = runLengths[r]!;
       if (len < o.groupSize) continue;

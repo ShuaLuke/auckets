@@ -30,6 +30,8 @@ npm run sim -- sweep sim/scenarios/lincoln-v4-mix.json --vary pool.groupSizeMix=
 npm run sim -- run sim/scenarios/lincoln-v4-channels.json      # auto-bid + private offers + Bleacher carve-out, 10 seeds
 npm run sim -- run sim/scenarios/lincoln-v4-window.json        # the window as a timeline: previews, displacement, revisions, returns
 npm run sim -- sweep sim/scenarios/lincoln-v4-window.json --vary timeline.windowDays=3,6,14 --seeds 10   # NEW-1 vs Q17
+npm run sim -- compare sim/scenarios/lincoln-v4-cope-pool.json --policies greedy,clean-fit,lookahead,lookahead:4     # Cope's Phase 6
+npm run sim -- run sim/scenarios/supper-club-units.json        # tables: co-seat vs protect-units
 ```
 
 Every `run` prints the fill report and writes `sim/runs/<name>/`:
@@ -58,9 +60,11 @@ With `--seeds N` the pool is regenerated N times (seed, seed+1, …) and the rep
 | `clean-fit` | When placing a group that fits would strand seats no remaining offer can exactly fill, defer it and take the next group that closes the row. Falls back to greedy when nothing does. Logged as `FIT_RESOLVED` with `snapshot.policy = "clean_fit"` | subject to those deferrals — they show up under "passed over" |
 | `parity-tiebreak` | At **equal price** only (the spec's rank tie, normally larger group first), prefer the group whose size parity matches the remaining run. Never crosses a price | yes, ties reordered |
 | `singles-reserve[:k]` | Hold back the k lowest-ranked single-seat offers (default k = number of 1-seat rows) until everyone else is seated; then 1-seat rows first, anywhere second | **no** — preventive hoarding, the smallest guard for the parity hypothesis |
-| `a+b` | Combine, e.g. `clean-fit+singles-reserve` | as its parts |
+| `lookahead[:rows]` | Cope's Phase 6 framing: fill this row and the next k (default 2) together; defer at most one **fitting** offer per row when that leaves fewer stranded seats across the window, and only if the deferred offer is seated within the window (defer, never drop). Logged as `FIT_RESOLVED` with `snapshot.policy = "lookahead"` | **no** — fill-first by definition |
+| `protect-units` | NEW-14: each table or box (`area` `tables` / `boxes`, as the tier-spec generator marks them) holds one group only; the rest of the unit stays empty on purpose. Default is co-seat (strangers share) | yes, fill cost by design |
+| `a+b` | Combine, e.g. `clean-fit+singles-reserve` (`clean-fit` and `lookahead` are both fit policies — pick one) | as its parts |
 
-On Cope's pool and architecture: greedy 1,133 / 1,152 seated, 19 one-seat holes; clean-fit 1,144 (+$2,800, 29 passed over, ≤5 rows, ≤$25 gap); clean-fit + reserve 1,150 (+$4,300, 105 passed over). Parity tiebreak alone changes nothing on that pool.
+On Cope's pool and architecture: greedy 1,133 / 1,152 seated, 19 one-seat holes; clean-fit 1,144 (+$2,800, 29 passed over, ≤5 rows, ≤$25 gap); lookahead 1,139 (+$1,550, 1 passed over — gentler than clean-fit, recovers about half the seats); clean-fit + reserve 1,150 (+$4,300, 105 passed over). Parity tiebreak alone changes nothing on that pool. On the `supper-club` tables venue, `protect-units` costs about 17 of 114 seats and $1,240 against co-seating over 10 seeds.
 
 ## Auto-bid
 
@@ -69,6 +73,14 @@ A generated pool can carry an auto-bid share (`generate.autoBid: { "sharePct": 2
 ## Private offers (ADR-0017)
 
 A generated pool can carry a share of private offers (`generate.privateOffers: { "sharePct": 10, "thresholdMultiplier": [1.3, 2.0] }`, drawn on non-auto-bidders so the shares don't overlap); a pool CSV can carry a `threshold` column (dollars, must be above the price; an offer can't have both `cap` and `threshold`). The sim models a private offer as an auto-bid whose cap is the hidden threshold: the fan publicly commits the visible price and is raised up to the threshold only when a competing offer would displace them. That is one reading of the ADR's "auto-converts to that price" — confirm it with Cope. The Auto-bid section reports how many private offers converted and what conversion added.
+
+## Seat preferences beyond tier (scored, not enforced)
+
+Cope's playbook lists aisle / centre / row-range preferences. The engine has no support for them yet, so the sim only scores how often fans who had one would have got it by chance: `generate.seatPrefs: { "sharePct": 30, "mix": { "aisle": 40, "centre": 40, "front": 20 }, "frontRows": 10 }`. Aisle = the group touches either end of the row; centre = the whole group sits in the middle third; front = row rank within `frontRows`. On the Lincoln with 30% of fans holding a preference: aisle 57%, centre 24%, front 6% satisfied by chance (29% overall). That gap is the size of the feature.
+
+## Upgrade buyouts after binding (Q29)
+
+`timeline.upgrades: { "requestSharePct": 10, "acceptRatePct": 40, "premiumPct": 25 }`: a share of seated fans not already in the best tier ask to move up; AUCKETS offers a same-size holder in a better tier a buyout at their price plus the premium; accepted with the accept rate and the seats swap. Per ADR-0014 the holder is refunded at original price and the premium goes to the artist. On the 6-day Lincoln window: about 18 requests, 5 accepted, ~$890 uplift.
 
 ## Bleacher carve-out (NEW-8 — not confirmed by Cope)
 
@@ -87,7 +99,8 @@ A generated pool can carry a share of private offers (`generate.privateOffers: {
   "withdrawals": { "sharePct": 3 },                  // NEW-9: fans who pull out before binding
   "rollingConfirmed": { "afterHours": 24 },          // Q3: seated this long straight = would have been told "Admission Confirmed"
   "returns": { "sharePct": 5, "refill": "release" }, // Q4: after binding; "release" (today's rule) or "keep-pool-live" (Cope's playbook)
-  "releases": { "seats": 0 }                         // production releases after binding, backfilled under keep-pool-live
+  "releases": { "seats": 0 },                        // production releases after binding, backfilled under keep-pool-live
+  "upgrades": { "requestSharePct": 10, "acceptRatePct": 40, "premiumPct": 25 }   // Q29 buyouts after binding
 }
 ```
 
@@ -145,6 +158,7 @@ Pool CSV columns are matched by name, case-insensitively: a group-size column (`
 | `copes-place` | The seeded 50-cap alpha venue |
 | `lincoln-synthetic` | The 5-row fixture from the engine's tests |
 | `austin-partial` | The sectioned-off Austin fixture (two rows inactive) |
+| `supper-club` | A tier-spec room of 12 four-tops, 6 six-tops and a GA bar, for the tables/boxes policies |
 
 `venue add` accepts four inputs, picked by file extension:
 

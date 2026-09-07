@@ -48,6 +48,8 @@ export function allocate(
   const policies: LaunchPadPolicies = {
     fitPolicy: config.fitPolicy,
     parityTiebreak: config.parityTiebreak,
+    lookaheadRows: config.lookaheadRows,
+    unitPolicy: config.unitPolicy,
   };
   const reserve = splitSinglesReserve(venue, offers, config.singlesReserve ?? 0);
 

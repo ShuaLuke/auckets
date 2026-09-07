@@ -17,7 +17,11 @@ describe("parsePolicy", () => {
     expect(combo.config).toEqual({ fitPolicy: "clean_fit", singlesReserve: 1 });
     expect(combo.caveat).toMatch(/Clean-fit defers/);
     expect(combo.caveat).toMatch(/NOT rank-first/);
-    expect(() => parsePolicy("lookahead", v)).toThrow(/unknown policy/);
+    expect(parsePolicy("lookahead", v)).toMatchObject({ config: { fitPolicy: "lookahead", lookaheadRows: 2 }, rankFirst: false });
+    expect(parsePolicy("lookahead:3+protect-units", v).config).toEqual({ fitPolicy: "lookahead", lookaheadRows: 3, unitPolicy: "protect" });
+    expect(() => parsePolicy("clean-fit+lookahead", v)).toThrow(/both fit policies/);
+    expect(() => parsePolicy("lookahead+clean-fit", v)).toThrow(/both fit policies/);
+    expect(() => parsePolicy("nope", v)).toThrow(/unknown policy/);
     expect(singleSeatRowCount(v)).toBe(2);
   });
 });

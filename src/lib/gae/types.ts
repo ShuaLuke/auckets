@@ -79,7 +79,17 @@ export type FitPolicy =
   // leaves a fillable remainder. Falls back to greedy when nothing does.
   // Rank-respect widened by one deferral; logged as FIT_RESOLVED with
   // snapshot.policy === "clean_fit".
-  | "clean_fit";
+  | "clean_fit"
+  // Cope's Phase 6 framing: when filling a row, also look at the next
+  // `lookaheadRows` rows and defer at most ONE fitting offer from this row
+  // if that leaves fewer stranded seats across the window. Fill-first —
+  // NOT rank-first. Logged as FIT_RESOLVED with snapshot.policy === "lookahead".
+  | "lookahead";
+
+// NEW-14: how a table or box (VenueRow.area "tables" | "boxes") is filled.
+//   co-seat  — seat-by-seat like a row; strangers share a table (shipped)
+//   protect  — one group per unit; once a group sits, the unit closes
+export type UnitPolicy = "co_seat" | "protect";
 
 export type AllocationConfig = {
   mode: AllocationMode;
@@ -99,6 +109,10 @@ export type AllocationConfig = {
   // rank-first — kept as the smallest possible guard for the parity
   // hypothesis. Logged with snapshot.singlesReserve === true.
   singlesReserve?: number;
+  // Rows to look ahead when fitPolicy is "lookahead". Default 2.
+  lookaheadRows?: number;
+  // Default "co_seat" (today's behaviour).
+  unitPolicy?: UnitPolicy;
 };
 
 export type SeatAssignment = {
