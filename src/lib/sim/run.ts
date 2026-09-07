@@ -117,6 +117,7 @@ export function runScenario(input: RunInput): RunOutput {
       }),
     ),
     venueSummary: venueParitySummary(resolved.venue),
+    rowRanks: Object.fromEntries(rows.map((r) => [r.id, r.rowRank])),
     offerSummary: offerParitySummary(firstPool ?? [], availableSeats),
     policies,
     seeds,
