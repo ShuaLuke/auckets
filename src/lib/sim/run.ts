@@ -8,21 +8,24 @@ import { createHash } from "node:crypto";
 import { allocate } from "@/lib/gae";
 import type { AllocationConfig, RankedOffer } from "@/lib/gae/types";
 
+import { DEFAULT_RAISE_RULE, resolveAutoBids } from "./autobid";
 import { generatePool } from "./demand";
 import { checkInvariants } from "./invariants";
 import { computeMetrics } from "./metrics";
+import { parsePolicy } from "./policy";
 import { offerParitySummary } from "./pool";
-import type { FillMetrics, Percentiles, PolicyAggregate, PolicyName, PolicyRun, RunOutput, Scenario, SimVenue } from "./types";
+import type { AutoBids, FillMetrics, Percentiles, PolicyAggregate, PolicyName, PolicyRun, RunOutput, Scenario, SimVenue } from "./types";
 import { activeRows, applyShowOverlay, SimInputError, tierOrder, toArchitecture, venueParitySummary } from "./venue";
 
 export type RunInput = {
   scenario: Scenario;
   venue: SimVenue;
   poolOffers?: RankedOffer[]; // required when scenario.pool is { file }
+  poolAutoBids?: AutoBids; // caps from the pool file's cap column, if any
   now?: string; // ISO; injectable for tests
 };
 
-export const POLICIES: PolicyName[] = ["greedy"];
+export const POLICIES: PolicyName[] = ["greedy", "clean-fit", "parity-tiebreak", "singles-reserve", "clean-fit+singles-reserve"];
 
 export function runScenario(input: RunInput): RunOutput {
   const { scenario, venue } = input;
@@ -45,12 +48,14 @@ export function runScenario(input: RunInput): RunOutput {
   }
 
   const arch = toArchitecture(resolved.venue);
-  const config: AllocationConfig = {
+  const baseConfig: AllocationConfig = {
     mode: "preview",
     allowOrphans: true,
     maxGroupSize: resolved.maxGroupSize,
     orphanPolicy: "leave",
   };
+  const parsedPolicies = policies.map((p) => parsePolicy(p, resolved.venue));
+  const raiseRule = scenario.autoBidRaiseRule ?? DEFAULT_RAISE_RULE;
 
   const seeds: number[] = [];
   const runs: PolicyRun[] = [];
@@ -59,13 +64,15 @@ export function runScenario(input: RunInput): RunOutput {
 
   for (let s = 0; s < seedCount; s++) {
     let offers: RankedOffer[];
+    let autoBids: AutoBids;
     let seed: number;
     if ("file" in scenario.pool) {
       offers = input.poolOffers!;
+      autoBids = input.poolAutoBids ?? {};
       seed = 0;
     } else {
       seed = scenario.pool.generate.seed + s;
-      offers = generatePool(
+      const gen = generatePool(
         scenario.pool.generate,
         {
           tierOrder: tierOrder(resolved.venue),
@@ -74,17 +81,38 @@ export function runScenario(input: RunInput): RunOutput {
           maxGroupSize: resolved.maxGroupSize,
         },
         seed,
-      ).offers;
+      );
+      offers = gen.offers;
+      autoBids = gen.autoBids;
     }
     seeds.push(seed);
     firstPool ??= offers;
 
-    for (const policy of policies) {
+    for (const parsed of parsedPolicies) {
+      const policy = parsed.name;
+      const config: AllocationConfig = { ...baseConfig, ...parsed.config };
       const t0 = performance.now();
-      const result = allocate(arch, offers, config);
+      // Auto-bid pre-pass (ADR-0018 fixed point) with THIS policy's config,
+      // so a policy is judged on the pool it would actually see.
+      const ab = resolveAutoBids(arch, offers, autoBids, raiseRule, config);
+      const seen = ab.offers;
+      const result = allocate(arch, seen, config);
       const runtimeMs = performance.now() - t0;
-      const metrics = computeMetrics(resolved.venue, offers, result, heldBySource, runtimeMs);
-      const violations = checkInvariants(resolved.venue, offers, result);
+      const metrics = computeMetrics(resolved.venue, seen, result, heldBySource, runtimeMs, {
+        bidders: Object.keys(autoBids).filter((id) => offers.some((o) => o.id === id)).length,
+        raises: ab.raises,
+        rounds: ab.rounds,
+      });
+      if (config.singlesReserve) {
+        const reservedIds = new Set(result.decisions.filter((d) => d.snapshot.singlesReserve === true && d.offerId).map((d) => d.offerId!));
+        const unplacedIds = new Set(result.unplaced.map((u) => u.offerId));
+        // Reserved singles that never got a seat: singles in the reserve set are
+        // the k lowest-ranked compatible singles; the engine doesn't return the
+        // set, so count unplaced singles beyond what greedy would leave. Kept
+        // simple: unplaced single-seat offers not seen in a reserve decision.
+        metrics.policy.reservedSinglesUnplaced = seen.filter((o) => o.groupSize === 1 && unplacedIds.has(o.id) && !reservedIds.has(o.id)).length;
+      }
+      const violations = checkInvariants(resolved.venue, seen, result);
       const run: PolicyRun = {
         seed,
         policy,
@@ -92,11 +120,14 @@ export function runScenario(input: RunInput): RunOutput {
         metrics,
         violations,
         resultHash: sha256(stableStringify({ assignments: result.assignments, unplaced: result.unplaced, stats: result.stats })),
+        config,
+        caveat: parsed.caveat,
       };
       if (!firstResultByPolicy.has(policy)) {
         firstResultByPolicy.add(policy);
         run.result = result;
-        run.offers = offers;
+        run.offers = seen;
+        run.raises = ab.raises;
       }
       runs.push(run);
     }
@@ -157,6 +188,19 @@ const SCALAR_PATHS: ReadonlyArray<[keyof FillMetrics, string]> = [
   ["rankRespect", "priceGapSumCents"],
   ["rankRespect", "fitResolvedDeferrals"],
   ["rankRespect", "waterfalled"],
+  ["policy", "cleanFitDeferrals"],
+  ["policy", "seatsSavedByCleanFit"],
+  ["policy", "parityTiebreaks"],
+  ["policy", "reservedSinglesPlaced"],
+  ["policy", "reservedSinglesUnplaced"],
+  ["autoBid", "bidders"],
+  ["autoBid", "raised"],
+  ["autoBid", "totalRaiseCents"],
+  ["autoBid", "maxRaiseCents"],
+  ["autoBid", "avgStepsPerRaised"],
+  ["autoBid", "heldSectionAfterRaise"],
+  ["autoBid", "cappedOut"],
+  ["autoBid", "rounds"],
 ];
 
 export function percentiles(values: number[]): Percentiles {

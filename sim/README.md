@@ -21,6 +21,9 @@ npm run sim -- run sim/scenarios/lincoln-v4-mix.json --active "ORCH C,ORCH L,ORC
 npm run sim -- run sim/scenarios/lincoln-v4-cope-pool.json                           # Cope's real 512-offer pool
 
 npm run sim -- compare-runs couples singles-rich                # any saved runs, side by side, deltas vs the first
+
+npm run sim -- compare sim/scenarios/lincoln-v4-cope-pool.json --policies greedy,clean-fit,clean-fit+singles-reserve   # Q1/Q2
+npm run sim -- run sim/scenarios/lincoln-v4-autobid.json --raise percent:5     # auto-bid step rule: fixed:5 (shipped) or percent:5
 ```
 
 Every `run` prints the fill report and writes `sim/runs/<name>/`:
@@ -36,6 +39,24 @@ Every `run` prints the fill report and writes `sim/runs/<name>/`:
 `compare-runs` takes two or more run folders (names under `sim/runs/` or paths) and writes `compare.md`: the fill report columns side by side with deltas against the first run, placed % and median row rank per group size, fill and gross per tier, and, when two runs used the same offers on the same venue, a per-offer "who moved" list.
 
 With `--seeds N` the pool is regenerated N times (seed, seed+1, …) and the report shows p50 / p5 / p95. The run exits non-zero if any invariant fails (contiguity, total accounting, double booking, free upgrades). Same scenario + seed always gives the same result hash.
+
+## Policies
+
+`policies` in a scenario (or `--policies a,b,c`) runs each engine variant on the same pool and adds a "Policies compared" section with deltas and a who-moved list. They map to opt-in `AllocationConfig` fields in `src/lib/gae/types.ts`; production stays on the defaults until an ADR flips one.
+
+| Policy | What it changes | Rank-first? |
+|---|---|---|
+| `greedy` | Shipped behaviour | yes |
+| `clean-fit` | When placing a group that fits would strand seats no remaining offer can exactly fill, defer it and take the next group that closes the row. Falls back to greedy when nothing does. Logged as `FIT_RESOLVED` with `snapshot.policy = "clean_fit"` | subject to those deferrals — they show up under "passed over" |
+| `parity-tiebreak` | At **equal price** only (the spec's rank tie, normally larger group first), prefer the group whose size parity matches the remaining run. Never crosses a price | yes, ties reordered |
+| `singles-reserve[:k]` | Hold back the k lowest-ranked single-seat offers (default k = number of 1-seat rows) until everyone else is seated; then 1-seat rows first, anywhere second | **no** — preventive hoarding, the smallest guard for the parity hypothesis |
+| `a+b` | Combine, e.g. `clean-fit+singles-reserve` | as its parts |
+
+On Cope's pool and architecture: greedy 1,133 / 1,152 seated, 19 one-seat holes; clean-fit 1,144 (+$2,800, 29 passed over, ≤5 rows, ≤$25 gap); clean-fit + reserve 1,150 (+$4,300, 105 passed over). Parity tiebreak alone changes nothing on that pool.
+
+## Auto-bid
+
+A generated pool can carry an auto-bid share (`generate.autoBid: { "sharePct": 25, "capMultiplier": [1.2, 1.6] }`); a pool CSV can carry a `cap` column (dollars). Before each policy runs, the sim resolves auto-bids the way production does (ADR-0018): run the engine, raise every displaced bidder one step up to its cap, repeat until stable. The step rule is on the scenario: `"autoBidRaiseRule": { "kind": "fixed", "cents": 500 }` (shipped) or `{ "kind": "percent", "pct": 5 }` (Cope's preference), or `--raise fixed:5 | percent:5`. The report's Auto-bid section shows bidders, how many raised, dollars added, who held their section, and who capped out. Compare two runs with different rules to settle NEW-13.
 
 ## Scenario file
 
@@ -66,8 +87,9 @@ With `--seeds N` the pool is regenerated N times (seed, seed+1, …) and the rep
     //   "tierChoice": "premium-biased"                  // or "uniform"
     // }
   },
-  "policies": ["greedy"],                     // only the shipped policy exists in slice 1
-  "seeds": 1
+  "policies": ["greedy", "clean-fit"],        // see Policies above
+  "seeds": 1,
+  "autoBidRaiseRule": { "kind": "fixed", "cents": 500 }   // optional; see Auto-bid
 }
 ```
 
