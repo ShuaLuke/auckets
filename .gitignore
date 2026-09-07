@@ -78,3 +78,6 @@ Thumbs.db
 # tooling, not project code — should not be committed.
 .agents/
 skills-lock.json
+
+# GAE simulator run output — curated runs go to docs/sim-reports/ instead
+sim/runs/

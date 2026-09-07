@@ -1,0 +1,136 @@
+{
+  "name": "austin-partial",
+  "displayName": "Austin theater (sectioned-off fixture: main + GA + one box)",
+  "venueId": "austin-theater",
+  "rows": [
+    {
+      "id": "box-1",
+      "area": "boxes",
+      "section": "center",
+      "rowName": "box-1",
+      "rowRank": 1,
+      "capacity": 4,
+      "parity": "ODD",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "B1-1",
+        "B1-2",
+        "B1-3",
+        "B1-4"
+      ],
+      "holds": [],
+      "tier": "box",
+      "isGa": false
+    },
+    {
+      "id": "main-A",
+      "area": "orchestra",
+      "section": "center",
+      "rowName": "main-A",
+      "rowRank": 2,
+      "capacity": 8,
+      "parity": "ODD",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "MA-1",
+        "MA-2",
+        "MA-3",
+        "MA-4",
+        "MA-5",
+        "MA-6",
+        "MA-7",
+        "MA-8"
+      ],
+      "holds": [],
+      "tier": "main",
+      "isGa": false
+    },
+    {
+      "id": "ga-pit",
+      "area": "ga",
+      "section": "center",
+      "rowName": "ga-pit",
+      "rowRank": 3,
+      "capacity": 12,
+      "parity": "ODD",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "GA-1",
+        "GA-2",
+        "GA-3",
+        "GA-4",
+        "GA-5",
+        "GA-6",
+        "GA-7",
+        "GA-8",
+        "GA-9",
+        "GA-10",
+        "GA-11",
+        "GA-12"
+      ],
+      "holds": [],
+      "tier": "ga",
+      "isGa": true
+    },
+    {
+      "id": "balc-A",
+      "area": "front_balcony",
+      "section": "center",
+      "rowName": "balc-A",
+      "rowRank": 4,
+      "capacity": 10,
+      "parity": "ODD",
+      "lean": "CENTER",
+      "seatNumbers": [
+        "BA-1",
+        "BA-2",
+        "BA-3",
+        "BA-4",
+        "BA-5",
+        "BA-6",
+        "BA-7",
+        "BA-8",
+        "BA-9",
+        "BA-10"
+      ],
+      "holds": [],
+      "tier": "balcony",
+      "isGa": false
+    },
+    {
+      "id": "box-2",
+      "area": "boxes",
+      "section": "center",
+      "rowName": "box-2",
+      "rowRank": 5,
+      "capacity": 4,
+      "parity": "ODD",
+      "lean": "LEFT",
+      "seatNumbers": [
+        "B2-1",
+        "B2-2",
+        "B2-3",
+        "B2-4"
+      ],
+      "holds": [],
+      "tier": "box",
+      "isGa": false
+    }
+  ],
+  "activeRowIds": [
+    "main-A",
+    "ga-pit",
+    "box-2"
+  ],
+  "tierFloorsCents": {
+    "box": 15000,
+    "main": 10000,
+    "ga": 6000,
+    "balcony": 7000
+  },
+  "notes": "fixtures.test.ts fixture 3: only main-A, ga-pit and box-2 are on sale; box-1 and balc-A exist but are inactive (Q9 / NEW-4).",
+  "source": {
+    "kind": "fixture",
+    "file": "src/lib/gae/fixtures.test.ts"
+  }
+}

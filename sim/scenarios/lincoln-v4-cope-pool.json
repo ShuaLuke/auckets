@@ -1,0 +1,6 @@
+{
+  "name": "lincoln-v4-cope-pool",
+  "venue": "lincoln-v4",
+  "pool": { "file": "sim/pools/lincoln-pool-v4.csv" },
+  "policies": ["greedy"]
+}
