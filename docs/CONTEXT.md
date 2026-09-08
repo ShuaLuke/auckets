@@ -216,6 +216,7 @@ Read these as needed. They go deep where this file is high-level.
 - **`OPEN_QUESTIONS.md`** — what is not yet decided. Things you must not assume.
 - **`SECURITY.md`** — the non-negotiable rules.
 - **`RUNBOOK.md`** — operational procedures.
+- [`GAE_SIMULATOR.md`](GAE_SIMULATOR.md) — the simulator that runs the engine on real or described crowds: requirements, what each slice built, the Q1–Q5 numbers on Cope's data. Usage in [`sim/README.md`](../sim/README.md); in the app at `/admin/simulation`.
 
 ## Working norms
 
