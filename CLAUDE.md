@@ -88,6 +88,7 @@ From [`docs/CONTEXT.md`](docs/CONTEXT.md#prime-directives--never-violate-these) 
 | Errors | Sentry | Client + server + edge wired. Dormant without `NEXT_PUBLIC_SENTRY_DSN`. |
 | Logging | pino | Secret-field redactions wired. Use `logger` from `src/lib/logger.ts`. |
 | Tests | Vitest + Playwright | `npm test`, `npm run test:e2e`. |
+| GAE simulator | `src/lib/sim` (pure) + `scripts/sim.ts` | `npm run sim -- run|compare|sweep|compare-runs|venue|import-pool`. Venues/pools/scenarios under `sim/`; runs land in `sim/runs/` (gitignored). Also `/admin/simulation` in the app. |
 | CI | GitHub Actions | `.github/workflows/ci.yml`. Runs typecheck + lint + test + build. |
 
 ---
@@ -125,7 +126,7 @@ These are decisions from the May 25 v2 round of Cope/Julia answers. Read `docs/O
 2. Read [`docs/CONTEXT.md`](docs/CONTEXT.md) — especially "Current state" and "Next session" at the bottom.
 3. `git log --oneline -20` and `gh pr list --state all -L 10` for recent activity.
 4. If picking up a specific area, also read:
-   - GAE work → [`docs/GAE_SPEC.md`](docs/GAE_SPEC.md)
+   - GAE work → [`docs/GAE_SPEC.md`](docs/GAE_SPEC.md), then run your idea through the simulator before arguing about it: [`docs/GAE_SIMULATOR.md`](docs/GAE_SIMULATOR.md) + [`sim/README.md`](sim/README.md) (`npm run sim -- ...`; same engine in the app at `/admin/simulation`). There is no other runner — the old `scripts/sim-allocate.ts` and the trial-fixtures runner are gone.
    - Database work → [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) + `drizzle/schema.ts`
    - Anything user-facing → [`docs/CONVENTIONS.md`](docs/CONVENTIONS.md)
    - Local setup issues → [`docs/runbooks/local-dev.md`](docs/runbooks/local-dev.md)
