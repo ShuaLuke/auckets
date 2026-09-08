@@ -1,0 +1,7 @@
+{
+  "name": "trial-17-partial-activation",
+  "venue": "copes-place",
+  "show": { "activeRowIds": ["row_a", "row_b", "row_ga"] },
+  "pool": { "file": "sim/pools/trial/17_partial_activation.csv" },
+  "policies": ["greedy"]
+}

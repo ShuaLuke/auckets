@@ -6,7 +6,7 @@ import { libraryPool, libraryPoolSummaries, libraryVenue, libraryVenueSummaries 
 describe("static library", () => {
   it("loads every committed venue and Cope's pool", () => {
     const names = libraryVenueSummaries().map((v) => v.name);
-    expect(names).toEqual(["lincoln-v4", "lincoln-manifest", "copes-place", "supper-club", "lincoln-synthetic", "austin-partial"]);
+    expect(names).toEqual(["lincoln-v4", "lincoln-manifest", "copes-place", "supper-club", "lincoln-synthetic", "austin-partial", "lean-demo"]);
     const lincoln = libraryVenueSummaries().find((v) => v.name === "lincoln-v4")!;
     expect(lincoln).toMatchObject({ capacity: 1152, rows: 144, tiers: ["orchestra", "front_balcony", "upper_balcony"], singleRows: 7 });
     expect(libraryVenue("lincoln-v4")?.rows).toHaveLength(144);

@@ -1,0 +1,5 @@
+id,groupSize,price,tier
+pa_p,2,90,premium
+pa_mid,4,60,mid
+pa_midworse,4,58,mid-
+pa_ga,6,30,ga

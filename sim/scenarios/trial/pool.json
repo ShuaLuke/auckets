@@ -1,0 +1,6 @@
+{
+  "name": "trial-pool",
+  "venue": "copes-place",
+  "pool": { "file": "sim/pools/trial/01_clean_fit.csv" },
+  "policies": ["greedy"]
+}

@@ -7,7 +7,7 @@
 //   npm run sim -- venue add <file> [--name x] [--sheet "Full RowRank Architecture"] [--floors "orchestra=85,..."]
 //                       (.json venue or tier spec · .xlsx Cope RowRank workbook · .csv/.tsv box-office manifest)
 //   npm run sim -- import-pool <file.xlsx|.csv> [--sheet "Full Offer Pool v4"] --out sim/pools/x.csv
-//   npm run sim -- run sim/scenarios/<name>.json [--venue x] [--group-mix "1:10,2:45,..."]
+//   npm run sim -- run sim/scenarios/<name>.json [--venue x] [--pool file.csv] [--group-mix "1:10,2:45,..."]
 //                       [--seeds N] [--seed N] [--oversub X] [--active "A,B"] [--name run] [--price=cents]
 //                       [--policies greedy,clean-fit,clean-fit+singles-reserve] [--raise fixed:5|percent:5]
 //   npm run sim -- compare <scenario.json> --policies a,b[,c]     (same as run; a report with policies side by side)
@@ -256,6 +256,8 @@ function loadScenarioWithOverrides(args: Args): Scenario {
   // in the run folder reproduces the run without the flags.
   const venueFlag = flagStr(args, "venue");
   if (venueFlag) scenario = { ...scenario, venue: venueFlag };
+  const poolFlag = flagStr(args, "pool");
+  if (poolFlag) scenario = { ...scenario, pool: { file: poolFlag } };
   const active = flagStr(args, "active");
   if (active) scenario = { ...scenario, show: { ...(scenario.show ?? {}), activeSections: active.split(",").map((s) => s.trim()) } };
   const seeds = flagStr(args, "seeds");
@@ -456,7 +458,7 @@ function usage(): string {
     "        .csv   box-office manifest (UTF-16 ok)    [--rank-file section,row,rowRank.csv] [--sold-as-held] [--ignore-holds]",
     "  npm run sim -- import-pool <file.xlsx|.csv> [--sheet name] [--out sim/pools/x.csv] [--price=cents]",
     "  npm run sim -- compare-runs <run-dir> <run-dir> [...] [--out dir]",
-    "  npm run sim -- run <scenario.json> [--venue name] [--group-mix \"1:10,2:45,3:10,4:25,5:5,6:5\"]",
+    "  npm run sim -- run <scenario.json> [--venue name] [--pool file.csv] [--group-mix \"1:10,2:45,3:10,4:25,5:5,6:5\"]",
     "                                     [--seeds N] [--seed N] [--oversub 1.25] [--active \"ORCH C,FC BAL\"]",
     "                                     [--name run-name] [--out dir] [--price=cents]",
     "                                     [--policies greedy,clean-fit,parity-tiebreak,singles-reserve[:k],clean-fit+singles-reserve]",
