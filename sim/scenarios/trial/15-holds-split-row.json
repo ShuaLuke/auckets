@@ -1,0 +1,7 @@
+{
+  "name": "trial-15-holds-split-row",
+  "venue": "copes-place",
+  "show": { "holds": [{ "source": "venue", "seatIds": ["row_a:4", "row_a:5", "row_b:1"] }] },
+  "pool": { "file": "sim/pools/trial/15_holds_split_row.csv" },
+  "policies": ["greedy"]
+}

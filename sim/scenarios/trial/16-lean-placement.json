@@ -1,0 +1,6 @@
+{
+  "name": "trial-16-lean-placement",
+  "venue": "lean-demo",
+  "pool": { "file": "sim/pools/trial/16_lean_placement.csv" },
+  "policies": ["greedy"]
+}

@@ -10,6 +10,7 @@ import type { RankedOffer, TierPreference } from "@/lib/gae/types";
 
 import austinPartial from "../../../sim/venues/austin-partial.json";
 import copesPlace from "../../../sim/venues/copes-place.json";
+import leanDemo from "../../../sim/venues/lean-demo.json";
 import lincolnManifest from "../../../sim/venues/lincoln-manifest.json";
 import lincolnSynthetic from "../../../sim/venues/lincoln-synthetic.json";
 import lincolnV4 from "../../../sim/venues/lincoln-v4.json";
@@ -20,7 +21,7 @@ import { SUBMITTED_BASE_MS } from "./pool";
 import type { AutoBids, SimVenue } from "./types";
 import { parseVenueFile, tierOrder, venueParitySummary } from "./venue";
 
-const RAW_VENUES: unknown[] = [lincolnV4, lincolnManifest, copesPlace, supperClub, lincolnSynthetic, austinPartial];
+const RAW_VENUES: unknown[] = [lincolnV4, lincolnManifest, copesPlace, supperClub, lincolnSynthetic, austinPartial, leanDemo];
 
 let cache: SimVenue[] | undefined;
 
