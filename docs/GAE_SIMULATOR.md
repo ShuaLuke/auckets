@@ -166,7 +166,7 @@ Every knob the sim accepts, where the ask came from, and when it lands. Anything
 
 ### 4.2 Offer pool sources
 
-- **P1. Pool CSV/xlsx** — Cope's `Full Offer Pool v4` layout (OfferID, PricePerTicket, GroupSize, TimestampOrder, optional tier preference) and the existing `sim-allocate.ts` column aliases. Prices in dollars by default, `--price=cents` to override.
+- **P1. Pool CSV/xlsx** — Cope's `Full Offer Pool v4` layout (OfferID, PricePerTicket, GroupSize, TimestampOrder, optional tier preference) and the column aliases in `src/lib/sim/pool.ts` (`groupSize`/`size`/`party`, `price`/`bid`, `tier`, `id`, `cap`, `threshold`). Prices in dollars by default, `--price=cents` to override.
 - **P2. Demand model (synthetic generator).** Seeded, deterministic. Parameters:
   - `oversubscription` — total tickets requested ÷ venue capacity (e.g. 0.8, 1.23, 2.0)
   - `groupSizeMix` — **the percentage of offers that are groups of 1, 2, 3, 4, 5, 6, … up to the cap.** Entered directly (`{ "1": 10, "2": 45, "3": 10, "4": 25, "5": 5, "6": 5 }`, must sum to 100; sizes omitted are 0%). Also settable from the CLI with `--group-mix`, and via named presets: `even-heavy`, `odd-heavy`, `singles-rich`, `couples`, `big-groups`, `lincoln-v4` (fitted to Cope's pool). The report always echoes the mix that was actually generated (by offers and by tickets) so the input and the pool can be checked against each other.
@@ -287,7 +287,7 @@ Per run folder:
 - `result.json` — full `AllocationResult` per policy, plus metrics
 - `report.md` — the human report: headline table, per-tier table, hole histogram, rank-cost table, notable per-offer moves, policy caveats
 - `offers.csv` — one row per offer: rank, size, price, preference, policy → row/seats, placed tier, deferral, inversion flag. Opens in Excel; this is what Cope will actually read
-- `seatmap.txt` — text seat map per policy (row by row, occupant ids), same style as `sim-allocate.ts` today
+- `seatmap.txt` — text seat map per policy (row by row, occupant groups, `.` empty, `#` held)
 
 `sim/runs/` is gitignored. Curated runs that back a decision get copied into `docs/sim-reports/` next to the ADR they support.
 
@@ -346,7 +346,7 @@ Per run folder:
 
 | Slice | Delivers | Closes |
 |---|---|---|
-| **S1 — core + CLI skeleton** ✅ | `src/lib/sim/` scenario schema; **venue library** (`venue add/list/show`, JSON + tier-spec upload, seeded with the 4 known venues); per-show overlays (active sections, holds by source, floors, group cap); pool CSV loader; seeded demand model with **group-size % input**; `run` command; metrics; invariants; the **fill report**; `offers.csv` + `seatmap.txt`. Baseline `greedy` only. Retires `scripts/sim-allocate.ts` | pick a venue, run a mix, see how it fills |
+| **S1 — core + CLI skeleton** ✅ | `src/lib/sim/` scenario schema; **venue library** (`venue add/list/show`, JSON + tier-spec upload, seeded with the 4 known venues); per-show overlays (active sections, holds by source, floors, group cap); pool CSV loader; seeded demand model with **group-size % input**; `run` command; metrics; invariants; the **fill report**; `offers.csv` + `seatmap.txt`. Baseline `greedy` only. Replaced the untracked `scripts/sim-allocate.ts` and the `chore/trial-allocation-fixtures` runner (both gone; that branch's 17 pools live on as `sim/pools/trial/`, PR #144) | pick a venue, run a mix, see how it fills |
 | **S2 — compare runs + importers** ✅ | `compare-runs` over saved run folders; `venue add` for Cope's RowRank workbook (with relief-row flags) and the manifest CSV (`lincoln-manifest` in the library); `import-pool` for his pool sheet. Lincoln v4 golden fixture pins the seat map by hash | compare mixes on real data |
 | **S3 — policies + auto-bid** ✅ | `clean-fit`, `parity-tiebreak`, `singles-reserve[:k]` as opt-in `AllocationConfig` fields (defaults off) with engine unit tests; auto-bid share/cap in the demand model and a `cap` pool column, fixed-$ vs percent raise rule on the scenario; `compare` (policies on one pool) with per-offer diff. Orphan bump (`bump_to_next_row`) not built — clean-fit covers the same ground reactively. First numbers on Cope's pool: clean-fit +11 seats / +$2,800 at 29 passed-over (≤5 rows, ≤$25); clean-fit+reserve +17 / +$4,300 at 105 passed-over | Q1, Q2, NEW-13 reports |
 | **S4 — sweeps** ✅ | `sweep --vary <path>=<list|range>` over venue, any show or pool knob, seeds, raise rule × seeds × policies → `sweep.md` yield curves + `sweep.csv` for Excel; mean ± stdev / min / max on every aggregate; private offers (ADR-0017, modelled as auto-bid with cap = hidden threshold — reading to confirm with Cope); Bleacher carve-out as a per-show overlay with a demand-bounded revenue estimate, off unless set | "distribution with yield capacity" |
