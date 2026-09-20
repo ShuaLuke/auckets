@@ -172,8 +172,35 @@ describe("seatingChart", () => {
     expect(tables.units).toHaveLength(view.rows.filter((r) => r.unit).length);
     expect(chart.find((l) => l.area === "ga")!.units.map((u) => u.label)).toEqual(["GA"]);
 
-    const boxes = chartFor("lincoln-manifest").chart.find((l) => l.area === "boxes")!;
-    expect(boxes.units[0]!.label).toBe("BOX A");
+  });
+
+  it("lines the Lincoln's boxes along the side walls of the orchestra, as the theatre's own map does", () => {
+    const { view, chart } = chartFor("lincoln-manifest");
+    const orch = chart[0]!;
+    expect(orch.area).toBe("orchestra");
+    // House left and house right, each from the stage back (tech specs p.10).
+    expect(orch.leftWall.map((u) => u.label)).toEqual(["BOX A", "BOX C", "BOX D", "BOX E", "BOX F"]);
+    expect(orch.rightWall.map((u) => u.label)).toEqual(["BOX B", "BOX K", "BOX J", "BOX H", "BOX G"]);
+    // They moved — they weren't copied: no separate boxes strip, and every row is still drawn once.
+    expect(chart.find((l) => l.area === "boxes")).toBeUndefined();
+    const drawn = chart.flatMap((l) => [...l.lines.flatMap((ln) => ln.rows.filter((i): i is number => i !== null)), ...l.units.map((u) => u.row), ...l.leftWall.map((u) => u.row), ...l.rightWall.map((u) => u.row)]);
+    expect([...drawn].sort((a, b) => a - b)).toEqual(view.rows.map((_, i) => i));
+    // The four nearest the stage are box-office holds; D–J are on sale.
+    const held = (label: string): boolean => view.rows[[...orch.leftWall, ...orch.rightWall].find((u) => u.label === label)!.row]!.seats.every((c) => c === SEAT_HELD);
+    expect(["BOX A", "BOX B", "BOX C", "BOX K"].every(held)).toBe(true);
+    expect(held("BOX D")).toBe(false);
+
+    // Opened on its own (no floor to flank), a box is an ordinary unit again.
+    const alone = seatingChart(filterSeatMapView(view, (r) => r.section === "BOX D"));
+    expect(alone).toHaveLength(1);
+    expect(alone[0]!.units.map((u) => u.label)).toEqual(["BOX D"]);
+    expect(alone[0]!.leftWall).toEqual([]);
+  });
+
+  it("leaves a venue with no wall sections exactly as it was", () => {
+    const { view, chart } = chartFor("lincoln-v4");
+    expect(view.wallRows).toBeUndefined();
+    expect(chart.every((l) => l.leftWall.length === 0 && l.rightWall.length === 0)).toBe(true);
   });
 
   it("centres a room with a single block instead of leaning it to one side", () => {

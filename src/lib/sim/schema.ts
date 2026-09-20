@@ -33,6 +33,7 @@ export const VenueFileSchema = z.strictObject({
     )
     .optional(),
   notes: z.string().optional(),
+  wallSections: z.strictObject({ left: z.array(z.string().min(1)), right: z.array(z.string().min(1)) }).optional(),
   source: z
     .strictObject({
       kind: z.string(),

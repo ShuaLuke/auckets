@@ -58,6 +58,9 @@ export type SeatMapView = {
   seed: number;
   rows: SeatMapRow[];
   offers: SeatMapOffer[]; // seated offers only, best rank first
+  // Row ids of sections that line a side wall (SimVenue.wallSections), house
+  // left / house right, nearest the stage first. Absent for most venues.
+  wallRows?: { left: string[]; right: string[] };
   totalOffers: number;
   placedSeats: number;
   emptySeats: number;
@@ -139,7 +142,19 @@ export function buildSeatMapView(run: PolicyRun, venue: SimVenue): SeatMapView |
     };
   });
 
-  return { policy: run.policy, seed: run.seed, rows: viewRows, offers, totalOffers: pool.length, placedSeats, emptySeats, heldSeats };
+  const wall = (names: string[]): string[] => names.flatMap((name) => rows.filter((r) => r.section === name).map((r) => r.id));
+  const wallRows = venue.wallSections ? { left: wall(venue.wallSections.left), right: wall(venue.wallSections.right) } : undefined;
+  return {
+    policy: run.policy,
+    seed: run.seed,
+    rows: viewRows,
+    offers,
+    ...(wallRows && wallRows.left.length + wallRows.right.length > 0 && { wallRows }),
+    totalOffers: pool.length,
+    placedSeats,
+    emptySeats,
+    heldSeats,
+  };
 }
 
 // --- price scale -----------------------------------------------------------
@@ -206,7 +221,9 @@ export function binIndexFor(bins: PriceBin[], priceCents: number): number {
 //              the room.
 //
 // Tables and boxes (isAtomicUnit) and GA pens aren't rows of a block; they
-// come back as standalone units. Real curvature and rake belong to the venue
+// come back as standalone units. Boxes the venue file places on a side wall
+// (wallSections) flank the level nearest the stage instead, the way a theatre's
+// own seating map draws them. Real curvature and rake belong to the venue
 // builder — this is the schematic a box-office chart shows.
 
 export type ChartSide = "left" | "centre" | "right";
@@ -218,15 +235,20 @@ export type ChartLevel = {
   sections: ChartSection[]; // house left → right
   lines: ChartLine[]; // nearest the stage first
   units: ChartUnit[];
+  // Boxes along the house-left / house-right wall of this level, nearest the
+  // stage first. Only ever set on the level nearest the stage.
+  leftWall: ChartUnit[];
+  rightWall: ChartUnit[];
   widthSeats: number; // Σ section widths — what the page sizes cells from
 };
 
 export function seatingChart(view: SeatMapView): ChartLevel[] {
   const areas: string[] = [];
   for (const r of view.rows) if (!areas.includes(r.area)) areas.push(r.area); // rows arrive best rank first
+  const onWall = new Set([...(view.wallRows?.left ?? []), ...(view.wallRows?.right ?? [])]);
 
-  return areas.map((area) => {
-    const inArea = view.rows.map((r, i) => ({ r, i })).filter((x) => x.r.area === area);
+  const levels = areas.map((area) => {
+    const inArea = view.rows.map((r, i) => ({ r, i })).filter((x) => x.r.area === area && !onWall.has(x.r.id));
     const standalone = inArea.filter((x) => x.r.unit === true || x.r.isGa === true);
     const seated = inArea.filter((x) => x.r.unit !== true && x.r.isGa !== true);
 
@@ -277,9 +299,28 @@ export function seatingChart(view: SeatMapView): ChartLevel[] {
       sections: sections.map(({ name, side, width }) => ({ name, side, width })),
       lines,
       units,
+      leftWall: [] as ChartUnit[],
+      rightWall: [] as ChartUnit[],
       widthSeats: sections.reduce((sum, sec) => sum + sec.width, 0),
     };
   });
+
+  // Wall boxes flank the level nearest the stage that has rows to flank. With
+  // no such level (a room of nothing but boxes) they stay ordinary units.
+  const floor = levels.find((l) => l.lines.length > 0);
+  const wallUnits = (ids: string[]): ChartUnit[] =>
+    ids.flatMap((id) => {
+      const row = view.rows.findIndex((r) => r.id === id);
+      return row === -1 ? [] : [{ label: view.rows[row]!.section, row }];
+    });
+  if (floor) {
+    floor.leftWall = wallUnits(view.wallRows?.left ?? []);
+    floor.rightWall = wallUnits(view.wallRows?.right ?? []);
+  } else {
+    for (const u of wallUnits([...onWall])) levels.find((l) => l.area === view.rows[u.row]!.area)?.units.push(u);
+  }
+  // A level that only held wall boxes has nothing left to draw.
+  return levels.filter((l) => l.lines.length > 0 || l.units.length > 0);
 }
 
 // --- sections --------------------------------------------------------------
