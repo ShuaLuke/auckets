@@ -2,7 +2,8 @@
 import { describe, expect, it } from "vitest";
 
 import { runScenario } from "./run";
-import { binIndexFor, buildSeatMapView, priceBins, SEAT_EMPTY, SEAT_HELD, type SeatMapView } from "./seatmap";
+import { libraryPool, libraryVenue } from "./library";
+import { binIndexFor, buildSeatMapView, priceBins, seatingChart, SEAT_EMPTY, SEAT_HELD, type SeatMapView } from "./seatmap";
 import { offer, row, venue } from "./test-helpers";
 import type { Scenario } from "./types";
 import { applyShowOverlay } from "./venue";
@@ -125,5 +126,58 @@ describe("priceBins", () => {
   it("maps a price to its bin", () => {
     const bins = priceBins(viewOf([[4000, 10], [6000, 10], [9000, 10]]), 3);
     expect([4000, 6000, 9000].map((p) => binIndexFor(bins, p))).toEqual([0, 1, 2]);
+  });
+});
+
+describe("seatingChart", () => {
+  const chartFor = (venueName: string, scenarioExtra: Partial<Scenario> = {}) => {
+    const lib = libraryVenue(venueName)!;
+    const sc: Scenario = { name: "chart", venue: venueName, pool: { generate: { seed: 1, oversubscription: 1.1, groupSizeMix: "couples", priceModel: { kind: "ladder" } } }, policies: ["greedy"], ...scenarioExtra };
+    const out = runScenario({ scenario: sc, venue: lib, now: "2026-09-20T00:00:00Z" });
+    const view = buildSeatMapView(out.runs[0]!, applyShowOverlay(lib, sc.show).venue)!;
+    return { view, chart: seatingChart(view) };
+  };
+
+  it("draws the Lincoln as levels, with sections house-left to house-right around the centre", () => {
+    const pool = libraryPool("lincoln-pool-v4")!;
+    const lib = libraryVenue("lincoln-v4")!;
+    const sc: Scenario = { name: "chart", venue: "lincoln-v4", pool: { file: "library:lincoln-pool-v4" }, policies: ["greedy"] };
+    const out = runScenario({ scenario: sc, venue: lib, poolOffers: pool.offers, poolAutoBids: pool.autoBids, now: "2026-09-20T00:00:00Z" });
+    const view = buildSeatMapView(out.runs[0]!, lib)!;
+    const chart = seatingChart(view);
+
+    expect(chart.map((l) => l.area)).toEqual(["orchestra", "front_balcony", "upper_balcony"]);
+    expect(chart[0]!.sections.map((s) => [s.name, s.side])).toEqual([["ORCH L", "left"], ["ORCH C", "centre"], ["ORCH R", "right"]]);
+    // The far-side balcony blocks sit outside the centre pair.
+    expect(chart[2]!.sections.map((s) => s.name)).toEqual(["L BALC", "CL BAL", "CR BAL", "R BALC"]);
+
+    // Row A of all three orchestra blocks shares a line; AA and BB (centre only) come first.
+    const orch = chart[0]!;
+    expect(orch.lines.slice(0, 3).map((l) => l.rowName)).toEqual(["AA", "BB", "A"]);
+    expect(orch.lines[0]!.rows.map((r) => r !== null)).toEqual([false, true, false]);
+    const lineA = orch.lines[2]!;
+    expect(lineA.rows.map((i) => (i === null ? null : `${view.rows[i]!.section} ${view.rows[i]!.rowName}`))).toEqual(["ORCH L A", "ORCH C A", "ORCH R A"]);
+    expect(orch.widthSeats).toBe(8 + 20 + 8);
+
+    // Every row is drawn exactly once.
+    const drawn = chart.flatMap((l) => [...l.lines.flatMap((ln) => ln.rows.filter((i): i is number => i !== null)), ...l.units.map((u) => u.row)]);
+    expect([...drawn].sort((a, b) => a - b)).toEqual(view.rows.map((_, i) => i));
+  });
+
+  it("pulls tables, boxes and GA pens out as labelled units", () => {
+    const { view, chart } = chartFor("supper-club");
+    const tables = chart.find((l) => l.area === "tables")!;
+    expect(tables.lines).toEqual([]);
+    expect(tables.units.slice(0, 2).map((u) => u.label)).toEqual(["Table 1", "Table 2"]);
+    expect(tables.units).toHaveLength(view.rows.filter((r) => r.unit).length);
+    expect(chart.find((l) => l.area === "ga")!.units.map((u) => u.label)).toEqual(["GA"]);
+
+    const boxes = chartFor("lincoln-manifest").chart.find((l) => l.area === "boxes")!;
+    expect(boxes.units[0]!.label).toBe("BOX A");
+  });
+
+  it("centres a room with a single block instead of leaning it to one side", () => {
+    const { chart } = chartFor("copes-place");
+    expect(chart[0]!.sections.map((s) => s.side)).toEqual(["centre"]);
   });
 });
