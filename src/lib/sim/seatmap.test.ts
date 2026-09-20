@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { runScenario } from "./run";
 import { libraryPool, libraryVenue } from "./library";
-import { binIndexFor, buildSeatMapView, priceBins, seatingChart, SEAT_EMPTY, SEAT_HELD, type SeatMapView } from "./seatmap";
+import { binIndexFor, buildSeatMapView, filterSeatMapView, priceBins, quantileBins, seatingChart, summariseSections, SEAT_EMPTY, SEAT_HELD, type SeatMapView } from "./seatmap";
 import { offer, row, venue } from "./test-helpers";
 import type { Scenario } from "./types";
 import { applyShowOverlay } from "./venue";
@@ -179,5 +179,62 @@ describe("seatingChart", () => {
   it("centres a room with a single block instead of leaning it to one side", () => {
     const { chart } = chartFor("copes-place");
     expect(chart[0]!.sections.map((s) => s.side)).toEqual(["centre"]);
+  });
+});
+
+describe("summariseSections / filterSeatMapView", () => {
+  const lincoln = (): SeatMapView => {
+    const pool = libraryPool("lincoln-pool-v4")!;
+    const lib = libraryVenue("lincoln-v4")!;
+    const sc: Scenario = { name: "sec", venue: "lincoln-v4", pool: { file: "library:lincoln-pool-v4" }, policies: ["greedy"] };
+    const out = runScenario({ scenario: sc, venue: lib, poolOffers: pool.offers, poolAutoBids: pool.autoBids, now: "2026-09-20T00:00:00Z" });
+    return buildSeatMapView(out.runs[0]!, lib)!;
+  };
+
+  it("rolls the room up one block per section, and the blocks add back up to the room", () => {
+    const view = lincoln();
+    const map = summariseSections(view);
+    expect(map.sections.map((s) => s.section).slice(0, 3)).toEqual(["ORCH C", "ORCH R", "ORCH L"]); // best row rank first
+    expect(map.sections).toHaveLength(10);
+    const sum = (f: (s: (typeof map.sections)[number]) => number): number => map.sections.reduce((t, s) => t + f(s), 0);
+    expect(sum((s) => s.placedSeats)).toBe(view.placedSeats);
+    expect(sum((s) => s.emptySeats)).toBe(view.emptySeats);
+    expect(sum((s) => s.offers)).toBe(view.offers.length);
+    expect(sum((s) => s.grossCents)).toBe(view.offers.reduce((t, o) => t + o.priceCents * o.groupSize, 0));
+    const orchC = map.sections[0]!;
+    expect(orchC.avgPriceCents).toBe(Math.round(orchC.grossCents / orchC.placedSeats));
+    expect(orchC.minPriceCents!).toBeLessThanOrEqual(orchC.avgPriceCents!);
+    expect(orchC.maxPriceCents!).toBeGreaterThanOrEqual(orchC.avgPriceCents!);
+    // Dearest block is the centre orchestra; the far balcony is the cheapest.
+    expect(orchC.avgPriceCents!).toBeGreaterThan(map.sections.at(-1)!.avgPriceCents!);
+  });
+
+  it("reports a section nobody sat in as empty, not as a $0 average", () => {
+    const v2 = venue([row({ id: "a", rank: 1, cap: 2, tier: "premium" }), row({ id: "z", rank: 2, cap: 6, tier: "rear", section: "far" })]);
+    const sc: Scenario = { name: "e", venue: "test-venue", pool: { file: "inline" }, policies: ["greedy"] };
+    const out = runScenario({ scenario: sc, venue: v2, poolOffers: [offer("o1", 2, 9000, { type: "specific", tier: "premium" })], now: "2026-09-20T00:00:00Z" });
+    const far = summariseSections(buildSeatMapView(out.runs[0]!, v2)!).sections.find((s) => s.section === "far")!;
+    expect(far).toMatchObject({ placedSeats: 0, emptySeats: 6, seats: 6, offers: 0, avgPriceCents: null, minPriceCents: null });
+  });
+
+  it("cuts one level out of the room with its offers re-indexed", () => {
+    const view = lincoln();
+    const balcony = filterSeatMapView(view, (r) => r.area === "front_balcony");
+    expect(new Set(balcony.rows.map((r) => r.area))).toEqual(new Set(["front_balcony"]));
+    expect(balcony.offers.length).toBeLessThan(view.offers.length);
+    expect(balcony.totalOffers).toBe(view.totalOffers);
+    // Every seat still resolves to the same offer it did in the full room.
+    const fullRow = view.rows.find((r) => r.id === balcony.rows[0]!.id)!;
+    balcony.rows[0]!.seats.forEach((code, i) => {
+      const before = fullRow.seats[i]!;
+      if (before < 0) expect(code).toBe(before);
+      else expect(balcony.offers[code]).toBe(view.offers[before]);
+    });
+    expect(balcony.placedSeats).toBe(balcony.rows.flatMap((r) => r.seats).filter((c) => c >= 0).length);
+    expect(summariseSections(balcony).sections).toEqual(summariseSections(view).sections.filter((s) => s.area === "front_balcony"));
+  });
+
+  it("bins section averages with the same seat-weighted scale", () => {
+    expect(quantileBins([[4000, 100], [9000, 100], [20000, 0]], 5).map((b) => b.maxCents)).toEqual([4000, 9000]);
   });
 });

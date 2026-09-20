@@ -19,7 +19,7 @@ import { libraryPool, libraryVenue } from "@/lib/sim/library";
 import { POLICY_PATTERN } from "@/lib/sim/schema";
 import { renderFillReport, renderOffersCsv, renderSeatMap } from "@/lib/sim/report";
 import { runScenario } from "@/lib/sim/run";
-import { buildSeatMapView, type SeatMapView } from "@/lib/sim/seatmap";
+import { buildSeatMapView, filterSeatMapView, summariseSections, type SeatMapView, type SectionMapView } from "@/lib/sim/seatmap";
 import { slimOutput } from "@/lib/sim/sweep";
 import type { RunOutput, Scenario } from "@/lib/sim/types";
 import { activeRows, applyShowOverlay, SimInputError } from "@/lib/sim/venue";
@@ -57,6 +57,11 @@ const BodySchema = z.object({
   ]),
   policies: z.array(z.string().regex(POLICY_PATTERN)).min(1).max(4),
   seeds: z.number().int().min(1).max(20),
+  // Seat-by-seat detail for one level of one policy, for rooms whose full
+  // seat map is too big to send. Nothing is kept between requests, so this
+  // re-runs that policy's first seed — same inputs, same seats — and returns
+  // only that level.
+  detail: z.object({ policy: z.string().regex(POLICY_PATTERN), area: z.string().min(1).max(80) }).optional(),
   autoBidRaiseRule: z.union([z.object({ kind: z.literal("fixed"), cents: z.number().int().positive().max(100_000) }), z.object({ kind: z.literal("percent"), pct: z.number().positive().max(100) })]).optional(),
   bleacher: z.object({ sharePct: z.number().positive().max(50), priceCents: z.number().int().positive().max(1_000_000) }).optional(),
   timeline: z
@@ -83,6 +88,9 @@ export type SimulationResponse = {
   offersCsv: Record<string, string>; // policy → csv
   seatmapTxt: Record<string, string>;
   seatMaps: Record<string, SeatMapView>; // policy → the visual seat map (first seed)
+  // policy → the room one block per section. Small, so every policy gets one
+  // even when its seat map doesn't fit.
+  sectionMaps: Record<string, SectionMapView>;
   // Policies whose offers.csv and text seat map, or whose visual seat map,
   // were left out to keep the response under the platform's size limit (a
   // stadium's come to ~5 MB a policy).
@@ -90,6 +98,7 @@ export type SimulationResponse = {
   seatMapsOmitted: string[];
   elapsedMs: number;
 };
+export type SimulationDetailResponse = { ok: true; detail: SeatMapView; elapsedMs: number };
 type ErrorBody = { error: string; details?: unknown };
 
 // Vercel rejects a function response over 4.5 MB. The report and metrics
@@ -97,7 +106,7 @@ type ErrorBody = { error: string; details?: unknown };
 // in this many characters.
 const MAX_DOWNLOAD_CHARS = 3_000_000;
 
-export async function POST(request: Request): Promise<NextResponse<SimulationResponse | ErrorBody>> {
+export async function POST(request: Request): Promise<NextResponse<SimulationResponse | SimulationDetailResponse | ErrorBody>> {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const access = await userCanSimulate(db, userId);
@@ -112,6 +121,7 @@ export async function POST(request: Request): Promise<NextResponse<SimulationRes
   const parsed = BodySchema.safeParse(bodyJson);
   if (!parsed.success) return NextResponse.json({ error: "invalid body", details: parsed.error.issues }, { status: 400 });
   const body = parsed.data;
+  if (body.detail && !body.policies.includes(body.detail.policy)) return NextResponse.json({ error: `detail.policy "${body.detail.policy}" is not one of this run's policies` }, { status: 400 });
 
   const venue = libraryVenue(body.venue);
   if (!venue) return NextResponse.json({ error: `unknown venue "${body.venue}"` }, { status: 404 });
@@ -141,8 +151,9 @@ export async function POST(request: Request): Promise<NextResponse<SimulationRes
             },
           }
         : { file: `library:${body.pool.name}` },
-    policies: body.policies,
-    seeds: body.pool.kind === "library" ? 1 : body.seeds,
+    // A detail request needs one policy's first seed and nothing else.
+    policies: body.detail ? [body.detail.policy] : body.policies,
+    seeds: body.detail || body.pool.kind === "library" ? 1 : body.seeds,
     ...(body.autoBidRaiseRule && { autoBidRaiseRule: body.autoBidRaiseRule }),
     ...(body.timeline && {
       timeline: {
@@ -179,7 +190,7 @@ export async function POST(request: Request): Promise<NextResponse<SimulationRes
   const work = checkWork({
     onSaleSeats,
     oversubscription: pool ? pool.offers.reduce((s, o) => s + o.groupSize, 0) / Math.max(1, onSaleSeats) : body.pool.kind === "generate" ? body.pool.oversubscription : 1,
-    policies: body.policies,
+    policies: scenario.policies ?? body.policies,
     seeds: scenario.seeds ?? 1,
     previews,
   });
@@ -195,11 +206,21 @@ export async function POST(request: Request): Promise<NextResponse<SimulationRes
   }
   const elapsedMs = performance.now() - t0;
 
+  if (body.detail) {
+    const area = body.detail.area;
+    const run = output.runs.find((r) => r.result);
+    const full = run ? buildSeatMapView(run, renderVenue) : null;
+    const detail = full ? filterSeatMapView(full, (r) => r.area === area) : null;
+    if (!detail || detail.rows.length === 0) return NextResponse.json({ error: `no rows on sale in "${area}"` }, { status: 404 });
+    return NextResponse.json({ ok: true, detail, elapsedMs }, { status: 200 });
+  }
+
   const offersCsv: Record<string, string> = {};
   const seatmapTxt: Record<string, string> = {};
   // Most useful first, each kept only while it fits: offers.csv, the text
   // seat map, then the visual seat map (2.5 MB a policy at Daikin).
   const seatMaps: Record<string, SeatMapView> = {};
+  const sectionMaps: Record<string, SectionMapView> = {};
   const downloadsOmitted: string[] = [];
   const seatMapsOmitted: string[] = [];
   let sentChars = 0;
@@ -218,12 +239,14 @@ export async function POST(request: Request): Promise<NextResponse<SimulationRes
     } else downloadsOmitted.push(run.policy);
     const view = buildSeatMapView(run, renderVenue);
     if (!view) continue;
+    sectionMaps[run.policy] = summariseSections(view);
+    sentChars += JSON.stringify(sectionMaps[run.policy]).length; // always sent, but it still spends budget
     if (fits(JSON.stringify(view).length)) seatMaps[run.policy] = view;
     else seatMapsOmitted.push(run.policy);
   }
 
   return NextResponse.json(
-    { ok: true, output: slimOutput(output), reportMd: renderFillReport(output), offersCsv, seatmapTxt, seatMaps, downloadsOmitted, seatMapsOmitted, elapsedMs },
+    { ok: true, output: slimOutput(output), reportMd: renderFillReport(output), offersCsv, seatmapTxt, seatMaps, sectionMaps, downloadsOmitted, seatMapsOmitted, elapsedMs },
     { status: 200 },
   );
 }
