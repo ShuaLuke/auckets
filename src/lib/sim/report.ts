@@ -5,6 +5,7 @@
 import { compareRuns, renderComparison } from "./compare";
 import { n, pct, usd } from "./format";
 import { formatTierPref } from "./pool";
+import { placementOutcome } from "./seatmap";
 import type { FillMetrics, Percentiles, PolicyAggregate, PolicyRun, RunOutput, SimVenue } from "./types";
 import { activeRows, tierOrder } from "./venue";
 
@@ -491,15 +492,7 @@ export function renderOffersCsv(run: PolicyRun, venue: SimVenue): string {
     const p = seatsByOffer.get(o.id);
     const row = p ? rowById.get(p.rowId) : undefined;
     const preferredTier = o.tierPreference.type === "any" ? "" : o.tierPreference.tier;
-    let outcome = "unplaced";
-    if (row) {
-      if (o.tierPreference.type === "any") outcome = "placed";
-      else {
-        const want = tierIdx.get(o.tierPreference.tier);
-        const got = row.tier === undefined ? undefined : tierIdx.get(row.tier);
-        outcome = want === undefined || got === undefined || want === got ? "preferred tier" : got > want ? "waterfalled down" : "moved up";
-      }
-    }
+    const outcome = row ? placementOutcome(o, row, tierIdx) : "unplaced";
     lines.push(
       [
         i + 1, csv(o.id), o.groupSize, (o.pricePerTicketCents / 100).toFixed(2), ((o.pricePerTicketCents * o.groupSize) / 100).toFixed(2),

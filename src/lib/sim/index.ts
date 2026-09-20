@@ -19,6 +19,8 @@ export {
 export { computeMetrics } from "./metrics";
 export { checkInvariants } from "./invariants";
 export { renderFillReport, renderConsoleSummary, renderOffersCsv, renderSeatMap } from "./report";
+export { buildSeatMapView, priceBins, binIndexFor, placementOutcome, SEAT_EMPTY, SEAT_HELD } from "./seatmap";
+export type { SeatMapView, SeatMapRow, SeatMapOffer, PriceBin, PlacementOutcome } from "./seatmap";
 export { usd, pct } from "./format";
 export { parsePolicy, singleSeatRowCount, POLICY_HELP } from "./policy";
 export { resolveAutoBids, incrementFor, DEFAULT_RAISE_RULE } from "./autobid";

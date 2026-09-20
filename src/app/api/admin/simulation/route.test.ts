@@ -43,7 +43,7 @@ describe("POST /api/admin/simulation", () => {
   it("runs the engine and returns the report, per-policy downloads, and a slim output", async () => {
     const res = await post(good);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { ok: boolean; output: { runs: { policy: string; result?: unknown }[]; aggregates: { policy: string }[] }; reportMd: string; offersCsv: Record<string, string>; seatmapTxt: Record<string, string> };
+    const body = (await res.json()) as { ok: boolean; output: { runs: { policy: string; result?: unknown }[]; aggregates: { policy: string }[] }; reportMd: string; offersCsv: Record<string, string>; seatmapTxt: Record<string, string>; seatMaps: Record<string, { rows: { seats: number[] }[]; offers: { priceCents: number }[]; placedSeats: number }> };
     expect(body.ok).toBe(true);
     expect(body.output.aggregates.map((a) => a.policy)).toEqual(["greedy", "clean-fit"]);
     expect(body.output.runs).toHaveLength(6);
@@ -52,6 +52,12 @@ describe("POST /api/admin/simulation", () => {
     expect(body.reportMd).toContain("## Policies compared");
     expect(Object.keys(body.offersCsv)).toEqual(["greedy", "clean-fit"]);
     expect(body.seatmapTxt.greedy).toContain("Seat map — Cope's place");
+    // The visual seat map: one per policy, every occupied seat resolves to a price.
+    expect(Object.keys(body.seatMaps)).toEqual(["greedy", "clean-fit"]);
+    const map = body.seatMaps.greedy!;
+    const occupied = map.rows.flatMap((r) => r.seats).filter((s) => s >= 0);
+    expect(occupied).toHaveLength(map.placedSeats);
+    expect(occupied.every((s) => (map.offers[s]?.priceCents ?? 0) > 0)).toBe(true);
   });
 
   it("runs Cope's real pool from the library, ignoring seeds", async () => {
