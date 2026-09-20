@@ -1,7 +1,7 @@
 /** @vitest-environment node */
 import { describe, expect, it } from "vitest";
 
-import { areaFor, detectDelimiter, holdSourceFor, leanFor, venueFromManifest } from "./manifest";
+import { areaFor, detectDelimiter, holdSourceFor, leanFor, venueFromManifest, venueFromManifestTable, type ManifestTierMap } from "./manifest";
 
 const header = ["Section Name", "Row Name", "SeatName", "Price Value", "Capacity", "Price Level Name", "Price Level", "Hold Group Name", "Hold Name / Offer Name"].map((h) => `"${h}"`).join("\t");
 const line = (sec: string, row: string, seat: number, price: number, level: string, hold = "", status = "Open"): string =>
@@ -46,6 +46,51 @@ describe("venueFromManifest", () => {
     });
     expect(ranked.venue.rows.find((r) => r.id === "orch_c-a")!.rowRank).toBe(1);
     expect(() => venueFromManifest(tsv, { name: "m", rankFileText: "section,row,rowRank\nORCH C,A,1\n" })).toThrow(/rank file has no entry for/);
+  });
+
+  // A stadium sheet: price scales, no prices, numeric rows, aisle seats on
+  // their own scale.
+  const stadium: string[][] = [
+    ["SECTION_ID", "SECTION_CODE", "SECTION_DESCRIPTION", "ROW", "SEAT_ID", "SEAT_NUMBER", "PRICE_SCALE_ID", "PRICE_SCALE_CODE", "PRICE_SCALE_DESC"],
+    ...[3, 1, 2].map((n) => ["1", "405", "View Deck 405", "2", "", String(n), "", "VIEW", "VIEW DECK"]),
+    ...[1, 2].map((n) => ["1", "405", "View Deck 405", "1", "", String(n), "", "VIEW", "VIEW DECK"]),
+    ["2", "112", "Dugout 112", "10", "", "1", "", "DUGZ", "DUGOUT AISLE"],
+    ["2", "112", "Dugout 112", "10", "", "2", "", "DUG", "DUGOUT"],
+    ["2", "112", "Dugout 112", "2", "", "1", "", "DUG", "DUGOUT"],
+    ["3", "STE 2", "Suite 2", "Barstool", "", "1", "", "STE", "SUITE"],
+    ...Array.from({ length: 30 }, (_, i) => ["4", "SRO", "Standing Room Only", "SRO", "", String(i + 1), "", "SRO", "SRO"]),
+  ];
+  const tierMap: ManifestTierMap = {
+    tiers: [
+      { name: "dugout", floorCents: 20000, levels: ["DUG", "DUGZ"] },
+      { name: "hospitality", floorCents: 17500, onSale: false, levels: ["STE"] },
+      { name: "view_deck", floorCents: 6000, levels: ["VIEW"] },
+      { name: "sro", floorCents: 2500, isGa: true, levels: ["SRO"] },
+    ],
+  };
+
+  it("reads a spreadsheet manifest with a tier map: tiers, floors, off-sale tiers, GA, numeric row order", () => {
+    const { venue } = venueFromManifestTable(stadium, { name: "s", tierMap });
+    const byRank = [...venue.rows].sort((a, b) => a.rowRank - b.rowRank).map((r) => `${r.section} ${r.rowName}`);
+    expect(byRank).toEqual(["Dugout 112 2", "Dugout 112 10", "Suite 2 Barstool", "View Deck 405 1", "View Deck 405 2", "Standing Room Only SRO"]);
+    // The aisle seat and its neighbour are one row in one tier; the area is the tier.
+    expect(venue.rows.find((r) => r.id === "dugout_112-10")).toMatchObject({ seatNumbers: ["1", "2"], tier: "dugout", area: "dugout" });
+    expect(venue.rows.find((r) => r.id === "view_deck_405-2")!.seatNumbers).toEqual(["1", "2", "3"]);
+    expect(venue.rows.find((r) => r.tier === "sro")).toMatchObject({ capacity: 30, isGa: true });
+    expect(venue.tierFloorsCents).toEqual({ dugout: 20000, hospitality: 17500, view_deck: 6000, sro: 2500 });
+    expect(venue.activeRowIds).not.toContain("suite_2-barstool");
+    expect(venue.activeRowIds).toHaveLength(5);
+    expect(venue.notes).toMatch(/folds the manifest's 5 price scales into 4/);
+    expect(venue.notes).toMatch(/Off sale by default: hospitality \(1 seats\)/);
+  });
+
+  it("will not guess an order for price scales without prices, or accept a tier map with gaps", () => {
+    expect(() => venueFromManifestTable(stadium, { name: "s" })).toThrow(/no prices, so they cannot be ordered/);
+    const gap = { tiers: tierMap.tiers.filter((t) => t.name !== "sro") };
+    expect(() => venueFromManifestTable(stadium, { name: "s", tierMap: gap })).toThrow(/tier map has no tier for: SRO/);
+    const twice = { tiers: [...tierMap.tiers, { name: "extra", levels: ["DUG"] }] };
+    expect(() => venueFromManifestTable(stadium, { name: "s", tierMap: twice })).toThrow(/level "DUG" is in both "dugout" and "extra"/);
+    expect(() => venueFromManifestTable(stadium, { name: "s", tierMap: { tiers: [{ name: "Bad Name", levels: [] }] } })).toThrow(/must be lowercase/);
   });
 
   it("rejects a file without the seat columns", () => {

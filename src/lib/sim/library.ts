@@ -10,6 +10,7 @@ import type { RankedOffer, TierPreference } from "@/lib/gae/types";
 
 import austinPartial from "../../../sim/venues/austin-partial.json";
 import copesPlace from "../../../sim/venues/copes-place.json";
+import daikinPark from "../../../sim/venues/daikin-park.json";
 import leanDemo from "../../../sim/venues/lean-demo.json";
 import lincolnManifest from "../../../sim/venues/lincoln-manifest.json";
 import lincolnSynthetic from "../../../sim/venues/lincoln-synthetic.json";
@@ -21,7 +22,7 @@ import { SUBMITTED_BASE_MS } from "./pool";
 import type { AutoBids, SimVenue } from "./types";
 import { parseVenueFile, tierOrder, venueParitySummary } from "./venue";
 
-const RAW_VENUES: unknown[] = [lincolnV4, lincolnManifest, copesPlace, supperClub, lincolnSynthetic, austinPartial, leanDemo];
+const RAW_VENUES: unknown[] = [lincolnV4, lincolnManifest, daikinPark, copesPlace, supperClub, lincolnSynthetic, austinPartial, leanDemo];
 
 let cache: SimVenue[] | undefined;
 
@@ -41,14 +42,27 @@ export type LibraryVenueSummary = {
   rows: number;
   tiers: string[];
   floorsCents: Record<string, number>;
+  // What "sections on sale" offers: the venue's sections, or its areas when
+  // there are too many sections to pick from (a stadium has 213). The show
+  // overlay matches either.
   sections: string[];
+  // Sellable seats in each entry of `sections`, so the form can size a run.
+  sectionSeats: Record<string, number>;
   singleRows: number;
   notes: string | undefined;
 };
 
+const MAX_SECTION_CHOICES = 40;
+
 export function libraryVenueSummaries(): LibraryVenueSummary[] {
   return libraryVenues().map((v) => {
     const s = venueParitySummary(v)[0]!;
+    const bySection = new Set(v.rows.map((r) => r.section)).size <= MAX_SECTION_CHOICES;
+    const sectionSeats: Record<string, number> = {};
+    for (const r of v.rows) {
+      const key = bySection ? r.section : String(r.area);
+      sectionSeats[key] = (sectionSeats[key] ?? 0) + r.capacity - r.holds.length;
+    }
     return {
       name: v.name,
       displayName: v.displayName,
@@ -56,7 +70,8 @@ export function libraryVenueSummaries(): LibraryVenueSummary[] {
       rows: s.activeRows,
       tiers: tierOrder(v),
       floorsCents: v.tierFloorsCents ?? {},
-      sections: [...new Set(v.rows.map((r) => r.section))],
+      sections: Object.keys(sectionSeats),
+      sectionSeats,
       singleRows: s.singleRows,
       notes: v.notes,
     };

@@ -516,7 +516,11 @@ export function renderSeatMap(run: PolicyRun, venue: SimVenue): string {
   if (!result) return "";
   const rows = activeRows(venue);
   const occupant = new Map<string, string>(); // rowId#pos → offerId
-  for (const a of result.assignments) occupant.set(`${a.venueRowId}#${a.positionIndex}`, a.offerId);
+  const placedInRow = new Map<string, number>();
+  for (const a of result.assignments) {
+    occupant.set(`${a.venueRowId}#${a.positionIndex}`, a.offerId);
+    placedInRow.set(a.venueRowId, (placedInRow.get(a.venueRowId) ?? 0) + 1);
+  }
   const L: string[] = [`Seat map — ${venue.displayName} — policy ${run.policy} — seed ${run.seed}`, ""];
   L.push("Legend: [id×n] a seated group · . empty seat · # held seat");
   L.push("");
@@ -544,7 +548,7 @@ export function renderSeatMap(run: PolicyRun, venue: SimVenue): string {
       }
       parts.push(`[${occ}×${count}]`);
     }
-    const placed = [...occupant.keys()].filter((k) => k.startsWith(`${r.id}#`)).length;
+    const placed = placedInRow.get(r.id) ?? 0;
     const avail = r.capacity - r.holds.length;
     L.push(`${String(r.rowRank).padStart(4)}  ${String(r.area).padEnd(14)} ${r.section.padEnd(12)} ${r.rowName.padEnd(4)} ${(r.tier ?? "").padEnd(10)} ${String(placed).padStart(3)}/${String(avail).padEnd(3)} ${parts.join("")}`);
   }
