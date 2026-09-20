@@ -1,0 +1,14 @@
+{
+  "tiers": [
+    { "name": "diamond_club", "floorCents": 35000, "levels": ["DMDCL1", "DMDCLB", "INSCL1", "INSCLB"] },
+    { "name": "dugout", "floorCents": 20000, "levels": ["DUGA", "DUGAZ", "DUGB", "DUGBZ", "DUGC", "DUGCZ", "DUG1", "DUG1Z", "DUG2", "DUG2Z", "DUG3", "DUG3Z"] },
+    { "name": "field_box", "floorCents": 15000, "levels": ["FBXA", "FBXAZ", "FBX1", "FBX1Z", "FBX2", "FBX2Z", "FB2VIP", "FB2VPZ", "FBX4", "FBX4Z", "FBX5", "FBX5Z", "PWRFB", "PWRFBZ"] },
+    { "name": "hospitality", "floorCents": 17500, "onSale": false, "levels": ["STEFIF", "STEBIF", "STEFHP", "STEBHP", "STEFOF", "STEBOF", "FC", "BATBX1", "BATBX2", "BUDBH1", "BUDBH2", "PDECK1", "PDECK2", "GLCLB1", "GLCLB2", "BEAM1", "BEAM2", "TUCP"] },
+    { "name": "club", "floorCents": 13000, "levels": ["CLUBHA", "CLUBHP", "CLUB1A", "CLUB1", "CLUB2A", "CLUB2", "PWRCLA", "PWRCLB"] },
+    { "name": "outfield_lower", "floorCents": 10000, "levels": ["CRAWA", "CRAWB", "CRAWBX", "BLPENA", "BLPENB", "BLPENC", "BLLPEN", "COKECR"] },
+    { "name": "mezzanine_terrace", "floorCents": 8500, "levels": ["MEZZ1", "MEZZ", "TERHP1", "TERHMP", "TERIF1", "TERINF", "TEROF1", "TEROF"] },
+    { "name": "view_deck", "floorCents": 6000, "levels": ["VIEW1A", "VIEWD1", "VIEW2A", "VIEWD2", "OFDK1", "OFDK2"] },
+    { "name": "view_deck_value", "floorCents": 4000, "levels": ["VD1VAL", "VD2VAL", "OD1VAL", "OD2VAL"] },
+    { "name": "sro", "floorCents": 2500, "isGa": true, "levels": ["SRO"] }
+  ]
+}

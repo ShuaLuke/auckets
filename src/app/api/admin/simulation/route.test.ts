@@ -60,6 +60,38 @@ describe("POST /api/admin/simulation", () => {
     expect(occupied.every((s) => (map.offers[s]?.priceCents ?? 0) > 0)).toBe(true);
   });
 
+  it("runs a stadium, and leaves out the downloads that would not fit in the response", async () => {
+    const res = await post({ venue: "daikin-park", pool: { kind: "generate", seed: 1, oversubscription: 0.6, groupSizeMix: "couples" }, policies: ["greedy", "parity-tiebreak", "clean-fit"], seeds: 1 });
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text.length).toBeLessThan(4_000_000); // Vercel's response limit is 4.5 MB
+    const body = JSON.parse(text) as { output: { aggregates: { policy: string }[] }; reportMd: string; offersCsv: Record<string, string>; seatmapTxt: Record<string, string>; seatMaps: Record<string, unknown>; downloadsOmitted: string[]; seatMapsOmitted: string[] };
+    expect(body.output.aggregates.map((a) => a.policy)).toEqual(["greedy", "parity-tiebreak", "clean-fit"]);
+    expect(body.reportMd).toContain("Daikin Park");
+    expect(Object.keys(body.offersCsv)).toEqual(["greedy", "parity-tiebreak"]);
+    expect(Object.keys(body.seatmapTxt)).toEqual(["greedy", "parity-tiebreak"]);
+    expect(body.downloadsOmitted).toEqual(["clean-fit"]);
+    // The visual seat map is the first thing to go: none fits beside two policies' files.
+    expect(Object.keys(body.seatMaps)).toEqual([]);
+    expect(body.seatMapsOmitted).toEqual(["greedy", "parity-tiebreak", "clean-fit"]);
+  }, 60_000);
+
+  it("sells part of a stadium by area, and 422s a stadium run that would not finish in time", async () => {
+    const part = await post({ venue: "daikin-park", activeSections: ["diamond_club", "club"], pool: { kind: "generate", seed: 1, oversubscription: 1.25, groupSizeMix: "couples" }, policies: ["greedy", "clean-fit", "lookahead"], seeds: 2 });
+    expect(part.status).toBe(200);
+    const body = (await part.json()) as { output: { venueSummary: { capacity: number }[] }; seatMaps: Record<string, unknown>; downloadsOmitted: string[]; seatMapsOmitted: string[] };
+    expect(body.output.venueSummary[0]!.capacity).toBe(521 + 4715);
+    expect(body.downloadsOmitted).toEqual([]);
+    expect(body.seatMapsOmitted).toEqual([]);
+    expect(Object.keys(body.seatMaps)).toEqual(["greedy", "clean-fit", "lookahead"]);
+
+    const tooMuch = await post({ venue: "daikin-park", pool: { kind: "generate", seed: 1, oversubscription: 1.25, groupSizeMix: "couples" }, policies: ["greedy", "clean-fit", "clean-fit+singles-reserve", "lookahead"], seeds: 1 });
+    expect(tooMuch.status).toBe(422);
+    expect(((await tooMuch.json()) as { error: string }).error).toMatch(/about 27 s of work with 41,151 seats on sale/);
+    const tooCrowded = await post({ venue: "daikin-park", pool: { kind: "generate", seed: 1, oversubscription: 5, groupSizeMix: "couples" }, policies: ["greedy"], seeds: 1 });
+    expect(tooCrowded.status).toBe(422);
+  }, 60_000);
+
   it("runs Cope's real pool from the library, ignoring seeds", async () => {
     const res = await post({ venue: "lincoln-v4", pool: { kind: "library", name: "lincoln-pool-v4" }, policies: ["greedy"], seeds: 10 });
     expect(res.status).toBe(200);

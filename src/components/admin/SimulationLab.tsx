@@ -14,6 +14,7 @@ import { Card } from "@/components/ui/Card";
 import { Eyebrow } from "@/components/ui/Eyebrow";
 import { Field } from "@/components/ui/Field";
 import { TextInput } from "@/components/ui/TextInput";
+import { checkWork } from "@/lib/sim/budget";
 import { compareRuns, renderComparison } from "@/lib/sim/compare";
 import { usd } from "@/lib/sim/format";
 import type { LibraryPoolSummary, LibraryVenueSummary } from "@/lib/sim/library";
@@ -35,6 +36,8 @@ type SavedRun = {
   offersCsv: Record<string, string>;
   seatmapTxt: Record<string, string>;
   seatMaps: Record<string, SeatMapView>;
+  downloadsOmitted: string[];
+  seatMapsOmitted: string[];
   elapsedMs: number;
 };
 
@@ -119,7 +122,18 @@ export function SimulationLab({ venues, pools, presets }: Props) {
   }
 
   const previews = timelineOn ? Math.ceil((Number(windowDays) * 24) / Math.max(1, Number(previewEvery))) + 1 : 1;
-  const allocations = (poolKind === "library" ? 1 : Number(seeds)) * policies.length * previews;
+  // The same check the route enforces, so the form can say so before the run.
+  // Holds are not counted here; the route counts them.
+  const onSaleSeats = venueInfo ? (activeSections.length > 0 ? activeSections.reduce((n, sec) => n + (venueInfo.sectionSeats[sec] ?? 0), 0) : venueInfo.capacity) : 0;
+  const poolTickets = pools.find((p) => p.name === poolName)?.tickets ?? 0;
+  const work = checkWork({
+    onSaleSeats,
+    oversubscription: poolKind === "library" ? poolTickets / Math.max(1, onSaleSeats) : Number(oversub) || 1,
+    policies,
+    seeds: poolKind === "library" ? 1 : Number(seeds) || 1,
+    previews,
+  });
+  const allocations = work.allocations;
 
   async function run(): Promise<void> {
     if (running) return;
@@ -163,7 +177,7 @@ export function SimulationLab({ venues, pools, presets }: Props) {
         }),
       };
       const res = await fetch("/api/admin/simulation", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      const json = (await res.json().catch(() => ({}))) as Partial<{ ok: true; output: RunOutput; reportMd: string; offersCsv: Record<string, string>; seatmapTxt: Record<string, string>; seatMaps: Record<string, SeatMapView>; elapsedMs: number; error: string; details: { path: (string | number)[]; message: string }[] }>;
+      const json = (await res.json().catch(() => ({}))) as Partial<{ ok: true; output: RunOutput; reportMd: string; offersCsv: Record<string, string>; seatmapTxt: Record<string, string>; seatMaps: Record<string, SeatMapView>; downloadsOmitted: string[]; seatMapsOmitted: string[]; elapsedMs: number; error: string; details: { path: (string | number)[]; message: string }[] }>;
       if (!res.ok || !json.ok || !json.output) {
         const detail = json.details?.map((d) => `${d.path.join(".")}: ${d.message}`).join("; ");
         setError(json.error ? `${json.error}${detail ? ` — ${detail}` : ""}` : `Failed (HTTP ${res.status})`);
@@ -171,7 +185,7 @@ export function SimulationLab({ venues, pools, presets }: Props) {
       }
       const id = `run-${Date.now()}`;
       const label = `${venueInfo?.displayName.split(" —")[0] ?? venue} · ${poolKind === "library" ? poolName : `${preset === "custom" ? "custom mix" : preset} ×${oversub}`} · ${policies.join(", ")}${timelineOn ? ` · ${windowDays}d window` : ""}`;
-      const saved: SavedRun = { id, label, at: new Date().toLocaleTimeString(), output: json.output, reportMd: json.reportMd ?? "", offersCsv: json.offersCsv ?? {}, seatmapTxt: json.seatmapTxt ?? {}, seatMaps: json.seatMaps ?? {}, elapsedMs: json.elapsedMs ?? 0 };
+      const saved: SavedRun = { id, label, at: new Date().toLocaleTimeString(), output: json.output, reportMd: json.reportMd ?? "", offersCsv: json.offersCsv ?? {}, seatmapTxt: json.seatmapTxt ?? {}, seatMaps: json.seatMaps ?? {}, downloadsOmitted: json.downloadsOmitted ?? [], seatMapsOmitted: json.seatMapsOmitted ?? [], elapsedMs: json.elapsedMs ?? 0 };
       setRuns((cur) => [saved, ...cur].slice(0, 12));
       setCurrent(id);
       setCompareMd(null);
@@ -428,7 +442,8 @@ export function SimulationLab({ venues, pools, presets }: Props) {
           </Button>
           <span className="font-sans text-xs" style={{ color: "var(--fg-faint)" }}>
             {allocations.toLocaleString()} allocation{allocations === 1 ? "" : "s"}
-            {allocations > 400 ? " — over the 400 limit" : ""}
+            {onSaleSeats > 5000 ? ` · about ${Math.max(1, Math.round(work.estimatedMs / 1000))} s of work` : ""}
+            {work.ok ? "" : ` — ${work.message}`}
           </span>
         </div>
         {error && (
@@ -494,6 +509,13 @@ export function SimulationLab({ venues, pools, presets }: Props) {
                 {shown.output.runs.length} allocations in {shown.elapsedMs.toFixed(0)} ms
               </span>
             </div>
+            {(shown.downloadsOmitted.length > 0 || shown.seatMapsOmitted.length > 0) && (
+              <p className="mb-3 font-sans text-xs" style={{ color: "var(--fg-muted)" }}>
+                In a room this size not everything fits in one response.
+                {shown.downloadsOmitted.length > 0 && ` No offers.csv or seat map download for ${shown.downloadsOmitted.join(", ")} — run a policy on its own to get its files.`}
+                {shown.seatMapsOmitted.length > 0 && ` No visual seat map for ${shown.seatMapsOmitted.join(", ")} — put fewer sections on sale to see one.`} The fill report covers every policy.
+              </p>
+            )}
             {mapPolicies.length > 0 && (
               <div className="mb-4 flex flex-wrap items-center gap-2 border-b pb-3" style={{ borderColor: "var(--border)" }}>
                 <Button size="sm" variant={resultView === "report" ? "primary" : "secondary"} onClick={() => setResultView("report")}>

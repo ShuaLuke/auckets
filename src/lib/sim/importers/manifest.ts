@@ -7,8 +7,13 @@
 // A manifest describes the building, not a ranking. RowRank is derived —
 // price level first (P1 is best), then row letter (double letters like AA
 // before A, the pit convention), then the order sections appear — unless a
-// sidecar rank file (section,row,rowRank) overrides it. Pure: the CLI reads
-// and decodes the file.
+// sidecar rank file (section,row,rowRank) overrides it.
+//
+// A stadium manifest (Daikin Park) is the same shape with different headers
+// (SECTION_DESCRIPTION, ROW, SEAT_NUMBER, PRICE_SCALE_CODE) and one real
+// difference: it names 83 price scales and carries no prices. A tier map
+// folds the scales into a handful of tiers, in best-first order, with the
+// floors the manifest cannot supply. Pure: the CLI reads and decodes the file.
 
 import type { VenueRow } from "@/lib/gae/types";
 
@@ -29,6 +34,22 @@ export type ManifestOptions = {
   ignoreHolds?: boolean;
   // Sidecar CSV text "section,row,rowRank" to override the derived ranking.
   rankFileText?: string;
+  // Fold price levels / scales into tiers. Required when the manifest has no
+  // prices, because then there is nothing to order the levels by.
+  tierMap?: ManifestTierMap;
+};
+
+// Tiers best-first. Every level in the manifest must appear in exactly one.
+export type ManifestTierMap = {
+  tiers: {
+    name: string;
+    levels: string[];
+    floorCents?: number;
+    // One standing pool rather than rows of seats (SRO).
+    isGa?: boolean;
+    // false = in the building but not on sale by default (suites).
+    onSale?: boolean;
+  }[];
 };
 
 export type ManifestImport = {
@@ -40,11 +61,11 @@ export type ManifestImport = {
 };
 
 const ALIASES: Record<string, string[]> = {
-  section: ["sectionname", "section"],
+  section: ["sectionname", "section", "sectiondescription"],
   row: ["rowname", "row"],
   seat: ["seatname", "seat", "seatnumber"],
   price: ["pricevalue", "price"],
-  level: ["pricelevelname", "pricelevel", "level"],
+  level: ["pricelevelname", "pricelevel", "level", "pricescalecode", "pricescale"],
   holdGroup: ["holdgroupname", "holdgroup", "hold"],
   status: ["holdnameoffername", "status", "offername"],
 };
@@ -114,7 +135,30 @@ export function detectDelimiter(text: string): string {
 }
 
 export function venueFromManifest(text: string, opts: ManifestOptions): ManifestImport {
-  const table = parseCsv(text, detectDelimiter(text));
+  return venueFromManifestTable(parseCsv(text, detectDelimiter(text)), opts);
+}
+
+function parseTierMap(map: ManifestTierMap, seen: string[]): Map<string, number> {
+  const byLevel = new Map<string, number>();
+  const names = new Set<string>();
+  for (const [i, t] of map.tiers.entries()) {
+    if (!/^[a-z0-9_]+$/.test(t.name)) throw new SimInputError(`tier map: tier name "${t.name}" must be lowercase letters, digits and underscores`);
+    if (names.has(t.name)) throw new SimInputError(`tier map: tier "${t.name}" is listed twice`);
+    names.add(t.name);
+    if (t.floorCents !== undefined && (!Number.isInteger(t.floorCents) || t.floorCents <= 0)) throw new SimInputError(`tier map: tier "${t.name}" floorCents must be a positive whole number of cents`);
+    for (const lvl of t.levels) {
+      if (byLevel.has(lvl)) throw new SimInputError(`tier map: level "${lvl}" is in both "${map.tiers[byLevel.get(lvl)!]!.name}" and "${t.name}"`);
+      byLevel.set(lvl, i);
+    }
+  }
+  const unmapped = seen.filter((l) => !byLevel.has(l));
+  if (unmapped.length > 0) throw new SimInputError(`tier map has no tier for: ${unmapped.join(", ")}`);
+  return byLevel;
+}
+
+// The same importer from a table already split into cells (first line is the
+// header) — how a spreadsheet manifest gets here.
+export function venueFromManifestTable(table: string[][], opts: ManifestOptions): ManifestImport {
   if (table.length < 2) throw new SimInputError("manifest has no data rows");
   const headers = table[0]!;
   const ci = {
@@ -165,14 +209,19 @@ export function venueFromManifest(text: string, opts: ManifestOptions): Manifest
   }
 
   // Level order: numeric suffix if present (P1 < P2), else by price desc.
-  const levelOrder = new Map<string, number>();
   const levels = Object.entries(priceLevels).sort((a, b) => {
     const na = /(\d+)/.exec(a[0])?.[1];
     const nb = /(\d+)/.exec(b[0])?.[1];
     if (na && nb) return Number(na) - Number(nb);
     return b[1].priceCents - a[1].priceCents;
   });
-  levels.forEach(([lvl], i) => levelOrder.set(lvl, i));
+  // Tiers, best first: the map's when there is one, else one per level.
+  const tierMap = opts.tierMap;
+  if (!tierMap && levels.length > 1 && levels.every(([, info]) => info.priceCents === 0)) {
+    throw new SimInputError(`manifest names ${levels.length} price levels but no prices, so they cannot be ordered. Pass a tier map (--tier-map) that lists them best-first.`);
+  }
+  const levelOrder = tierMap ? parseTierMap(tierMap, levels.map(([l]) => l)) : new Map(levels.map(([lvl], i) => [lvl, i]));
+  const tiers = tierMap ? tierMap.tiers.map((t) => ({ name: t.name, floorCents: t.floorCents, isGa: t.isGa === true, onSale: t.onSale !== false })) : levels.map(([lvl, info]) => ({ name: slug(lvl), floorCents: info.priceCents > 0 ? info.priceCents : undefined, isGa: false, onSale: true }));
 
   const heldBySource: Record<HoldSource, number> = { venue: 0, artist: 0, comp: 0, production: 0, bleacher: 0 };
   const holdGroups: Record<string, number> = {};
@@ -198,18 +247,21 @@ export function venueFromManifest(text: string, opts: ManifestOptions): Manifest
           soldSeats += 1;
         } else if (/sold/i.test(s.status)) soldSeats += 1;
       }
+      // A row that spans levels (aisle seats priced apart) takes its best.
       const minLevel = Math.min(...ordered.map((s) => levelOrder.get(s.level) ?? 99));
-      const level = levels[minLevel]?.[0] ?? ordered[0]!.level;
+      const tier = tiers[minLevel];
       let id = `${slug(section)}-${slug(rowName)}`;
       if (ids.has(id)) id = `${id}-${built.length}`;
       ids.add(id);
       const seatNumbers = ordered.map((s) => s.seat);
       if (new Set(seatNumbers).size !== seatNumbers.length) throw new SimInputError(`manifest: ${section} ${rowName} lists a seat twice`);
-      const isGa = /^GA/i.test(rowName) && seatNumbers.length > 20;
+      const isGa = tier?.isGa === true || (/^GA/i.test(rowName) && seatNumbers.length > 20);
       built.push({
         row: {
           id,
-          area: areaFor(section),
+          // With a tier map the tier is the only grouping coarser than a
+          // section, and "sections on sale" matches areas too.
+          area: tierMap && tier ? tier.name : areaFor(section),
           section,
           rowName,
           rowRank: 0,
@@ -218,7 +270,7 @@ export function venueFromManifest(text: string, opts: ManifestOptions): Manifest
           lean: isGa ? "LEFT" : leanFor(section),
           seatNumbers,
           holds,
-          tier: slug(level),
+          tier: tier?.name ?? slug(ordered[0]!.level),
           ...(isGa && { isGa: true }),
         },
         sortKey: [minLevel, 0, rowName, sectionOrder.indexOf(section)],
@@ -239,15 +291,20 @@ export function venueFromManifest(text: string, opts: ManifestOptions): Manifest
 
   const rows = built.map((b) => b.row);
   const floors: Record<string, number> = {};
-  for (const [lvl, info] of levels) if (info.priceCents > 0) floors[slug(lvl)] = info.priceCents;
+  for (const t of tiers) if (t.floorCents !== undefined) floors[t.name] = t.floorCents;
   const held = rows.reduce((s, r) => s + r.holds.length, 0);
+  const offSale = new Set(tiers.filter((t) => !t.onSale).map((t) => t.name));
+  const seatsIn = (name: string): number => rows.filter((r) => r.tier === name).reduce((s, r) => s + r.capacity, 0);
+  const tierNote = tierMap
+    ? `Tiers come from a tier map that folds the manifest's ${levels.length} price scales into ${tiers.length}, best first (${tiers.map((t) => `${t.name} ${seatsIn(t.name)}${t.floorCents === undefined ? "" : ` $${(t.floorCents / 100).toFixed(0)}`}`).join(", ")}). The manifest carries no prices: the floors are the map's placeholders, not the building's — change them in the tier map, or per scenario with show.floorsCents.${offSale.size > 0 ? ` Off sale by default: ${[...offSale].join(", ")} (${[...offSale].reduce((s, n) => s + seatsIn(n), 0)} seats); put them on sale with the show's active sections.` : ""} RowRank is derived — tier, then row number, then section order`
+    : `Tiers are the manifest price levels (${levels.map(([l, i]) => `${l} $${(i.priceCents / 100).toFixed(0)}`).join(", ")}); floors are those prices. RowRank is derived — price level, then row letter (AA before A), then section order`;
   const venue: SimVenue = {
     name: opts.name,
     displayName: opts.displayName ?? `${opts.name} (manifest import)`,
     venueId: opts.name,
     rows,
-    activeRowIds: rows.map((r) => r.id),
-    notes: `Imported from a box-office seat manifest: ${rows.length} rows, ${rows.reduce((s, r) => s + r.capacity, 0)} seats, ${held} held (${Object.entries(holdGroups).map(([g, n]) => `${g} ${n}`).join(", ") || "no hold groups"}). Tiers are the manifest price levels (${levels.map(([l, i]) => `${l} $${(i.priceCents / 100).toFixed(0)}`).join(", ")}); floors are those prices. RowRank is derived — price level, then row letter (AA before A), then section order — ${sidecar.size > 0 ? "overridden by the supplied rank file" : "adjust with a rank file (section,row,rowRank) if the room disagrees"}. Lean is inward by section name; area is guessed from the section name.${opts.soldAsHeld ? ` ${soldSeats} seats sold in this snapshot are held.` : ""}`,
+    activeRowIds: rows.filter((r) => !offSale.has(String(r.tier))).map((r) => r.id),
+    notes: `Imported from a box-office seat manifest: ${rows.length} rows, ${rows.reduce((s, r) => s + r.capacity, 0)} seats, ${held} held (${Object.entries(holdGroups).map(([g, n]) => `${g} ${n}`).join(", ") || "no hold groups"}). ${tierNote} — ${sidecar.size > 0 ? "overridden by the supplied rank file" : "adjust with a rank file (section,row,rowRank) if the room disagrees"}. Lean is inward by section name; ${tierMap ? "area is the tier" : "area is guessed from the section name"}.${opts.soldAsHeld ? ` ${soldSeats} seats sold in this snapshot are held.` : ""}`,
     source: { kind: "manifest-csv", file: opts.sourceFile, importedAt: opts.importedAt },
   };
   if (Object.keys(floors).length > 0) venue.tierFloorsCents = floors;

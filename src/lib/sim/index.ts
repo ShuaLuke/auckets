@@ -3,7 +3,8 @@ export { runScenario, percentiles, stableStringify, sha256, POLICIES } from "./r
 export { generatePool, parseGroupMixArg, resolveGroupMix, GROUP_MIX_PRESETS, DEFAULT_PREFERENCE_MIX } from "./demand";
 export { offersFromCsv, loadPoolCsv, offersFromSheet, poolToCsv, offerParitySummary, parseCsv, parseTierPref, formatTierPref, toCents } from "./pool";
 export { venueFromCopeRowRank, slug } from "./importers/cope-rowrank";
-export { venueFromManifest, detectDelimiter } from "./importers/manifest";
+export { venueFromManifest, venueFromManifestTable, detectDelimiter } from "./importers/manifest";
+export type { ManifestTierMap } from "./importers/manifest";
 export { compareRuns, renderComparison, renderComparisonConsole, poolLabel } from "./compare";
 export {
   parseVenueFile,

@@ -39,6 +39,7 @@ import {
   renderComparisonConsole,
   venueFromCopeRowRank,
   venueFromManifest,
+  venueFromManifestTable,
   parseGroupMixArg,
   parseVenueFile,
   renderConsoleSummary,
@@ -120,6 +121,34 @@ function readSheet(path: string, sheetFlag: string | undefined, prefer: RegExp[]
   return { name, rows };
 }
 
+// The sheet of a workbook that lists one seat per line (section, row and seat
+// columns), as a table of strings; undefined when no sheet looks like that.
+function readSeatManifestSheet(path: string, sheetFlag: string | undefined): { name: string; table: string[][] } | undefined {
+  const wb = XLSX.read(readFileSync(path), { type: "buffer" });
+  const norm = (h: unknown): string => String(h ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  for (const name of sheetFlag ? [sheetFlag] : wb.SheetNames) {
+    const ws = wb.Sheets[name];
+    if (!ws) continue;
+    const table = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: "", blankrows: false });
+    const headers = (table[0] ?? []).map(norm);
+    if (!headers.some((h) => h === "seatnumber" || h === "seatname" || h === "seat")) continue;
+    if (!headers.some((h) => h === "row" || h === "rowname")) continue;
+    return { name, table: table.map((r) => r.map((c) => String(c))) };
+  }
+  return undefined;
+}
+
+// Venue files are pretty-printed; a stadium's would be 90,000 lines of seat
+// numbers, so big rooms get one row per line instead.
+const COMPACT_ROWS_OVER_SEATS = 5000;
+function venueJson(venue: SimVenue): string {
+  const seats = venue.rows.reduce((s, r) => s + r.capacity, 0);
+  if (seats <= COMPACT_ROWS_OVER_SEATS) return JSON.stringify(venue, null, 2) + "\n";
+  const { rows, activeRowIds, ...rest } = venue;
+  const head = JSON.stringify(rest, null, 2).replace(/\n\}$/, "");
+  return `${head},\n  "rows": [\n${rows.map((r) => `    ${JSON.stringify(r)}`).join(",\n")}\n  ],\n  "activeRowIds": ${JSON.stringify(activeRowIds)}\n}\n`;
+}
+
 // "--floors orchestra=85,front_balcony=70" (dollars) → cents per tier.
 function parseFloors(arg: string | undefined): Record<string, number> | undefined {
   if (!arg) return undefined;
@@ -199,7 +228,33 @@ function cmdVenue(args: Args): void {
     const displayName = flagStr(args, "display");
     let venue: SimVenue;
     let extraSummary = "";
-    if (lower.endsWith(".xlsx") || lower.endsWith(".xlsm") || lower.endsWith(".xls")) {
+    const manifestOpts = (sourceFile: string): Parameters<typeof venueFromManifest>[1] => {
+      const opts: Parameters<typeof venueFromManifest>[1] = { name, sourceFile, importedAt: today() };
+      if (displayName) opts.displayName = displayName;
+      if (args.flags["sold-as-held"] === true) opts.soldAsHeld = true;
+      if (args.flags["ignore-holds"] === true) opts.ignoreHolds = true;
+      const rankFile = flagStr(args, "rank-file");
+      if (rankFile) opts.rankFileText = readText(resolve(ROOT, rankFile));
+      const tierMap = flagStr(args, "tier-map");
+      if (tierMap) opts.tierMap = readJson(resolve(ROOT, tierMap)) as NonNullable<typeof opts.tierMap>;
+      return opts;
+    };
+    const manifestSummary = (imported: ReturnType<typeof venueFromManifest>, opts: Parameters<typeof venueFromManifest>[1]): string => {
+      const held = Object.entries(imported.heldBySource).filter(([, n]) => n > 0).map(([k, n]) => `${k} ${n}`).join(", ");
+      const levels = Object.entries(imported.priceLevels);
+      const priced = levels.some(([, i]) => i.priceCents > 0);
+      return `  price levels: ${priced ? levels.map(([l, i]) => `${l} ${usd(i.priceCents)} ×${i.seats}`).join(", ") : `${levels.length}, none with a price`}\n  holds: ${held || "none"}${imported.soldSeats ? ` · ${imported.soldSeats} seats show as sold in this snapshot${opts.soldAsHeld ? " (held)" : " (treated as open; pass --sold-as-held to hold them)"}` : ""}`;
+    };
+    const isSheet = lower.endsWith(".xlsx") || lower.endsWith(".xlsm") || lower.endsWith(".xls");
+    const seatSheet = isSheet ? readSeatManifestSheet(path, flagStr(args, "sheet")) : undefined;
+    if (seatSheet) {
+      // A spreadsheet with one line per seat is a box-office manifest, not
+      // Cope's RowRank workbook (one line per row).
+      const opts = manifestOpts(`${basename(file)} · sheet "${seatSheet.name}"`);
+      const imported = venueFromManifestTable(seatSheet.table, opts);
+      venue = imported.venue;
+      extraSummary = manifestSummary(imported, opts);
+    } else if (isSheet) {
       const { name: sheetName, rows } = readSheet(path, flagStr(args, "sheet"), [/rowrank/i, /architecture/i, /venue/i]);
       const opts: Parameters<typeof venueFromCopeRowRank>[1] = { name, sourceFile: `${basename(file)} · sheet "${sheetName}"`, importedAt: today() };
       if (displayName) opts.displayName = displayName;
@@ -208,16 +263,10 @@ function cmdVenue(args: Args): void {
       if (floors) opts.floorsCents = floors;
       venue = venueFromCopeRowRank(rows as Parameters<typeof venueFromCopeRowRank>[0], opts);
     } else if (lower.endsWith(".csv") || lower.endsWith(".tsv") || lower.endsWith(".txt")) {
-      const opts: Parameters<typeof venueFromManifest>[1] = { name, sourceFile: basename(file), importedAt: today() };
-      if (displayName) opts.displayName = displayName;
-      if (args.flags["sold-as-held"] === true) opts.soldAsHeld = true;
-      if (args.flags["ignore-holds"] === true) opts.ignoreHolds = true;
-      const rankFile = flagStr(args, "rank-file");
-      if (rankFile) opts.rankFileText = readText(resolve(ROOT, rankFile));
+      const opts = manifestOpts(basename(file));
       const imported = venueFromManifest(readText(path), opts);
       venue = imported.venue;
-      const held = Object.entries(imported.heldBySource).filter(([, n]) => n > 0).map(([k, n]) => `${k} ${n}`).join(", ");
-      extraSummary = `  price levels: ${Object.entries(imported.priceLevels).map(([l, i]) => `${l} ${usd(i.priceCents)} ×${i.seats}`).join(", ")}\n  holds: ${held || "none"}${imported.soldSeats ? ` · ${imported.soldSeats} seats show as sold in this snapshot${opts.soldAsHeld ? " (held)" : " (treated as open; pass --sold-as-held to hold them)"}` : ""}`;
+      extraSummary = manifestSummary(imported, opts);
     } else {
       const raw = readJson(path) as Record<string, unknown>;
       const format = flagStr(args, "format") ?? (Array.isArray(raw.tiers) ? "tierspec" : "json");
@@ -233,7 +282,7 @@ function cmdVenue(args: Args): void {
     if (existsSync(dest) && args.flags.force !== true) {
       throw new SimInputError(`${dest} already exists. Pass --force to replace it, or --name to pick another name.`);
     }
-    writeFileSync(dest, JSON.stringify(venue, null, 2) + "\n");
+    writeFileSync(dest, venueJson(venue));
     console.log(`Added ${venue.name} → ${dest}`);
     console.log(venueSummaryLine(venue));
     if (extraSummary) console.log(extraSummary);
@@ -456,6 +505,7 @@ function usage(): string {
     "        .json  venue file or tier spec            [--format json|tierspec]",
     "        .xlsx  Cope RowRank workbook              [--sheet name] [--floors \"orchestra=85,front_balcony=70\"] [--tier-by area|section]",
     "        .csv   box-office manifest (UTF-16 ok)    [--rank-file section,row,rowRank.csv] [--sold-as-held] [--ignore-holds]",
+    "        .xlsx  seat-per-line manifest             same flags, plus [--tier-map tiers.json] (required when the sheet has no prices)",
     "  npm run sim -- import-pool <file.xlsx|.csv> [--sheet name] [--out sim/pools/x.csv] [--price=cents]",
     "  npm run sim -- compare-runs <run-dir> <run-dir> [...] [--out dir]",
     "  npm run sim -- run <scenario.json> [--venue name] [--pool file.csv] [--group-mix \"1:10,2:45,3:10,4:25,5:5,6:5\"]",

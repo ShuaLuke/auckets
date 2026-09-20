@@ -16,6 +16,7 @@ npm run sim -- venue show lincoln-v4
 npm run sim -- venue add my-venue.json                                   # venue JSON or tier-spec JSON (see below)
 npm run sim -- venue add ~/Downloads/His_RowRank_Workbook.xlsx --name x --floors "orchestra=85,front_balcony=70,upper_balcony=50"
 npm run sim -- venue add ~/Downloads/box-office-manifest.csv --name y   # UTF-16 tab-separated exports work as is
+npm run sim -- venue add ~/Downloads/stadium-manifest.xlsx --name z --tier-map sim/tier-maps/z.json   # a seat-per-line sheet; the tier map is required when it has no prices
 npm run sim -- import-pool ~/Downloads/His_RowRank_Workbook.xlsx --out sim/pools/x.csv   # picks the "Full Offer Pool" sheet
 
 npm run sim -- run sim/scenarios/lincoln-v4-mix.json
@@ -159,6 +160,7 @@ Pool CSV columns are matched by name, case-insensitively: a group-size column (`
 |---|---|
 | `lincoln-v4` | Cope's 144-row Lincoln Theatre RowRank architecture, 1,152 seats, with his relief-row flags. Produced by `venue add` from his workbook; re-importing reproduces it |
 | `lincoln-manifest` | The same theatre from the box-office seat manifest (May 2026 onsale snapshot): 157 rows incl. boxes, 1,265 seats, 143 held by hold group, tiers = price levels P1–P5, RowRank derived |
+| `daikin-park` | Daikin Park (the Astros' ballpark) from its seat manifest: 213 sections, 2,381 rows, 43,445 seats. The manifest has 83 price scales and **no prices**; [`sim/tier-maps/daikin-park.json`](tier-maps/daikin-park.json) folds them into 10 tiers with **placeholder floors**. Suites and hospitality (2,294 seats) are off sale by default, so 41,151 are on sale, including one 2,000-place standing-room pool that soaks up every leftover — sell without `sro` to see the seated room on its own. RowRank is baseball order (tier, then row number), not distance from a stage |
 | `copes-place` | The seeded 50-cap alpha venue |
 | `lincoln-synthetic` | The 5-row fixture from the engine's tests |
 | `austin-partial` | The sectioned-off Austin fixture (two rows inactive) |
@@ -170,6 +172,12 @@ Pool CSV columns are matched by name, case-insensitively: a group-size column (`
 - **Tier spec JSON** — quick uniform rooms: `{ "name", "displayName", "tiers": [{ "name": "front", "rowCount": 2, "seatsPerRow": 6, "floorCents": 6000 }, { "name": "ga", "rowCount": 1, "seatsPerRow": 40, "unitType": "ga" }] }`.
 - **Cope's RowRank workbook (`.xlsx`)** — the sheet with GlobalRowRank, Area, ManifestSection, Row, WorkingL, Parity, Lean, PrintedSeatList, SingleInventoryFlag, GapReliefEligible, ActiveStatus. Header names are matched loosely. The sheet is auto-picked (name containing "RowRank"); override with `--sheet`. Tiers are the areas (`--tier-by section` to use manifest sections); pass `--floors "tier=dollars,…"` so pools can be generated. PrintedSeatList must list only the working seats, as his V–Y rows do.
 - **Box-office manifest (`.csv` / `.tsv`)** — one line per seat: Section Name, Row Name, SeatName, Price Value, Price Level Name, Hold Group Name, Hold Name / Offer Name. UTF-16 with BOM is fine. Rows are grouped, seats sorted, hold groups become holds (1-TECH → production, 2-HOUS/5-ADA → venue, 3-ARTI → artist, 4-MKTG → comp; `--ignore-holds` to drop), sold seats stay open unless `--sold-as-held`. Tiers are the price levels and floors their prices. **RowRank is derived** (price level, then AA before A, then section order); hand it a sidecar with `--rank-file section,row,rowRank.csv` when the room disagrees. Lean is inward by section name (L → RIGHT, R → LEFT), area guessed from the section name.
+
+A **spreadsheet manifest** (`.xlsx` with one line per seat — the Daikin Park export has SECTION_DESCRIPTION, ROW, SEAT_NUMBER, PRICE_SCALE_CODE) goes through the same importer; it is told apart from Cope's workbook by having a seat column. A stadium names dozens of price scales and no prices, so there is nothing to order them by: pass `--tier-map tiers.json`, which lists tiers best-first, each with the scales it absorbs, a floor in cents, and optionally `"isGa": true` (one standing pool) or `"onSale": false` (in the building, not in `activeRowIds`). Every scale must land in exactly one tier. With a tier map the row's area is its tier, which is what "sections on sale" offers for a room with more than 40 sections. Rooms over 5,000 seats are written one row per line.
+
+### Big rooms
+
+A Daikin-sized allocation takes seconds, not milliseconds: about 3.6 s for greedy with a crowd 1.25× the seats, three to five times that for lookahead, and roughly the square of the crowd (39 s at 5×). The CLI does not care. The app runs inside a 60 s function, so the route and the form share [`src/lib/sim/budget.ts`](../src/lib/sim/budget.ts): rooms up to 5,000 seats keep the flat 400-allocation cap, bigger ones are limited to about 20 s of estimated work, and a run over the limit gets a message saying what to cut. The response is capped too (Vercel rejects anything over 4.5 MB, and a full Daikin policy is ~5 MB of files): the app sends offers.csv and the text seat map for as many policies as fit, then visual seat maps if there is room left, and says what it left out. At full size that means one policy's files and no visual map; sell part of the building (say `diamond_club` + `club`) and everything comes back.
 
 `import-pool` reads an offer sheet or CSV (same column matching as pools) and writes the normalised `id,size,price,tier,order` CSV a scenario points at.
 

@@ -13,6 +13,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { db } from "@/lib/db";
+import { checkWork } from "@/lib/sim/budget";
 import { GROUP_MIX_PRESETS } from "@/lib/sim/demand";
 import { libraryPool, libraryVenue } from "@/lib/sim/library";
 import { POLICY_PATTERN } from "@/lib/sim/schema";
@@ -21,7 +22,7 @@ import { runScenario } from "@/lib/sim/run";
 import { buildSeatMapView, type SeatMapView } from "@/lib/sim/seatmap";
 import { slimOutput } from "@/lib/sim/sweep";
 import type { RunOutput, Scenario } from "@/lib/sim/types";
-import { applyShowOverlay, SimInputError } from "@/lib/sim/venue";
+import { activeRows, applyShowOverlay, SimInputError } from "@/lib/sim/venue";
 import { userCanSimulate } from "@/lib/simulation/access";
 
 export const dynamic = "force-dynamic";
@@ -82,13 +83,19 @@ export type SimulationResponse = {
   offersCsv: Record<string, string>; // policy → csv
   seatmapTxt: Record<string, string>;
   seatMaps: Record<string, SeatMapView>; // policy → the visual seat map (first seed)
+  // Policies whose offers.csv and text seat map, or whose visual seat map,
+  // were left out to keep the response under the platform's size limit (a
+  // stadium's come to ~5 MB a policy).
+  downloadsOmitted: string[];
+  seatMapsOmitted: string[];
   elapsedMs: number;
 };
 type ErrorBody = { error: string; details?: unknown };
 
-// Cap the work per request: each allocation on a Lincoln-sized room is
-// ~20 ms; a timeline multiplies that by its preview count.
-const MAX_ALLOCATIONS = 400;
+// Vercel rejects a function response over 4.5 MB. The report and metrics
+// come first; per-policy downloads and seat maps are added while they fit
+// in this many characters.
+const MAX_DOWNLOAD_CHARS = 3_000_000;
 
 export async function POST(request: Request): Promise<NextResponse<SimulationResponse | ErrorBody>> {
   const { userId } = await auth();
@@ -108,15 +115,6 @@ export async function POST(request: Request): Promise<NextResponse<SimulationRes
 
   const venue = libraryVenue(body.venue);
   if (!venue) return NextResponse.json({ error: `unknown venue "${body.venue}"` }, { status: 404 });
-
-  const previews = body.timeline ? Math.ceil((body.timeline.windowDays * 24) / (body.timeline.previewEveryHours ?? 12)) + 1 : 1;
-  const allocations = body.seeds * body.policies.length * previews;
-  if (allocations > MAX_ALLOCATIONS) {
-    return NextResponse.json(
-      { error: `that's ${allocations} allocations (seeds × policies × previews); the limit per run is ${MAX_ALLOCATIONS}. Lower the seeds, policies, or preview frequency.` },
-      { status: 422 },
-    );
-  }
 
   const scenario: Scenario = {
     name: body.name ?? "admin-run",
@@ -166,6 +164,27 @@ export async function POST(request: Request): Promise<NextResponse<SimulationRes
     if (!pool) return NextResponse.json({ error: `unknown pool "${body.pool.name}"` }, { status: 404 });
   }
 
+  // Cap the work per request, by the size of the room actually on sale: a
+  // timeline multiplies the allocations by its preview count, a stadium
+  // multiplies the cost of each one (see sim/budget.ts).
+  let renderVenue: ReturnType<typeof applyShowOverlay>["venue"];
+  try {
+    renderVenue = applyShowOverlay(venue, scenario.show).venue;
+  } catch (e) {
+    if (e instanceof SimInputError) return NextResponse.json({ error: e.message }, { status: 422 });
+    throw e;
+  }
+  const previews = body.timeline ? Math.ceil((body.timeline.windowDays * 24) / (body.timeline.previewEveryHours ?? 12)) + 1 : 1;
+  const onSaleSeats = activeRows(renderVenue).reduce((s, r) => s + r.capacity - r.holds.length, 0);
+  const work = checkWork({
+    onSaleSeats,
+    oversubscription: pool ? pool.offers.reduce((s, o) => s + o.groupSize, 0) / Math.max(1, onSaleSeats) : body.pool.kind === "generate" ? body.pool.oversubscription : 1,
+    policies: body.policies,
+    seeds: scenario.seeds ?? 1,
+    previews,
+  });
+  if (!work.ok) return NextResponse.json({ error: work.message }, { status: 422 });
+
   const t0 = performance.now();
   let output: RunOutput;
   try {
@@ -176,20 +195,35 @@ export async function POST(request: Request): Promise<NextResponse<SimulationRes
   }
   const elapsedMs = performance.now() - t0;
 
-  const renderVenue = applyShowOverlay(venue, scenario.show).venue;
   const offersCsv: Record<string, string> = {};
   const seatmapTxt: Record<string, string> = {};
+  // Most useful first, each kept only while it fits: offers.csv, the text
+  // seat map, then the visual seat map (2.5 MB a policy at Daikin).
   const seatMaps: Record<string, SeatMapView> = {};
+  const downloadsOmitted: string[] = [];
+  const seatMapsOmitted: string[] = [];
+  let sentChars = 0;
+  const fits = (chars: number): boolean => {
+    if (sentChars + chars > MAX_DOWNLOAD_CHARS) return false;
+    sentChars += chars;
+    return true;
+  };
   for (const run of output.runs) {
     if (!run.result) continue;
-    offersCsv[run.policy] = renderOffersCsv(run, renderVenue);
-    seatmapTxt[run.policy] = renderSeatMap(run, renderVenue);
+    const csv = renderOffersCsv(run, renderVenue);
+    const map = renderSeatMap(run, renderVenue);
+    if (fits(csv.length + map.length)) {
+      offersCsv[run.policy] = csv;
+      seatmapTxt[run.policy] = map;
+    } else downloadsOmitted.push(run.policy);
     const view = buildSeatMapView(run, renderVenue);
-    if (view) seatMaps[run.policy] = view;
+    if (!view) continue;
+    if (fits(JSON.stringify(view).length)) seatMaps[run.policy] = view;
+    else seatMapsOmitted.push(run.policy);
   }
 
   return NextResponse.json(
-    { ok: true, output: slimOutput(output), reportMd: renderFillReport(output), offersCsv, seatmapTxt, seatMaps, elapsedMs },
+    { ok: true, output: slimOutput(output), reportMd: renderFillReport(output), offersCsv, seatmapTxt, seatMaps, downloadsOmitted, seatMapsOmitted, elapsedMs },
     { status: 200 },
   );
 }
