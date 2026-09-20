@@ -18,6 +18,7 @@ import { libraryPool, libraryVenue } from "@/lib/sim/library";
 import { POLICY_PATTERN } from "@/lib/sim/schema";
 import { renderFillReport, renderOffersCsv, renderSeatMap } from "@/lib/sim/report";
 import { runScenario } from "@/lib/sim/run";
+import { buildSeatMapView, type SeatMapView } from "@/lib/sim/seatmap";
 import { slimOutput } from "@/lib/sim/sweep";
 import type { RunOutput, Scenario } from "@/lib/sim/types";
 import { applyShowOverlay, SimInputError } from "@/lib/sim/venue";
@@ -80,6 +81,7 @@ export type SimulationResponse = {
   reportMd: string;
   offersCsv: Record<string, string>; // policy → csv
   seatmapTxt: Record<string, string>;
+  seatMaps: Record<string, SeatMapView>; // policy → the visual seat map (first seed)
   elapsedMs: number;
 };
 type ErrorBody = { error: string; details?: unknown };
@@ -177,14 +179,17 @@ export async function POST(request: Request): Promise<NextResponse<SimulationRes
   const renderVenue = applyShowOverlay(venue, scenario.show).venue;
   const offersCsv: Record<string, string> = {};
   const seatmapTxt: Record<string, string> = {};
+  const seatMaps: Record<string, SeatMapView> = {};
   for (const run of output.runs) {
     if (!run.result) continue;
     offersCsv[run.policy] = renderOffersCsv(run, renderVenue);
     seatmapTxt[run.policy] = renderSeatMap(run, renderVenue);
+    const view = buildSeatMapView(run, renderVenue);
+    if (view) seatMaps[run.policy] = view;
   }
 
   return NextResponse.json(
-    { ok: true, output: slimOutput(output), reportMd: renderFillReport(output), offersCsv, seatmapTxt, elapsedMs },
+    { ok: true, output: slimOutput(output), reportMd: renderFillReport(output), offersCsv, seatmapTxt, seatMaps, elapsedMs },
     { status: 200 },
   );
 }

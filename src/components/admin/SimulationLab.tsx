@@ -8,6 +8,7 @@
 import { useMemo, useState } from "react";
 
 import { SimulationMarkdown } from "@/components/admin/SimulationMarkdown";
+import { SimulationSeatMap } from "@/components/admin/SimulationSeatMap";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Eyebrow } from "@/components/ui/Eyebrow";
@@ -16,6 +17,7 @@ import { TextInput } from "@/components/ui/TextInput";
 import { compareRuns, renderComparison } from "@/lib/sim/compare";
 import { usd } from "@/lib/sim/format";
 import type { LibraryPoolSummary, LibraryVenueSummary } from "@/lib/sim/library";
+import type { SeatMapView } from "@/lib/sim/seatmap";
 import type { RunOutput } from "@/lib/sim/types";
 
 type Props = {
@@ -32,6 +34,7 @@ type SavedRun = {
   reportMd: string;
   offersCsv: Record<string, string>;
   seatmapTxt: Record<string, string>;
+  seatMaps: Record<string, SeatMapView>;
   elapsedMs: number;
 };
 
@@ -94,6 +97,8 @@ export function SimulationLab({ venues, pools, presets }: Props) {
   const [current, setCurrent] = useState<string | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [compareMd, setCompareMd] = useState<string | null>(null);
+  const [resultView, setResultView] = useState<"report" | "map">("report");
+  const [mapPolicy, setMapPolicy] = useState<string | null>(null);
 
   const venueInfo = venues.find((v) => v.name === venue);
   const mixTotal = useMemo(() => SIZES.reduce((s, z) => s + (Number(mix[z]) || 0), 0), [mix]);
@@ -158,7 +163,7 @@ export function SimulationLab({ venues, pools, presets }: Props) {
         }),
       };
       const res = await fetch("/api/admin/simulation", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      const json = (await res.json().catch(() => ({}))) as Partial<{ ok: true; output: RunOutput; reportMd: string; offersCsv: Record<string, string>; seatmapTxt: Record<string, string>; elapsedMs: number; error: string; details: { path: (string | number)[]; message: string }[] }>;
+      const json = (await res.json().catch(() => ({}))) as Partial<{ ok: true; output: RunOutput; reportMd: string; offersCsv: Record<string, string>; seatmapTxt: Record<string, string>; seatMaps: Record<string, SeatMapView>; elapsedMs: number; error: string; details: { path: (string | number)[]; message: string }[] }>;
       if (!res.ok || !json.ok || !json.output) {
         const detail = json.details?.map((d) => `${d.path.join(".")}: ${d.message}`).join("; ");
         setError(json.error ? `${json.error}${detail ? ` — ${detail}` : ""}` : `Failed (HTTP ${res.status})`);
@@ -166,7 +171,7 @@ export function SimulationLab({ venues, pools, presets }: Props) {
       }
       const id = `run-${Date.now()}`;
       const label = `${venueInfo?.displayName.split(" —")[0] ?? venue} · ${poolKind === "library" ? poolName : `${preset === "custom" ? "custom mix" : preset} ×${oversub}`} · ${policies.join(", ")}${timelineOn ? ` · ${windowDays}d window` : ""}`;
-      const saved: SavedRun = { id, label, at: new Date().toLocaleTimeString(), output: json.output, reportMd: json.reportMd ?? "", offersCsv: json.offersCsv ?? {}, seatmapTxt: json.seatmapTxt ?? {}, elapsedMs: json.elapsedMs ?? 0 };
+      const saved: SavedRun = { id, label, at: new Date().toLocaleTimeString(), output: json.output, reportMd: json.reportMd ?? "", offersCsv: json.offersCsv ?? {}, seatmapTxt: json.seatmapTxt ?? {}, seatMaps: json.seatMaps ?? {}, elapsedMs: json.elapsedMs ?? 0 };
       setRuns((cur) => [saved, ...cur].slice(0, 12));
       setCurrent(id);
       setCompareMd(null);
@@ -190,6 +195,8 @@ export function SimulationLab({ venues, pools, presets }: Props) {
   }
 
   const shown = runs.find((r) => r.id === current) ?? null;
+  const mapPolicies = shown ? Object.keys(shown.seatMaps) : [];
+  const shownMap = shown ? (shown.seatMaps[mapPolicy ?? ""] ?? shown.seatMaps[mapPolicies[0] ?? ""]) : undefined;
   const headline = (r: SavedRun): string => {
     const a = r.output.aggregates[0];
     if (!a) return "";
@@ -487,7 +494,29 @@ export function SimulationLab({ venues, pools, presets }: Props) {
                 {shown.output.runs.length} allocations in {shown.elapsedMs.toFixed(0)} ms
               </span>
             </div>
-            <SimulationMarkdown md={shown.reportMd} />
+            {mapPolicies.length > 0 && (
+              <div className="mb-4 flex flex-wrap items-center gap-2 border-b pb-3" style={{ borderColor: "var(--border)" }}>
+                <Button size="sm" variant={resultView === "report" ? "primary" : "secondary"} onClick={() => setResultView("report")}>
+                  Fill report
+                </Button>
+                <Button size="sm" variant={resultView === "map" ? "primary" : "secondary"} onClick={() => setResultView("map")}>
+                  Seat map
+                </Button>
+                {resultView === "map" && mapPolicies.length > 1 && (
+                  <span className="ml-2 flex flex-wrap items-center gap-1">
+                    {mapPolicies.map((p) => {
+                      const on = shownMap?.policy === p;
+                      return (
+                        <button key={p} type="button" aria-pressed={on} className="rounded-full border px-2 py-0.5 font-sans text-[11px]" style={{ borderColor: on ? "var(--ink-900)" : "var(--border)", background: on ? "var(--ink-900)" : "transparent", color: on ? "var(--paper)" : "var(--fg-muted)" }} onClick={() => setMapPolicy(p)}>
+                          {p}
+                        </button>
+                      );
+                    })}
+                  </span>
+                )}
+              </div>
+            )}
+            {resultView === "map" && shownMap ? <SimulationSeatMap view={shownMap} /> : <SimulationMarkdown md={shown.reportMd} />}
           </Card>
         )}
 

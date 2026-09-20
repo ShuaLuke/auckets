@@ -6,7 +6,7 @@ Nothing here touches the database, Stripe, email, or env. The engine is pure; so
 
 ## In the app
 
-The same engine and reports are available at **auckets.com/admin/simulation** for AUCKETS admins (Julia, Josh) and anyone who manages an artist (Cope). Pick a venue, describe the crowd or use Cope's real pool, choose up to four policies, run, read the fill report, download `report.md` / `offers.csv` / the seat map, and compare runs from the session. Advanced options cover sections on sale, holds, auto-bid and private offers, seat preferences, the Bleacher carve-out, and the timeline. Nothing is written anywhere. The page calls `POST /api/admin/simulation`, which runs `runScenario` on the static library in `src/lib/sim/library.ts` — adding a venue to the app means adding it there as well as to `sim/venues/`.
+The same engine and reports are available at **auckets.com/admin/simulation** for AUCKETS admins (Julia, Josh) and anyone who manages an artist (Cope). Pick a venue, describe the crowd or use Cope's real pool, choose up to four policies, run, read the fill report, switch to the **Seat map** view (every seat in seat-rank order, shaded by the price paid; hover a seat for the price, the group, and where that offer ranked — first seed of each policy), download `report.md` / `offers.csv` / the text seat map, and compare runs from the session. Advanced options cover sections on sale, holds, auto-bid and private offers, seat preferences, the Bleacher carve-out, and the timeline. Nothing is written anywhere. The page calls `POST /api/admin/simulation`, which runs `runScenario` on the static library in `src/lib/sim/library.ts` — adding a venue to the app means adding it there as well as to `sim/venues/`.
 
 ## Commands
 
