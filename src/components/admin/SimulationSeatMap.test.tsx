@@ -47,8 +47,12 @@ describe("SimulationSeatMap", () => {
     expect(html).toContain("Price paid per ticket");
     expect(html).toContain("$120");
     expect(html).toContain("$70");
-    expect(html).toContain("front mid"); // tier heading, underscores tidied
     expect(html).toContain("Held");
+    // Opens as a seating chart: stage, then each level by name, row letters in the gutters.
+    expect(html).toContain("Stage");
+    expect(html).toContain("front balcony");
+    expect(html).toContain("upper balcony");
+    expect(html).toContain('aria-pressed="true"');
   });
 
   it("shows the price paid, the group, and the offer's rank on hover", () => {
@@ -75,6 +79,16 @@ describe("SimulationSeatMap", () => {
       empty.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
     });
     expect(container.querySelector('[role="tooltip"]')?.textContent).toContain("Empty seat");
+
+    // The by-rank layout is one click away and draws the same seats.
+    const byRank = [...container.querySelectorAll("button")].find((b) => b.textContent === "By seat rank")!;
+    act(() => {
+      byRank.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(container.querySelector('[role="tooltip"]')).toBeNull();
+    expect(container.querySelectorAll("[data-seat]")).toHaveLength(11);
+    expect(container.textContent).toContain("front mid"); // tier heading, underscores tidied
+    expect(container.textContent).toContain("Rows run best seat-rank first");
 
     act(() => root.unmount());
   });
