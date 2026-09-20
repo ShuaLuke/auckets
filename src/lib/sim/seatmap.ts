@@ -151,8 +151,13 @@ export type PriceBin = { minCents: number; maxCents: number; seats: number };
 // instead: each step covers roughly the same number of seats, and a price
 // never straddles two bins. Returned cheapest first.
 export function priceBins(view: SeatMapView, maxBins = 5): PriceBin[] {
+  return quantileBins(view.offers.map((o) => [o.priceCents, o.groupSize]), maxBins);
+}
+
+// The same scale over any (price, seats) pairs — section averages use it too.
+export function quantileBins(pairs: [priceCents: number, seats: number][], maxBins = 5): PriceBin[] {
   const seatsAtPrice = new Map<number, number>();
-  for (const o of view.offers) seatsAtPrice.set(o.priceCents, (seatsAtPrice.get(o.priceCents) ?? 0) + o.groupSize);
+  for (const [price, seats] of pairs) if (seats > 0) seatsAtPrice.set(price, (seatsAtPrice.get(price) ?? 0) + seats);
   const prices = [...seatsAtPrice.keys()].sort((a, b) => a - b);
   if (prices.length === 0) return [];
   const total = [...seatsAtPrice.values()].reduce((s, v) => s + v, 0);
@@ -275,4 +280,112 @@ export function seatingChart(view: SeatMapView): ChartLevel[] {
       widthSeats: sections.reduce((sum, sec) => sum + sec.width, 0),
     };
   });
+}
+
+// --- sections --------------------------------------------------------------
+//
+// A stadium is too big to send or draw seat by seat (Daikin: 2.8 MB a policy,
+// 41k seats), so the room is also summarised one block per section. This is
+// small enough to ship for every policy, always; seat detail for a level is
+// cut from the full view with filterSeatMapView when someone opens a section.
+
+export type SectionSummary = {
+  area: string;
+  section: string;
+  tiers: string[];
+  rows: number;
+  bestRowRank: number;
+  worstRowRank: number;
+  seats: number; // on sale: placed + empty
+  placedSeats: number;
+  emptySeats: number;
+  heldSeats: number;
+  offers: number; // groups seated here
+  grossCents: number;
+  avgPriceCents: number | null; // per ticket, rounded to the cent; null when nobody sat here
+  minPriceCents: number | null;
+  maxPriceCents: number | null;
+};
+
+export type SectionMapView = {
+  policy: string;
+  seed: number;
+  sections: SectionSummary[]; // levels nearest the stage first, then best row rank
+  totalOffers: number;
+  seatedOffers: number;
+  placedSeats: number;
+  emptySeats: number;
+  heldSeats: number;
+};
+
+export function summariseSections(view: SeatMapView): SectionMapView {
+  const byKey = new Map<string, SectionSummary & { seen: Set<number> }>();
+  for (const r of view.rows) {
+    const key = `${r.area}\u0000${r.section}`;
+    let sec = byKey.get(key);
+    if (!sec) {
+      sec = { area: r.area, section: r.section, tiers: [], rows: 0, bestRowRank: r.rowRank, worstRowRank: r.rowRank, seats: 0, placedSeats: 0, emptySeats: 0, heldSeats: 0, offers: 0, grossCents: 0, avgPriceCents: null, minPriceCents: null, maxPriceCents: null, seen: new Set() };
+      byKey.set(key, sec);
+    }
+    sec.rows++;
+    sec.bestRowRank = Math.min(sec.bestRowRank, r.rowRank);
+    sec.worstRowRank = Math.max(sec.worstRowRank, r.rowRank);
+    if (r.tier !== undefined && !sec.tiers.includes(r.tier)) sec.tiers.push(r.tier);
+    for (const code of r.seats) {
+      if (code === SEAT_HELD) sec.heldSeats++;
+      else if (code === SEAT_EMPTY) sec.emptySeats++;
+      else {
+        const price = view.offers[code]!.priceCents;
+        sec.placedSeats++;
+        sec.grossCents += price;
+        sec.minPriceCents = sec.minPriceCents === null ? price : Math.min(sec.minPriceCents, price);
+        sec.maxPriceCents = sec.maxPriceCents === null ? price : Math.max(sec.maxPriceCents, price);
+        sec.seen.add(code);
+      }
+    }
+  }
+  const areaOrder: string[] = [];
+  for (const r of view.rows) if (!areaOrder.includes(r.area)) areaOrder.push(r.area);
+  const sections = [...byKey.values()]
+    .map(({ seen, ...sec }) => ({
+      ...sec,
+      seats: sec.placedSeats + sec.emptySeats,
+      offers: seen.size,
+      avgPriceCents: sec.placedSeats === 0 ? null : Math.round(sec.grossCents / sec.placedSeats),
+    }))
+    .sort((a, b) => areaOrder.indexOf(a.area) - areaOrder.indexOf(b.area) || a.bestRowRank - b.bestRowRank);
+  return { policy: view.policy, seed: view.seed, sections, totalOffers: view.totalOffers, seatedOffers: view.offers.length, placedSeats: view.placedSeats, emptySeats: view.emptySeats, heldSeats: view.heldSeats };
+}
+
+// A seat map of just the rows that pass `keep`, with the offers table cut
+// down and re-indexed to match. totalOffers stays the pool's, so "offer #12
+// of 512" still means what it does in the full room.
+export function filterSeatMapView(view: SeatMapView, keep: (row: SeatMapRow) => boolean): SeatMapView {
+  const newIndex = new Map<number, number>();
+  const offers: SeatMapOffer[] = [];
+  let placedSeats = 0;
+  let emptySeats = 0;
+  let heldSeats = 0;
+  const rows = view.rows.filter(keep).map((r) => ({
+    ...r,
+    seats: r.seats.map((code) => {
+      if (code === SEAT_HELD) {
+        heldSeats++;
+        return code;
+      }
+      if (code === SEAT_EMPTY) {
+        emptySeats++;
+        return code;
+      }
+      placedSeats++;
+      let idx = newIndex.get(code);
+      if (idx === undefined) {
+        idx = offers.length;
+        newIndex.set(code, idx);
+        offers.push(view.offers[code]!);
+      }
+      return idx;
+    }),
+  }));
+  return { ...view, rows, offers, placedSeats, emptySeats, heldSeats };
 }

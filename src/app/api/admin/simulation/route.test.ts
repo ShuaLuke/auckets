@@ -60,6 +60,29 @@ describe("POST /api/admin/simulation", () => {
     expect(occupied.every((s) => (map.offers[s]?.priceCents ?? 0) > 0)).toBe(true);
   });
 
+  it("sends a section map for every policy, and seat detail for one level on request", async () => {
+    const res = await post(good);
+    const body = (await res.json()) as { sectionMaps: Record<string, { sections: { area: string; section: string; placedSeats: number }[]; placedSeats: number }>; seatMaps: Record<string, { rows: { id: string; area: string; seats: number[] }[]; offers: { id: string }[] }> };
+    expect(Object.keys(body.sectionMaps)).toEqual(["greedy", "clean-fit"]);
+    const sections = body.sectionMaps["clean-fit"]!;
+    expect(sections.sections.reduce((t, s) => t + s.placedSeats, 0)).toBe(sections.placedSeats);
+
+    // The detail request re-runs one policy's first seed; it must land on the
+    // same seats the full run reported, even though that run had 3 seeds × 2 policies.
+    const area = sections.sections[0]!.area;
+    const detailRes = await post({ ...good, detail: { policy: "clean-fit", area } });
+    expect(detailRes.status).toBe(200);
+    const { detail } = (await detailRes.json()) as { detail: { policy: string; rows: { id: string; area: string; seats: number[] }[]; offers: { id: string }[] } };
+    expect(detail.policy).toBe("clean-fit");
+    expect(detail.rows.every((r) => r.area === area)).toBe(true);
+    const full = body.seatMaps["clean-fit"]!;
+    const occupants = (m: typeof full, rowId: string): (string | number)[] => m.rows.find((r) => r.id === rowId)!.seats.map((c) => (c >= 0 ? m.offers[c]!.id : c));
+    for (const r of detail.rows) expect(occupants(detail, r.id)).toEqual(occupants(full, r.id));
+
+    expect((await post({ ...good, detail: { policy: "lookahead", area } })).status).toBe(400); // not one of the run's policies
+    expect((await post({ ...good, detail: { policy: "greedy", area: "nowhere" } })).status).toBe(404);
+  });
+
   it("runs a stadium, and leaves out the downloads that would not fit in the response", async () => {
     const res = await post({ venue: "daikin-park", pool: { kind: "generate", seed: 1, oversubscription: 0.6, groupSizeMix: "couples" }, policies: ["greedy", "parity-tiebreak", "clean-fit"], seeds: 1 });
     expect(res.status).toBe(200);

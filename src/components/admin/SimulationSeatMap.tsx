@@ -26,7 +26,7 @@ type Props = { view: SeatMapView };
 
 // Cheapest → dearest. Five steps from the Greenwood ramp; the second is mixed
 // because the ramp has no 200.
-const SCALE = [
+export const SCALE = [
   "var(--greenwood-100)",
   "color-mix(in oklab, var(--greenwood-100), var(--greenwood-300))",
   "var(--greenwood-300)",
@@ -38,7 +38,7 @@ const HELD_FILL = "repeating-linear-gradient(135deg, var(--ink-200) 0 2px, var(-
 
 // Spread n bins across the 5-step scale so two bins read as light vs dark,
 // not as two neighbouring pales.
-function colorForBin(bin: number, binCount: number): string {
+export function colorForBin(bin: number, binCount: number): string {
   if (binCount <= 1) return SCALE[2];
   return SCALE[Math.round((bin * (SCALE.length - 1)) / (binCount - 1))] ?? SCALE[2];
 }
@@ -54,7 +54,7 @@ const AISLE = 12;
 const ROW_LABEL_W = 16;
 const UNIT_PER_LINE = 15; // a GA pen wraps
 // One DOM node pair per seat. Fine for a theatre, not for a stadium.
-const MAX_DRAWN_SEATS = 6000;
+export const MAX_DRAWN_SEATS = 6000;
 
 type Layout = "chart" | "rank";
 
@@ -185,29 +185,30 @@ export function SimulationSeatMap({ view }: Props) {
   );
 }
 
-function priceRange(b: PriceBin): string {
-  const short = (c: number): string => (c % 100 === 0 ? `$${(c / 100).toLocaleString("en-US")}` : usd(c));
+// `whole` rounds to the dollar — averages land on odd cents that mean nothing in a legend.
+export function priceRange(b: PriceBin, whole = false): string {
+  const short = (c: number): string => (whole || c % 100 === 0 ? `$${Math.round(c / 100).toLocaleString("en-US")}` : usd(c));
   return b.minCents === b.maxCents ? short(b.minCents) : `${short(b.minCents)}–${short(b.maxCents)}`;
 }
 
-function Legend({ bins, hasHeld }: { bins: PriceBin[]; hasHeld: boolean }) {
+export function Legend({ bins, hasHeld, title = "Price paid per ticket", whole = false, emptyLabel = "Empty" }: { bins: PriceBin[]; hasHeld: boolean; title?: string; whole?: boolean; emptyLabel?: string }) {
   const swatch = (background: string, border?: string): JSX.Element => (
     <i aria-hidden className="block shrink-0" style={{ width: 12, height: 12, borderRadius: 2, background, ...(border && { boxShadow: `inset 0 0 0 1px ${border}` }) }} />
   );
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 font-sans text-[11px]" style={{ color: "var(--fg-muted)" }}>
       <span className="font-semibold uppercase tracking-wide" style={{ color: "var(--fg-subtle)" }}>
-        Price paid per ticket
+        {title}
       </span>
       {bins.map((b, i) => (
         <span key={b.minCents} className="inline-flex items-center gap-1.5" title={`${b.seats.toLocaleString("en-US")} seats`}>
           {swatch(colorForBin(i, bins.length))}
-          <span className="font-mono">{priceRange(b)}</span>
+          <span className="font-mono">{priceRange(b, whole)}</span>
         </span>
       ))}
       <span className="inline-flex items-center gap-1.5">
         {swatch("var(--page)", "var(--border-strong)")}
-        Empty
+        {emptyLabel}
       </span>
       {hasHeld && (
         <span className="inline-flex items-center gap-1.5">
