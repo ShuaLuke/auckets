@@ -159,7 +159,7 @@ Pool CSV columns are matched by name, case-insensitively: a group-size column (`
 | Name | Room |
 |---|---|
 | `lincoln-v4` | Cope's 144-row Lincoln Theatre RowRank architecture, 1,152 seats, with his relief-row flags. Produced by `venue add` from his workbook; re-importing reproduces it |
-| `lincoln-manifest` | The same theatre from the box-office seat manifest (May 2026 onsale snapshot): 157 rows incl. boxes, 1,265 seats, 143 held by hold group, tiers = price levels P1–P5, RowRank derived |
+| `lincoln-manifest` | The same theatre from the box-office seat manifest (May 2026 onsale snapshot): 157 rows incl. boxes, 1,265 seats, 143 held by hold group, tiers = price levels P1–P5, RowRank derived. Its ten boxes carry `wallSections` (which wall, in what order — from the theatre's seating map), so the chart draws them down the sides of the orchestra. A manifest can't say where a box is; add `wallSections: { left: [...], right: [...] }` by hand, nearest the stage first |
 | `daikin-park` | Daikin Park (the Astros' ballpark) from its seat manifest: 213 sections, 2,381 rows, 43,445 seats. The manifest has 83 price scales and **no prices**; [`sim/tier-maps/daikin-park.json`](tier-maps/daikin-park.json) folds them into 10 tiers with **placeholder floors**. Suites and hospitality (2,294 seats) are off sale by default, so 41,151 are on sale, including one 2,000-place standing-room pool that soaks up every leftover — sell without `sro` to see the seated room on its own. RowRank is baseball order (tier, then row number), not distance from a stage |
 | `copes-place` | The seeded 50-cap alpha venue |
 | `lincoln-synthetic` | The 5-row fixture from the engine's tests |

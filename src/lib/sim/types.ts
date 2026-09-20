@@ -29,6 +29,11 @@ export type SimVenue = {
   // S1; the parity policies (S3) read it. Absent for venues without it.
   relief?: Record<string, { single?: boolean | undefined; gapRelief?: boolean | undefined }>;
   notes?: string;
+  // Sections that line a side wall rather than face the stage in rows — the
+  // Lincoln's boxes. House left / house right, each nearest the stage first.
+  // Drawing only: the engine never reads it. A manifest can't say where a box
+  // is, so this is written by hand from the venue's own seating map.
+  wallSections?: { left: string[]; right: string[] };
   source?: { kind: string; file?: string | undefined; importedAt?: string | undefined };
 };
 

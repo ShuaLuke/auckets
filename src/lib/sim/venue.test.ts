@@ -29,6 +29,13 @@ describe("parseVenueFile", () => {
     expect(() => parseVenueFile({ ...base, activeRowIds: ["zz"] })).toThrow(/unknown row "zz"/);
     expect(() => parseVenueFile({ ...base, name: "Bad Name" })).toThrow(/kebab-case/);
   });
+
+  it("keeps wall sections, survives a show overlay, and rejects a section the venue doesn't have", () => {
+    const v = parseVenueFile({ ...base, wallSections: { left: ["ORCH L"], right: [] } });
+    expect(v.wallSections).toEqual({ left: ["ORCH L"], right: [] });
+    expect(applyShowOverlay(v, { holds: [{ source: "artist", tier: "premium", seats: 2 }] }).venue.wallSections).toEqual(v.wallSections);
+    expect(() => parseVenueFile({ ...base, wallSections: { left: ["BOX Q"], right: [] } }, "x.json")).toThrow(/wallSections names unknown section "BOX Q"/);
+  });
 });
 
 describe("tierOrder", () => {

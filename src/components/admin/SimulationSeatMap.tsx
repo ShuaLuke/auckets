@@ -20,7 +20,7 @@
 import { memo, useId, useMemo, useRef, useState } from "react";
 
 import { usd } from "@/lib/sim/format";
-import { binIndexFor, priceBins, seatingChart, SEAT_HELD, type ChartLevel, type PriceBin, type SeatMapRow, type SeatMapView } from "@/lib/sim/seatmap";
+import { binIndexFor, priceBins, seatingChart, SEAT_HELD, type ChartLevel, type ChartUnit, type PriceBin, type SeatMapRow, type SeatMapView } from "@/lib/sim/seatmap";
 
 type Props = { view: SeatMapView };
 
@@ -53,6 +53,7 @@ const CHART_W = 540; // what the results card gives us; wider rooms scroll
 const AISLE = 12;
 const ROW_LABEL_W = 16;
 const UNIT_PER_LINE = 15; // a GA pen wraps
+const WALL_BOX_W = 2; // a wall box is drawn two seats wide, so five of them fit beside the floor
 // One DOM node pair per seat. Fine for a theatre, not for a stadium.
 export const MAX_DRAWN_SEATS = 6000;
 
@@ -255,8 +256,9 @@ type ChartProps = { view: SeatMapView; chart: ChartLevel[]; colorOf: string[] };
 const Chart = memo(function Chart({ view, chart, colorOf }: ChartProps) {
   const gap = 2;
   // Size cells so the widest level fits the card; very wide rooms scroll.
-  const widest = Math.max(1, ...chart.map((l) => l.widthSeats));
-  const mostAisles = Math.max(0, ...chart.map((l) => l.sections.length - 1));
+  const wallSeats = (l: ChartLevel): number => (l.leftWall.length > 0 ? WALL_BOX_W : 0) + (l.rightWall.length > 0 ? WALL_BOX_W : 0);
+  const widest = Math.max(1, ...chart.map((l) => l.widthSeats + wallSeats(l)));
+  const mostAisles = Math.max(0, ...chart.map((l) => l.sections.length - 1 + (l.leftWall.length > 0 ? 1 : 0) + (l.rightWall.length > 0 ? 1 : 0)));
   const cell = Math.min(12, Math.max(5, Math.floor((CHART_W - mostAisles * AISLE - 2 * (ROW_LABEL_W + AISLE)) / widest) - gap));
   const pitch = cell + gap;
   const label = { fontSize: 9, lineHeight: `${pitch}px`, color: "var(--fg-faint)" } as const;
@@ -275,7 +277,9 @@ const Chart = memo(function Chart({ view, chart, colorOf }: ChartProps) {
             </div>
 
             {level.lines.length > 0 && (
-              <div className="mx-auto grid w-fit" style={{ gridTemplateColumns: `${ROW_LABEL_W}px ${level.sections.map((sec) => `${sec.width * pitch}px`).join(" ")} ${ROW_LABEL_W}px`, columnGap: AISLE }}>
+              <div className="mx-auto flex w-fit items-stretch" style={{ gap: AISLE }}>
+              <WallBoxes view={view} units={level.leftWall} colorOf={colorOf} cell={cell} gap={gap} />
+              <div className="grid w-fit" style={{ gridTemplateColumns: `${ROW_LABEL_W}px ${level.sections.map((sec) => `${sec.width * pitch}px`).join(" ")} ${ROW_LABEL_W}px`, columnGap: AISLE }}>
                 <span />
                 {level.sections.map((sec) => (
                   <span key={sec.name} className="truncate pb-1 text-center font-mono" style={{ fontSize: 9, color: "var(--fg-subtle)" }} title={sec.name}>
@@ -286,6 +290,8 @@ const Chart = memo(function Chart({ view, chart, colorOf }: ChartProps) {
                 {level.lines.map((line, li) => (
                   <ChartLineRow key={`${line.rowName}-${li}`} view={view} level={level} rows={line.rows} rowName={line.rowName} colorOf={colorOf} cell={cell} gap={gap} labelStyle={label} />
                 ))}
+              </div>
+              <WallBoxes view={view} units={level.rightWall} colorOf={colorOf} cell={cell} gap={gap} />
               </div>
             )}
 
@@ -313,6 +319,34 @@ const Chart = memo(function Chart({ view, chart, colorOf }: ChartProps) {
     </div>
   );
 });
+
+// Boxes along one side wall, nearest the stage at the top, each drawn as a
+// small labelled block. Aligned to the back of the floor like the rows.
+function WallBoxes({ view, units, colorOf, cell, gap }: { view: SeatMapView; units: ChartUnit[]; colorOf: string[]; cell: number; gap: number }) {
+  if (units.length === 0) return null;
+  const pitch = cell + gap;
+  return (
+    // Spread from the front of the floor to the back, as they run along the wall.
+    <div className="flex shrink-0 flex-col justify-between" style={{ gap: 6 }}>
+      <div className="text-center font-mono uppercase" style={{ fontSize: 8, lineHeight: "12px", letterSpacing: "0.08em", color: "var(--fg-subtle)" }}>
+        Boxes
+      </div>
+      {units.map((u) => {
+        const r = view.rows[u.row]!;
+        return (
+          <div key={r.id} title={`${u.label} · seat rank #${r.rowRank}`}>
+            <div className="whitespace-nowrap text-center font-mono" style={{ fontSize: 8, lineHeight: "10px", color: "var(--fg-subtle)", width: WALL_BOX_W * pitch }}>
+              {u.label.replace(/^box\s+/i, "")}
+            </div>
+            <div className="flex flex-wrap" style={{ width: WALL_BOX_W * pitch }}>
+              <Seats row={r} rowIdx={u.row} colorOf={colorOf} cell={cell} gap={gap} rowGap={gap} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 type ChartLineRowProps = { view: SeatMapView; level: ChartLevel; rows: (number | null)[]; rowName: string; colorOf: string[]; cell: number; gap: number; labelStyle: React.CSSProperties };
 

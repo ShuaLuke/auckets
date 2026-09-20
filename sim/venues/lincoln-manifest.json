@@ -3794,7 +3794,7 @@
     "r_balc-v",
     "l_balc-w"
   ],
-  "notes": "Imported from a box-office seat manifest: 157 rows, 1265 seats, 143 held (2-HOUS 30, 3-ARTI 30, 4-MKTG 30, 1-TECH 41, 5-ADA 12). Tiers are the manifest price levels (P1 $125, P2 $85, P3 $70, P4 $50, P5 $25); floors are those prices. RowRank is derived — price level, then row letter (AA before A), then section order — adjust with a rank file (section,row,rowRank) if the room disagrees. Lean is inward by section name; area is guessed from the section name.",
+  "notes": "Imported from a box-office seat manifest: 157 rows, 1265 seats, 143 held (2-HOUS 30, 3-ARTI 30, 4-MKTG 30, 1-TECH 41, 5-ADA 12). Tiers are the manifest price levels (P1 $125, P2 $85, P3 $70, P4 $50, P5 $25); floors are those prices. RowRank is derived — price level, then row letter (AA before A), then section order — adjust with a rank file (section,row,rowRank) if the room disagrees. Lean is inward by section name; area is guessed from the section name. Box positions (wallSections) are from the theatre's seating map in its tech specs: A, C, D, E, F along the house-left wall and B, K, J, H, G along the house-right wall, each listed from the stage back.",
   "source": {
     "kind": "manifest-csv",
     "file": "Lincoln there seat manifest Alice Smith (Tuesday, May 19, 2026 12 59 PM).csv",
@@ -3806,5 +3806,21 @@
     "p3": 7000,
     "p4": 5000,
     "p5": 2500
+  },
+  "wallSections": {
+    "left": [
+      "BOX A",
+      "BOX C",
+      "BOX D",
+      "BOX E",
+      "BOX F"
+    ],
+    "right": [
+      "BOX B",
+      "BOX K",
+      "BOX J",
+      "BOX H",
+      "BOX G"
+    ]
   }
 }
