@@ -48,6 +48,7 @@ export type SeatMapRow = {
   isGa?: boolean;
   unit?: boolean; // a table or box (the engine's isAtomicUnit)
   lean: VenueRow["lean"];
+  holdLabel?: string; // why this row's held seats are held, when the venue says
   seatNumbers: string[];
   // Parallel to seatNumbers: an index into `offers`, SEAT_EMPTY, or SEAT_HELD.
   seats: number[];
@@ -137,6 +138,7 @@ export function buildSeatMapView(run: PolicyRun, venue: SimVenue): SeatMapView |
       ...(r.isGa && { isGa: true }),
       ...(isAtomicUnit(r) && { unit: true }),
       lean: r.lean,
+      ...(venue.holdLabels?.[r.id] !== undefined && { holdLabel: venue.holdLabels[r.id] }),
       seatNumbers: r.seatNumbers,
       seats,
     };

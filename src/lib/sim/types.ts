@@ -29,6 +29,9 @@ export type SimVenue = {
   // S1; the parity policies (S3) read it. Absent for venues without it.
   relief?: Record<string, { single?: boolean | undefined; gapRelief?: boolean | undefined }>;
   notes?: string;
+  // rowId → why that row's held seats are held ("Tech / mix position").
+  // Drawing only: the engine reads `holds`, never this.
+  holdLabels?: Record<string, string>;
   // Sections that line a side wall rather than face the stage in rows — the
   // Lincoln's boxes. House left / house right, each nearest the stage first.
   // Drawing only: the engine never reads it. A manifest can't say where a box

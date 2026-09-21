@@ -69,7 +69,7 @@ With `--seeds N` the pool is regenerated N times (seed, seed+1, …) and the rep
 | `protect-units` | NEW-14: each table or box (`area` `tables` / `boxes`, as the tier-spec generator marks them) holds one group only; the rest of the unit stays empty on purpose. Default is co-seat (strangers share) | yes, fill cost by design |
 | `a+b` | Combine, e.g. `clean-fit+singles-reserve` (`clean-fit` and `lookahead` are both fit policies — pick one) | as its parts |
 
-On Cope's pool and architecture: greedy 1,133 / 1,152 seated, 19 one-seat holes; clean-fit 1,144 (+$2,800, 29 passed over, ≤5 rows, ≤$25 gap); lookahead 1,139 (+$1,550, 1 passed over — gentler than clean-fit, recovers about half the seats); clean-fit + reserve 1,150 (+$4,300, 105 passed over). Parity tiebreak alone changes nothing on that pool. On the `supper-club` tables venue, `protect-units` costs about 17 of 114 seats and $1,240 against co-seating over 10 seeds.
+On Cope's pool and architecture (with the tech/mix position splitting ORCH C rows V–Y, corrected 2026-09-21): greedy 1,129 / 1,152 seated, 23 one-seat holes; clean-fit 1,140 (+$2,900, 33 passed over, ≤7 rows, ≤$25 gap); lookahead 1,131 (+$550, 1 passed over — gentle, but recovers only 2 seats); clean-fit + reserve 1,146 (+$4,400, 91 passed over). Parity tiebreak alone now recovers 4 seats (1,133, +$1,000) with nobody passed over — before the correction it changed nothing, so the split rows are where it earns its keep. On the `supper-club` tables venue, `protect-units` costs about 17 of 114 seats and $1,240 against co-seating over 10 seeds.
 
 ## Auto-bid
 

@@ -121,7 +121,7 @@ describe("POST /api/admin/simulation", () => {
     const body = (await res.json()) as { output: { runs: unknown[]; offerSummary: { offers: number } }; reportMd: string };
     expect(body.output.runs).toHaveLength(1);
     expect(body.output.offerSummary.offers).toBe(512);
-    expect(body.reportMd).toContain("| Seats filled | 1,133 |");
+    expect(body.reportMd).toContain("| Seats filled | 1,129 |");
   });
 
   it("accepts the timeline and Bleacher options", async () => {

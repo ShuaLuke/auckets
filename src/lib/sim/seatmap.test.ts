@@ -49,6 +49,14 @@ describe("buildSeatMapView", () => {
     expect(view.placedSeats + view.emptySeats + view.heldSeats).toBe(11);
   });
 
+  it("names why a row's held seats are held, when the venue says", () => {
+    const labelled = { ...applyShowOverlay(v, scenario.show).venue, holdLabels: { a: "Tech / mix position" } };
+    const out = runScenario({ scenario, venue: v, poolOffers: pool, now: "2026-09-20T00:00:00Z" });
+    const view = buildSeatMapView(out.runs[0]!, labelled)!;
+    expect(view.rows[0]!.holdLabel).toBe("Tech / mix position");
+    expect(view.rows[1]!.holdLabel).toBeUndefined();
+  });
+
   it("points every occupied seat at the offer that paid for it", () => {
     const view = build();
     const priceAt = (rowIdx: number): number[] => view.rows[rowIdx]!.seats.filter((s) => s >= 0).map((s) => view.offers[s]!.priceCents);
