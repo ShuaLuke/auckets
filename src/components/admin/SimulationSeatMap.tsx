@@ -168,7 +168,7 @@ export function SimulationSeatMap({ view }: Props) {
                 </div>
               </>
             ) : (
-              <div className="font-semibold">{hoveredCode === SEAT_HELD ? "Held seat — not on sale" : "Empty seat"}</div>
+              <div className="font-semibold">{hoveredCode === SEAT_HELD ? `${hoveredRow.holdLabel ?? "Held seat"} — not on sale` : "Empty seat"}</div>
             )}
             <div className="mt-1.5 border-t pt-1.5 opacity-70" style={{ borderColor: "rgba(255,255,255,0.18)" }}>
               Seat rank #{hoveredRow.rowRank} · {hoveredRow.section} {hoveredRow.rowName}

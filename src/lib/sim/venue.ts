@@ -46,6 +46,13 @@ export function parseVenueFile(raw: unknown, label = "venue"): SimVenue {
   };
   if (v.tierFloorsCents) venue.tierFloorsCents = v.tierFloorsCents;
   if (v.relief) venue.relief = v.relief;
+  if (v.holdLabels) {
+    const ids = new Set(venue.rows.map((r) => r.id));
+    for (const id of Object.keys(v.holdLabels)) {
+      if (!ids.has(id)) throw new SimInputError(`${label}: holdLabels names unknown row "${id}"`);
+    }
+    venue.holdLabels = v.holdLabels;
+  }
   if (v.notes) venue.notes = v.notes;
   if (v.wallSections) {
     const sections = new Set(v.rows.map((r) => r.section));
