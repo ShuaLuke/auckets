@@ -1,6 +1,9 @@
 // The seat map for a simulation run: every seat on sale, each occupied seat
 // shaded by the price its group paid. Hover a seat for the price, the group,
-// and where that offer ranked.
+// and where that offer ranked. The same map draws the empty room before a
+// run (buildRoomView): shaded by seat rank, so a venue can see its own
+// ranking on the chart, with "#N" on every row block and a hover that says
+// in what order that row's seats fill.
 //
 // Two layouts over the same seats:
 //   Seating chart — the room as a box-office chart: stage at the top, levels
@@ -20,9 +23,13 @@
 import { memo, useId, useMemo, useRef, useState } from "react";
 
 import { usd } from "@/lib/sim/format";
-import { binIndexFor, priceBins, seatingChart, SEAT_HELD, type ChartLevel, type ChartUnit, type PriceBin, type SeatMapRow, type SeatMapView } from "@/lib/sim/seatmap";
+import { binIndexFor, fillOrder, LEAN_LABEL, priceBins, quantileBins, seatingChart, SEAT_EMPTY, SEAT_HELD, type ChartLevel, type ChartUnit, type PriceBin, type SeatMapRow, type SeatMapView } from "@/lib/sim/seatmap";
 
 type Props = { view: SeatMapView };
+
+// What the colour means: the price each seat went for, or the row's seat
+// rank (darker is better). An empty room only has ranks.
+type Shade = "price" | "rank";
 
 // Cheapest → dearest. Five steps from the Greenwood ramp; the second is mixed
 // because the ramp has no 200.
@@ -44,7 +51,8 @@ export function colorForBin(bin: number, binCount: number): string {
 }
 
 const SEATS_PER_LINE = 20; // wider rows (a GA pen) wrap
-const RANK_W = 24;
+const RANK_W = 28;
+const CHART_RANK_W = 22; // the "#12" beside each row block on the chart
 const LABEL_CHAR_W = 5.5; // 9px mono
 const LABEL_MAX_CHARS = 16;
 
@@ -61,13 +69,43 @@ type Layout = "chart" | "rank";
 
 type Hover = { row: number; seat: number; x: number; y: number; below: boolean };
 
+// The seats-on-sale of each row, weighted like priceBins weights seats, so
+// each rank step covers about the same number of seats. Best ranks first.
+export function rankBins(view: SeatMapView, maxBins = SCALE.length): PriceBin[] {
+  return quantileBins(view.rows.map((r) => [r.rowRank, r.seats.filter((c) => c !== SEAT_HELD).length]), maxBins);
+}
+
+export const rankRange = (b: PriceBin): string => (b.minCents === b.maxCents ? `#${b.minCents}` : `#${b.minCents}–#${b.maxCents}`);
+
+const ordinal = (n: number): string => {
+  const r = n % 100;
+  const suffix = r >= 11 && r <= 13 ? "th" : n % 10 === 1 ? "st" : n % 10 === 2 ? "nd" : n % 10 === 3 ? "rd" : "th";
+  return `${n}${suffix}`;
+};
+
 export function SimulationSeatMap({ view }: Props) {
   const uid = useId();
   const wrapRef = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<Hover | null>(null);
   const [layout, setLayout] = useState<Layout>("chart");
+  const isRoom = view.offers.length === 0;
+  const [shade, setShade] = useState<Shade>(isRoom ? "rank" : "price");
+  const [ranks, setRanks] = useState(true);
   const bins = useMemo(() => priceBins(view, SCALE.length), [view]);
+  const rBins = useMemo(() => rankBins(view), [view]);
   const colorOf = useMemo(() => view.offers.map((o) => colorForBin(binIndexFor(bins, o.priceCents), bins.length)), [view, bins]);
+  // Rank shading paints the row, so an empty room reads as its ranking. A
+  // run's empty seats stay outlined so the holes are still visible.
+  const rowColor = useMemo(() => view.rows.map((r) => colorForBin(rBins.length - 1 - binIndexFor(rBins, r.rowRank), rBins.length)), [view, rBins]);
+  const paint = useMemo<Paint>(
+    () => (rowIdx, code) => {
+      if (code === SEAT_HELD) return { background: HELD_FILL };
+      if (shade === "rank" && (code >= 0 || isRoom)) return { background: rowColor[rowIdx] };
+      if (code >= 0) return { background: colorOf[code] };
+      return { background: "var(--page)", boxShadow: "inset 0 0 0 1px var(--border-strong)" };
+    },
+    [shade, isRoom, rowColor, colorOf],
+  );
   const chart = useMemo(() => seatingChart(view), [view]);
 
   const maxSeats = Math.max(1, ...view.rows.map((r) => r.seats.length));
@@ -100,29 +138,65 @@ export function SimulationSeatMap({ view }: Props) {
   const hoveredRow = hover ? view.rows[hover.row] : undefined;
   const hoveredCode = hoveredRow?.seats[hover?.seat ?? -1];
   const hoveredOffer = hoveredCode !== undefined && hoveredCode >= 0 ? view.offers[hoveredCode] : undefined;
+  // Only the hovered row's order is worked out, and only when a seat is empty.
+  const hoveredFill = hoveredRow && hover && hoveredCode === SEAT_EMPTY ? fillOrder(hoveredRow.lean, hoveredRow.seats, hoveredRow.isGa)[hover.seat] : undefined;
+  const hoveredOnSale = hoveredRow ? hoveredRow.seats.filter((c) => c !== SEAT_HELD).length : 0;
   const total = view.placedSeats + view.emptySeats;
+  const bestRank = Math.min(...view.rows.map((r) => r.rowRank));
+  const worstRank = Math.max(...view.rows.map((r) => r.rowRank));
+  const pill = (on: boolean): React.CSSProperties => ({ borderColor: on ? "var(--ink-900)" : "var(--border)", background: on ? "var(--ink-900)" : "transparent", color: on ? "var(--paper)" : "var(--fg-muted)" });
 
   return (
     <div>
       <div className="mb-3 font-sans text-[13px]" style={{ color: "var(--fg-muted)" }}>
-        <strong style={{ color: "var(--fg)" }}>{view.placedSeats.toLocaleString("en-US")}</strong> of {total.toLocaleString("en-US")} seats filled ·{" "}
-        {view.emptySeats.toLocaleString("en-US")} empty
-        {view.heldSeats > 0 ? ` · ${view.heldSeats.toLocaleString("en-US")} held` : ""} · {view.offers.length.toLocaleString("en-US")} of{" "}
-        {view.totalOffers.toLocaleString("en-US")} offers seated. {layout === "chart" ? "Stage at the top" : "Rows run best seat-rank first"}; hover a seat for what it went for.
+        {isRoom ? (
+          <>
+            <strong style={{ color: "var(--fg)" }}>{total.toLocaleString("en-US")}</strong> seats on sale
+            {view.heldSeats > 0 ? ` · ${view.heldSeats.toLocaleString("en-US")} held` : ""} · {view.rows.length.toLocaleString("en-US")} rows, ranked #{bestRank.toLocaleString("en-US")} (best) to #{worstRank.toLocaleString("en-US")}. Darker is a better seat rank; hover a seat for the order its row fills in.
+          </>
+        ) : (
+          <>
+            <strong style={{ color: "var(--fg)" }}>{view.placedSeats.toLocaleString("en-US")}</strong> of {total.toLocaleString("en-US")} seats filled ·{" "}
+            {view.emptySeats.toLocaleString("en-US")} empty
+            {view.heldSeats > 0 ? ` · ${view.heldSeats.toLocaleString("en-US")} held` : ""} · {view.offers.length.toLocaleString("en-US")} of{" "}
+            {view.totalOffers.toLocaleString("en-US")} offers seated. {layout === "chart" ? "Stage at the top" : "Rows run best seat-rank first"}; hover a seat for what it went for.
+          </>
+        )}
       </div>
 
-      <div className="mb-3 flex items-center gap-1">
-        {(["chart", "rank"] as const).map((l) => {
-          const on = layout === l;
-          return (
-            <button key={l} type="button" aria-pressed={on} className="rounded-full border px-2.5 py-0.5 font-sans text-[11px]" style={{ borderColor: on ? "var(--ink-900)" : "var(--border)", background: on ? "var(--ink-900)" : "transparent", color: on ? "var(--paper)" : "var(--fg-muted)" }} onClick={() => { setLayout(l); setHover(null); }}>
-              {l === "chart" ? "Seating chart" : "By seat rank"}
-            </button>
-          );
-        })}
+      <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <span className="flex items-center gap-1">
+          {(["chart", "rank"] as const).map((l) => {
+            const on = layout === l;
+            return (
+              <button key={l} type="button" aria-pressed={on} className="rounded-full border px-2.5 py-0.5 font-sans text-[11px]" style={pill(on)} onClick={() => { setLayout(l); setHover(null); }}>
+                {l === "chart" ? "Seating chart" : "By seat rank"}
+              </button>
+            );
+          })}
+        </span>
+        {!isRoom && (
+          <span className="flex items-center gap-1">
+            <span className="mr-1 font-sans text-[11px]" style={{ color: "var(--fg-subtle)" }}>
+              Colour by
+            </span>
+            {(["price", "rank"] as const).map((sh) => {
+              const on = shade === sh;
+              return (
+                <button key={sh} type="button" aria-pressed={on} className="rounded-full border px-2.5 py-0.5 font-sans text-[11px]" style={pill(on)} onClick={() => setShade(sh)}>
+                  {sh === "price" ? "Price paid" : "Seat rank"}
+                </button>
+              );
+            })}
+          </span>
+        )}
+        <label className="flex items-center gap-1.5 font-sans text-[11px]" style={{ color: "var(--fg-muted)" }}>
+          <input type="checkbox" checked={ranks} onChange={(e) => setRanks(e.target.checked)} />
+          Show row ranks
+        </label>
       </div>
 
-      <Legend bins={bins} hasHeld={view.heldSeats > 0} />
+      {shade === "rank" ? <Legend bins={rBins} hasHeld={view.heldSeats > 0} title="Seat rank" format={rankRange} invert emptyLabel={isRoom ? "" : "Empty"} /> : <Legend bins={bins} hasHeld={view.heldSeats > 0} />}
 
       <div ref={wrapRef} className="relative mt-4" data-simmap={uid} onMouseOver={onOver} onMouseMove={onOver} onMouseLeave={() => setHover(null)}>
         {hoveredOffer && hoveredCode !== undefined && (
@@ -134,9 +208,9 @@ export function SimulationSeatMap({ view }: Props) {
             This room has {(total + view.heldSeats).toLocaleString("en-US")} seats — too many to draw seat by seat here. offers.csv has every seat and what it went for.
           </p>
         ) : layout === "chart" ? (
-          <Chart view={view} chart={chart} colorOf={colorOf} />
+          <Chart view={view} chart={chart} paint={paint} ranks={ranks} />
         ) : (
-          <RankList view={view} colorOf={colorOf} cell={cell} gap={gap} seatsW={seatsW} labelW={labelW} />
+          <RankList view={view} paint={paint} ranks={ranks} cell={cell} gap={gap} seatsW={seatsW} labelW={labelW} />
         )}
 
         {hover && hoveredRow && (
@@ -168,19 +242,29 @@ export function SimulationSeatMap({ view }: Props) {
                 </div>
               </>
             ) : (
-              <div className="font-semibold">{hoveredCode === SEAT_HELD ? `${hoveredRow.holdLabel ?? "Held seat"} — not on sale` : "Empty seat"}</div>
+              <>
+                <div className="font-semibold">{hoveredCode === SEAT_HELD ? `${hoveredRow.holdLabel ?? "Held seat"} — not on sale` : hoveredRow.isGa ? "General admission — no assigned seats" : "Empty seat"}</div>
+                {hoveredFill !== undefined && hoveredFill > 0 && !hoveredRow.isGa && (
+                  <div className="mt-0.5 opacity-80">
+                    {ordinal(hoveredFill)} of {hoveredOnSale} to fill in this row — it {LEAN_LABEL[hoveredRow.lean]}
+                  </div>
+                )}
+              </>
             )}
             <div className="mt-1.5 border-t pt-1.5 opacity-70" style={{ borderColor: "rgba(255,255,255,0.18)" }}>
               Seat rank #{hoveredRow.rowRank} · {hoveredRow.section} {hoveredRow.rowName}
               {hoveredRow.isGa ? "" : ` · seat ${hoveredRow.seatNumbers[hover.seat] ?? ""}`}
               {hoveredRow.tier ? ` · ${hoveredRow.tier.replace(/_/g, " ")}` : ""}
+              {hoveredRow.parity !== undefined ? ` · ${hoveredOnSale} on sale (${hoveredRow.parity.toLowerCase()})` : ""}
             </div>
           </div>
         )}
       </div>
 
       <p className="mt-4 font-sans text-[11px]" style={{ color: "var(--fg-faint)" }}>
-        Seed {view.seed}, policy {view.policy} — the first crowd drawn. Other seeds feed the report&apos;s percentiles but keep no seat-level output. The same data, seat by seat, is in offers.csv.
+        {isRoom
+          ? "The room as it goes on sale. Seat rank is the venue's own row ranking — #1 is the row the top offer takes. Nothing here is a result; run a crowd to see it fill."
+          : `Seed ${view.seed}, policy ${view.policy} — the first crowd drawn. Other seeds feed the report's percentiles but keep no seat-level output. The same data, seat by seat, is in offers.csv.`}
       </p>
     </div>
   );
@@ -192,7 +276,9 @@ export function priceRange(b: PriceBin, whole = false): string {
   return b.minCents === b.maxCents ? short(b.minCents) : `${short(b.minCents)}–${short(b.maxCents)}`;
 }
 
-export function Legend({ bins, hasHeld, title = "Price paid per ticket", whole = false, emptyLabel = "Empty" }: { bins: PriceBin[]; hasHeld: boolean; title?: string; whole?: boolean; emptyLabel?: string }) {
+// `format` names a bin (price range by default); `invert` runs the colours
+// dark → light, for a scale whose first bin is the best (seat rank #1 first).
+export function Legend({ bins, hasHeld, title = "Price paid per ticket", whole = false, emptyLabel = "Empty", format, invert = false }: { bins: PriceBin[]; hasHeld: boolean; title?: string; whole?: boolean; emptyLabel?: string; format?: (b: PriceBin) => string; invert?: boolean }) {
   const swatch = (background: string, border?: string): JSX.Element => (
     <i aria-hidden className="block shrink-0" style={{ width: 12, height: 12, borderRadius: 2, background, ...(border && { boxShadow: `inset 0 0 0 1px ${border}` }) }} />
   );
@@ -203,14 +289,16 @@ export function Legend({ bins, hasHeld, title = "Price paid per ticket", whole =
       </span>
       {bins.map((b, i) => (
         <span key={b.minCents} className="inline-flex items-center gap-1.5" title={`${b.seats.toLocaleString("en-US")} seats`}>
-          {swatch(colorForBin(i, bins.length))}
-          <span className="font-mono">{priceRange(b, whole)}</span>
+          {swatch(colorForBin(invert ? bins.length - 1 - i : i, bins.length))}
+          <span className="font-mono">{format ? format(b) : priceRange(b, whole)}</span>
         </span>
       ))}
-      <span className="inline-flex items-center gap-1.5">
-        {swatch("var(--page)", "var(--border-strong)")}
-        {emptyLabel}
-      </span>
+      {emptyLabel !== "" && (
+        <span className="inline-flex items-center gap-1.5">
+          {swatch("var(--page)", "var(--border-strong)")}
+          {emptyLabel}
+        </span>
+      )}
       {hasHeld && (
         <span className="inline-flex items-center gap-1.5">
           {swatch(HELD_FILL)}
@@ -221,29 +309,29 @@ export function Legend({ bins, hasHeld, title = "Price paid per ticket", whole =
   );
 }
 
+// How a seat is drawn: by the row it is in and the code in that seat.
+type Paint = (rowIdx: number, code: number) => React.CSSProperties;
+
 // Each seat's hit box is the full pitch (swatch + gutter), so sweeping across
 // a row never drops the hover card between cells.
-function Seats({ row, rowIdx, colorOf, cell, gap, rowGap }: { row: SeatMapRow; rowIdx: number; colorOf: string[]; cell: number; gap: number; rowGap: number }) {
+function Seats({ row, rowIdx, paint, cell, gap, rowGap }: { row: SeatMapRow; rowIdx: number; paint: Paint; cell: number; gap: number; rowGap: number }) {
   return (
     <>
       {row.seats.map((code, si) => (
         <i key={si} data-seat={`${rowIdx}:${si}`} {...(code >= 0 && { "data-o": code })} className="block shrink-0" style={{ width: cell + gap, height: cell + rowGap }}>
-          <b
-            className="block"
-            style={{
-              width: cell,
-              height: cell,
-              borderRadius: 2,
-              ...(code >= 0
-                ? { background: colorOf[code] }
-                : code === SEAT_HELD
-                  ? { background: HELD_FILL }
-                  : { background: "var(--page)", boxShadow: "inset 0 0 0 1px var(--border-strong)" }),
-            }}
-          />
+          <b className="block" style={{ width: cell, height: cell, borderRadius: 2, ...paint(rowIdx, code) }} />
         </i>
       ))}
     </>
+  );
+}
+
+// "#12" beside a row block, so the venue's ranking is on the chart itself.
+function RankTag({ rank, height }: { rank: number | undefined; height: number }) {
+  return (
+    <span data-rank-tag className="shrink-0 whitespace-nowrap text-right font-mono" style={{ width: CHART_RANK_W, fontSize: 8, lineHeight: `${height}px`, paddingRight: 3, color: "var(--fg-subtle)" }}>
+      {rank === undefined ? "" : `#${rank}`}
+    </span>
   );
 }
 
@@ -251,15 +339,17 @@ const pretty = (s: string): string => s.replace(/_/g, " ");
 
 // Both layouts are memoised: a 1,200-seat room is ~2,400 nodes, and hovering
 // must not re-render them. The hover ring is a <style> rule in the parent.
-type ChartProps = { view: SeatMapView; chart: ChartLevel[]; colorOf: string[] };
+type ChartProps = { view: SeatMapView; chart: ChartLevel[]; paint: Paint; ranks: boolean };
 
-const Chart = memo(function Chart({ view, chart, colorOf }: ChartProps) {
+const Chart = memo(function Chart({ view, chart, paint, ranks }: ChartProps) {
   const gap = 2;
   // Size cells so the widest level fits the card; very wide rooms scroll.
   const wallSeats = (l: ChartLevel): number => (l.leftWall.length > 0 ? WALL_BOX_W : 0) + (l.rightWall.length > 0 ? WALL_BOX_W : 0);
   const widest = Math.max(1, ...chart.map((l) => l.widthSeats + wallSeats(l)));
   const mostAisles = Math.max(0, ...chart.map((l) => l.sections.length - 1 + (l.leftWall.length > 0 ? 1 : 0) + (l.rightWall.length > 0 ? 1 : 0)));
-  const cell = Math.min(12, Math.max(5, Math.floor((CHART_W - mostAisles * AISLE - 2 * (ROW_LABEL_W + AISLE)) / widest) - gap));
+  const mostSections = Math.max(0, ...chart.map((l) => l.sections.length));
+  const rankW = ranks ? CHART_RANK_W : 0;
+  const cell = Math.min(12, Math.max(5, Math.floor((CHART_W - mostAisles * AISLE - 2 * (ROW_LABEL_W + AISLE) - mostSections * rankW) / widest) - gap));
   const pitch = cell + gap;
   const label = { fontSize: 9, lineHeight: `${pitch}px`, color: "var(--fg-faint)" } as const;
 
@@ -278,8 +368,8 @@ const Chart = memo(function Chart({ view, chart, colorOf }: ChartProps) {
 
             {level.lines.length > 0 && (
               <div className="mx-auto flex w-fit items-stretch" style={{ gap: AISLE }}>
-              <WallBoxes view={view} units={level.leftWall} colorOf={colorOf} cell={cell} gap={gap} />
-              <div className="grid w-fit" style={{ gridTemplateColumns: `${ROW_LABEL_W}px ${level.sections.map((sec) => `${sec.width * pitch}px`).join(" ")} ${ROW_LABEL_W}px`, columnGap: AISLE }}>
+              <WallBoxes view={view} units={level.leftWall} paint={paint} ranks={ranks} cell={cell} gap={gap} />
+              <div className="grid w-fit" style={{ gridTemplateColumns: `${ROW_LABEL_W}px ${level.sections.map((sec) => `${sec.width * pitch + rankW}px`).join(" ")} ${ROW_LABEL_W}px`, columnGap: AISLE }}>
                 <span />
                 {level.sections.map((sec) => (
                   <span key={sec.name} className="truncate pb-1 text-center font-mono" style={{ fontSize: 9, color: "var(--fg-subtle)" }} title={sec.name}>
@@ -288,10 +378,10 @@ const Chart = memo(function Chart({ view, chart, colorOf }: ChartProps) {
                 ))}
                 <span />
                 {level.lines.map((line, li) => (
-                  <ChartLineRow key={`${line.rowName}-${li}`} view={view} level={level} rows={line.rows} rowName={line.rowName} colorOf={colorOf} cell={cell} gap={gap} labelStyle={label} />
+                  <ChartLineRow key={`${line.rowName}-${li}`} view={view} level={level} rows={line.rows} rowName={line.rowName} paint={paint} ranks={ranks} cell={cell} gap={gap} labelStyle={label} />
                 ))}
               </div>
-              <WallBoxes view={view} units={level.rightWall} colorOf={colorOf} cell={cell} gap={gap} />
+              <WallBoxes view={view} units={level.rightWall} paint={paint} ranks={ranks} cell={cell} gap={gap} />
               </div>
             )}
 
@@ -301,12 +391,14 @@ const Chart = memo(function Chart({ view, chart, colorOf }: ChartProps) {
                   const r = view.rows[u.row]!;
                   return (
                     <div key={r.id}>
-                      <div className="truncate pb-0.5 text-center font-mono" style={{ fontSize: 9, color: "var(--fg-subtle)", maxWidth: Math.min(r.seats.length, UNIT_PER_LINE) * pitch }} title={`${u.label} · seat rank #${r.rowRank}`}>
+                      <div className="truncate pb-0.5 text-center font-mono" style={{ fontSize: 9, color: "var(--fg-subtle)", maxWidth: Math.max(CHART_RANK_W + 8, Math.min(r.seats.length, UNIT_PER_LINE) * pitch) }} title={`${u.label} · seat rank #${r.rowRank}`}>
                         {/* A lone pen named after its level ("GA" under GA) needs no second label. */}
-                        {level.units.length === 1 && u.label.toLowerCase() === pretty(level.area).toLowerCase() ? "\u00a0" : u.label}
+                        {level.units.length === 1 && u.label.toLowerCase() === pretty(level.area).toLowerCase() ? "" : u.label}
+                        {ranks ? `${level.units.length === 1 && u.label.toLowerCase() === pretty(level.area).toLowerCase() ? "" : " "}#${r.rowRank}` : ""}
+                        {!ranks && level.units.length === 1 && u.label.toLowerCase() === pretty(level.area).toLowerCase() ? "\u00a0" : ""}
                       </div>
                       <div className="flex flex-wrap" style={{ width: Math.min(r.seats.length, UNIT_PER_LINE) * pitch }}>
-                        <Seats row={r} rowIdx={u.row} colorOf={colorOf} cell={cell} gap={gap} rowGap={gap} />
+                        <Seats row={r} rowIdx={u.row} paint={paint} cell={cell} gap={gap} rowGap={gap} />
                       </div>
                     </div>
                   );
@@ -322,7 +414,7 @@ const Chart = memo(function Chart({ view, chart, colorOf }: ChartProps) {
 
 // Boxes along one side wall, nearest the stage at the top, each drawn as a
 // small labelled block. Aligned to the back of the floor like the rows.
-function WallBoxes({ view, units, colorOf, cell, gap }: { view: SeatMapView; units: ChartUnit[]; colorOf: string[]; cell: number; gap: number }) {
+function WallBoxes({ view, units, paint, ranks, cell, gap }: { view: SeatMapView; units: ChartUnit[]; paint: Paint; ranks: boolean; cell: number; gap: number }) {
   if (units.length === 0) return null;
   const pitch = cell + gap;
   return (
@@ -338,8 +430,13 @@ function WallBoxes({ view, units, colorOf, cell, gap }: { view: SeatMapView; uni
             <div className="whitespace-nowrap text-center font-mono" style={{ fontSize: 8, lineHeight: "10px", color: "var(--fg-subtle)", width: WALL_BOX_W * pitch }}>
               {u.label.replace(/^box\s+/i, "")}
             </div>
+            {ranks && (
+              <div className="whitespace-nowrap text-center font-mono" style={{ fontSize: 8, lineHeight: "10px", color: "var(--fg-subtle)", width: WALL_BOX_W * pitch }}>
+                #{r.rowRank}
+              </div>
+            )}
             <div className="flex flex-wrap" style={{ width: WALL_BOX_W * pitch }}>
-              <Seats row={r} rowIdx={u.row} colorOf={colorOf} cell={cell} gap={gap} rowGap={gap} />
+              <Seats row={r} rowIdx={u.row} paint={paint} cell={cell} gap={gap} rowGap={gap} />
             </div>
           </div>
         );
@@ -348,9 +445,9 @@ function WallBoxes({ view, units, colorOf, cell, gap }: { view: SeatMapView; uni
   );
 }
 
-type ChartLineRowProps = { view: SeatMapView; level: ChartLevel; rows: (number | null)[]; rowName: string; colorOf: string[]; cell: number; gap: number; labelStyle: React.CSSProperties };
+type ChartLineRowProps = { view: SeatMapView; level: ChartLevel; rows: (number | null)[]; rowName: string; paint: Paint; ranks: boolean; cell: number; gap: number; labelStyle: React.CSSProperties };
 
-function ChartLineRow({ view, level, rows, rowName, colorOf, cell, gap, labelStyle }: ChartLineRowProps) {
+function ChartLineRow({ view, level, rows, rowName, paint, ranks, cell, gap, labelStyle }: ChartLineRowProps) {
   return (
     <>
       <span className="text-right font-mono" style={labelStyle}>
@@ -362,8 +459,11 @@ function ChartLineRow({ view, level, rows, rowName, colorOf, cell, gap, labelSty
         return (
           // Side blocks hug the aisle nearest the centre, so a short row sits
           // where it does in the room rather than floating mid-block.
+          // The rank tag sits on the house-left edge of every block, so the
+          // eye can run down a section and read #1, #4, #7…
           <div key={sec.name} className="flex" style={{ justifyContent: sec.side === "left" ? "flex-end" : sec.side === "right" ? "flex-start" : "center" }}>
-            {r && idx !== null && idx !== undefined && <Seats row={r} rowIdx={idx} colorOf={colorOf} cell={cell} gap={gap} rowGap={gap} />}
+            {ranks && <RankTag rank={r?.rowRank} height={cell + gap} />}
+            {r && idx !== null && idx !== undefined && <Seats row={r} rowIdx={idx} paint={paint} cell={cell} gap={gap} rowGap={gap} />}
           </div>
         );
       })}
@@ -374,9 +474,9 @@ function ChartLineRow({ view, level, rows, rowName, colorOf, cell, gap, labelSty
   );
 }
 
-type RankListProps = { view: SeatMapView; colorOf: string[]; cell: number; gap: number; seatsW: number; labelW: number };
+type RankListProps = { view: SeatMapView; paint: Paint; ranks: boolean; cell: number; gap: number; seatsW: number; labelW: number };
 
-const RankList = memo(function RankList({ view, colorOf, cell, gap, seatsW, labelW }: RankListProps) {
+const RankList = memo(function RankList({ view, paint, ranks, cell, gap, seatsW, labelW }: RankListProps) {
   return (
     <div
       role="img"
@@ -393,14 +493,14 @@ const RankList = memo(function RankList({ view, colorOf, cell, gap, seatsW, labe
               </div>
             )}
             <div className="flex items-start" style={{ gap: 6 }}>
-              <span className="shrink-0 text-right font-mono" style={{ width: RANK_W, fontSize: 9, lineHeight: `${cell}px`, color: "var(--fg-faint)" }}>
-                {r.rowRank}
+              <span className="shrink-0 text-right font-mono" style={{ width: RANK_W, fontSize: 9, lineHeight: `${cell}px`, color: ranks ? "var(--fg-subtle)" : "var(--fg-faint)" }}>
+                {ranks ? `#${r.rowRank}` : r.rowRank}
               </span>
               <span className="shrink-0 truncate font-mono" style={{ width: labelW, fontSize: 9, lineHeight: `${cell}px`, color: "var(--fg-subtle)" }} title={`${r.area} · ${r.section} · row ${r.rowName}`}>
                 {r.section} {r.rowName}
               </span>
               <div className="flex shrink-0 flex-wrap" style={{ width: seatsW }}>
-                <Seats row={r} rowIdx={ri} colorOf={colorOf} cell={cell} gap={gap} rowGap={gap + 1} />
+                <Seats row={r} rowIdx={ri} paint={paint} cell={cell} gap={gap} rowGap={gap + 1} />
               </div>
             </div>
           </div>

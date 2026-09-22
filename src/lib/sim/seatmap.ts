@@ -7,11 +7,12 @@
 // slimmed RunOutput, so seats are indexes into `offers`, not repeated objects.
 
 import { isAtomicUnit } from "@/lib/gae/launchpad";
+import { placeInRun } from "@/lib/gae/placement";
 import type { RankedOffer, VenueRow } from "@/lib/gae/types";
 
 import { formatTierPref } from "./pool";
 import type { PolicyRun, SimVenue } from "./types";
-import { activeRows, tierOrder } from "./venue";
+import { activeRows, tierOrder, venueParitySummary } from "./venue";
 
 export type PlacementOutcome = "placed" | "preferred tier" | "waterfalled down" | "moved up";
 
@@ -48,6 +49,10 @@ export type SeatMapRow = {
   isGa?: boolean;
   unit?: boolean; // a table or box (the engine's isAtomicUnit)
   lean: VenueRow["lean"];
+  // Of the seats on sale (capacity minus holds) — the parity the engine
+  // reasons about, not the printed row's. Absent on GA rows, where it
+  // means nothing.
+  parity?: "ODD" | "EVEN";
   holdLabel?: string; // why this row's held seats are held, when the venue says
   seatNumbers: string[];
   // Parallel to seatNumbers: an index into `offers`, SEAT_EMPTY, or SEAT_HELD.
@@ -110,6 +115,27 @@ export function buildSeatMapView(run: PolicyRun, venue: SimVenue): SeatMapView |
     if (idx !== undefined) occupant.set(`${a.venueRowId}#${a.positionIndex}`, idx);
   }
 
+  const { rows: viewRows, ...counts } = viewRowsOf(rows, venue, occupant);
+  return { policy: run.policy, seed: run.seed, rows: viewRows, offers, ...wallRowsOf(rows, venue), totalOffers: pool.length, ...counts };
+}
+
+// The room before anyone is seated: every seat on sale empty, holds held.
+// Same shape as a run's map so the page draws it with the same code, shaded
+// by seat rank instead of price. Policy "room", seed 0.
+export function buildRoomView(venue: SimVenue): SeatMapView {
+  const rows = activeRows(venue);
+  const { rows: viewRows, ...counts } = viewRowsOf(rows, venue, new Map());
+  return { policy: "room", seed: 0, rows: viewRows, offers: [], ...wallRowsOf(rows, venue), totalOffers: 0, ...counts };
+}
+
+function wallRowsOf(rows: VenueRow[], venue: SimVenue): Pick<SeatMapView, "wallRows"> {
+  const wall = (names: string[]): string[] => names.flatMap((name) => rows.filter((r) => r.section === name).map((r) => r.id));
+  const wallRows = venue.wallSections ? { left: wall(venue.wallSections.left), right: wall(venue.wallSections.right) } : undefined;
+  return wallRows && wallRows.left.length + wallRows.right.length > 0 ? { wallRows } : {};
+}
+
+// occupant: "rowId#position" → index into the view's offers.
+function viewRowsOf(rows: VenueRow[], venue: SimVenue, occupant: Map<string, number>): { rows: SeatMapRow[]; placedSeats: number; emptySeats: number; heldSeats: number } {
   let placedSeats = 0;
   let emptySeats = 0;
   let heldSeats = 0;
@@ -128,6 +154,7 @@ export function buildSeatMapView(run: PolicyRun, venue: SimVenue): SeatMapView |
       placedSeats++;
       return idx;
     });
+    const onSale = r.capacity - r.holds.length;
     return {
       id: r.id,
       rowRank: r.rowRank,
@@ -138,24 +165,111 @@ export function buildSeatMapView(run: PolicyRun, venue: SimVenue): SeatMapView |
       ...(r.isGa && { isGa: true }),
       ...(isAtomicUnit(r) && { unit: true }),
       lean: r.lean,
+      ...(r.isGa !== true && { parity: onSale % 2 === 0 ? ("EVEN" as const) : ("ODD" as const) }),
       ...(venue.holdLabels?.[r.id] !== undefined && { holdLabel: venue.holdLabels[r.id] }),
       seatNumbers: r.seatNumbers,
       seats,
     };
   });
+  return { rows: viewRows, placedSeats, emptySeats, heldSeats };
+}
 
-  const wall = (names: string[]): string[] => names.flatMap((name) => rows.filter((r) => r.section === name).map((r) => r.id));
-  const wallRows = venue.wallSections ? { left: wall(venue.wallSections.left), right: wall(venue.wallSections.right) } : undefined;
+// --- how a row fills --------------------------------------------------------
+
+// The order the engine would fill a row's seats if every group were a single:
+// 1 = first seat taken. LEFT fills front to back, RIGHT back to front, CENTER
+// from the middle out, DUAL_AISLE from both aisles inward (Placement's
+// rules, run through Placement itself so the two can't drift). A hold splits
+// a row into runs, filled left run first. Held seats are -1. Real groups
+// take a contiguous block in the same order, so this is the picture, not a
+// promise about where a group of four lands.
+export function fillOrder(lean: VenueRow["lean"], seats: number[], isGa = false): number[] {
+  const order = seats.map(() => -1);
+  const runs: number[][] = [];
+  let run: number[] = [];
+  seats.forEach((code, i) => {
+    if (code === SEAT_HELD) {
+      if (run.length > 0) runs.push(run);
+      run = [];
+    } else run.push(i);
+  });
+  if (run.length > 0) runs.push(run);
+  let next = 1;
+  for (const positions of runs) {
+    const singles = positions.map((_, k) => ({ id: String(k), groupSize: 1 }));
+    for (const placed of placeInRun(positions, singles, isGa ? "LEFT" : lean)) {
+      for (const pos of placed.positions) order[pos] = next++;
+    }
+  }
+  return order;
+}
+
+export const LEAN_LABEL: Record<VenueRow["lean"], string> = {
+  CENTER: "fills from the middle out",
+  LEFT: "fills toward the centre aisle, from house right",
+  RIGHT: "fills toward the centre aisle, from house left",
+  DUAL_AISLE: "fills from both aisles inward",
+};
+
+// What a venue person needs to know about how the engine will fill this
+// room, in numbers the page turns into sentences. Seated rows only for the
+// lean and parity counts; GA pens and tables/boxes are called out apart.
+export type RoomRules = {
+  rows: number;
+  seatsOnSale: number;
+  heldSeats: number;
+  gaSeats: number;
+  unitRows: number; // tables / boxes
+  bestRank: number;
+  worstRank: number;
+  leans: Record<VenueRow["lean"], number>;
+  evenRows: number;
+  oddRows: number;
+  singleRows: number;
+  tiers: { name: string; rows: number; seats: number; floorCents?: number }[]; // best first
+  holds: { label: string; seats: number }[]; // most seats first; "Held" when the venue gives no reason
+};
+
+export function roomRules(venue: SimVenue): RoomRules {
+  const rows = activeRows(venue);
+  const parity = venueParitySummary(venue)[0]!;
+  const leans: RoomRules["leans"] = { CENTER: 0, LEFT: 0, RIGHT: 0, DUAL_AISLE: 0 };
+  let unitRows = 0;
+  const tierRows = new Map<string, { rows: number; seats: number }>();
+  const holds = new Map<string, number>();
+  for (const r of rows) {
+    if (isAtomicUnit(r)) unitRows++;
+    else if (r.isGa !== true) leans[r.lean]++;
+    if (r.tier !== undefined) {
+      const t = tierRows.get(r.tier) ?? { rows: 0, seats: 0 };
+      t.rows++;
+      t.seats += r.capacity - r.holds.length;
+      tierRows.set(r.tier, t);
+    }
+    if (r.holds.length > 0) {
+      const label = venue.holdLabels?.[r.id] ?? "Held";
+      holds.set(label, (holds.get(label) ?? 0) + r.holds.length);
+    }
+  }
+  const ranks = rows.map((r) => r.rowRank);
   return {
-    policy: run.policy,
-    seed: run.seed,
-    rows: viewRows,
-    offers,
-    ...(wallRows && wallRows.left.length + wallRows.right.length > 0 && { wallRows }),
-    totalOffers: pool.length,
-    placedSeats,
-    emptySeats,
-    heldSeats,
+    rows: rows.length,
+    seatsOnSale: parity.capacity,
+    heldSeats: parity.heldSeats,
+    gaSeats: parity.gaSeats,
+    unitRows,
+    bestRank: Math.min(...ranks),
+    worstRank: Math.max(...ranks),
+    leans,
+    evenRows: parity.evenRows,
+    oddRows: parity.oddRows,
+    singleRows: parity.singleRows,
+    tiers: tierOrder(venue).map((name) => {
+      const t = tierRows.get(name) ?? { rows: 0, seats: 0 };
+      const floor = venue.tierFloorsCents?.[name];
+      return { name, ...t, ...(floor !== undefined && { floorCents: floor }) };
+    }),
+    holds: [...holds.entries()].map(([label, seats]) => ({ label, seats })).sort((a, b) => b.seats - a.seats || a.label.localeCompare(b.label)),
   };
 }
 

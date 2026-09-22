@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { runScenario } from "./run";
 import { libraryPool, libraryVenue } from "./library";
-import { binIndexFor, buildSeatMapView, filterSeatMapView, priceBins, quantileBins, seatingChart, summariseSections, SEAT_EMPTY, SEAT_HELD, type SeatMapView } from "./seatmap";
+import { binIndexFor, buildRoomView, buildSeatMapView, fillOrder, filterSeatMapView, priceBins, quantileBins, roomRules, seatingChart, summariseSections, SEAT_EMPTY, SEAT_HELD, type SeatMapView } from "./seatmap";
 import { offer, row, venue } from "./test-helpers";
 import type { Scenario } from "./types";
 import { applyShowOverlay } from "./venue";
@@ -99,6 +99,94 @@ describe("buildSeatMapView", () => {
     const x2 = view.offers.find((o) => o.id === "x2");
     expect(x2?.priceCents).toBeGreaterThan(9000);
     expect(x2?.raisedFromCents).toBe(8000);
+  });
+});
+
+describe("buildRoomView", () => {
+  it("is the venue with nobody seated: every seat on sale empty, holds held, ranks and parity carried", () => {
+    const room = buildRoomView(applyShowOverlay(v, scenario.show).venue);
+    expect(room.policy).toBe("room");
+    expect(room.offers).toEqual([]);
+    expect(room.totalOffers).toBe(0);
+    expect(room.rows.map((r) => r.rowRank)).toEqual([1, 2, 3]);
+    expect(room.rows[0]!.seats).toEqual([SEAT_HELD, SEAT_EMPTY, SEAT_EMPTY, SEAT_EMPTY]);
+    expect(room.rows.map((r) => r.parity)).toEqual(["ODD", "EVEN", "ODD"]); // a's hold makes it 3 on sale
+    expect(room).toMatchObject({ placedSeats: 0, emptySeats: 10, heldSeats: 1 });
+  });
+
+  it("leaves parity off GA pens and names a labelled hold", () => {
+    const ga = venue([row({ id: "pit", rank: 1, cap: 50, tier: "premium", isGa: true }), row({ id: "b", rank: 2, cap: 6, tier: "mid", holds: ["3", "4"] })], { holdLabels: { b: "Tech / mix position" } });
+    const room = buildRoomView(ga);
+    expect(room.rows[0]!.parity).toBeUndefined();
+    expect(room.rows[1]!.parity).toBe("EVEN");
+    expect(room.rows[1]!.holdLabel).toBe("Tech / mix position");
+  });
+});
+
+describe("fillOrder", () => {
+  const open = (n: number): number[] => Array.from({ length: n }, () => SEAT_EMPTY);
+
+  it("follows the row's lean: front to back, back to front, middle out, both aisles in", () => {
+    expect(fillOrder("LEFT", open(5))).toEqual([1, 2, 3, 4, 5]);
+    expect(fillOrder("RIGHT", open(5))).toEqual([5, 4, 3, 2, 1]);
+    // CENTER: Placement puts rank 0 in the middle, 1 to its left, 2 to its right…
+    expect(fillOrder("CENTER", open(5))).toEqual([4, 2, 1, 3, 5]);
+    expect(fillOrder("CENTER", open(8))).toEqual([8, 6, 4, 2, 1, 3, 5, 7]);
+    expect(fillOrder("DUAL_AISLE", open(5))).toEqual([1, 3, 5, 4, 2]);
+  });
+
+  it("restarts at each run around a hold, left run first, and skips held seats", () => {
+    const seats = [SEAT_EMPTY, SEAT_EMPTY, SEAT_EMPTY, SEAT_HELD, SEAT_HELD, SEAT_EMPTY, SEAT_EMPTY, SEAT_EMPTY];
+    expect(fillOrder("CENTER", seats)).toEqual([2, 1, 3, -1, -1, 5, 4, 6]);
+    expect(fillOrder("RIGHT", seats)).toEqual([3, 2, 1, -1, -1, 6, 5, 4]);
+  });
+
+  it("ignores lean on a GA pen and leaves an occupied seat's order alone", () => {
+    expect(fillOrder("CENTER", open(4), true)).toEqual([1, 2, 3, 4]);
+    // Occupied seats still count as positions in the row's order.
+    expect(fillOrder("LEFT", [0, 0, SEAT_EMPTY, SEAT_EMPTY])).toEqual([1, 2, 3, 4]);
+  });
+});
+
+describe("roomRules", () => {
+  it("counts what a venue needs to know: ranks, leans, parity, holds by reason, tiers with floors", () => {
+    const vv = venue(
+      [
+        row({ id: "a", rank: 1, cap: 4, tier: "premium", lean: "CENTER" }),
+        row({ id: "b", rank: 2, cap: 5, tier: "mid", lean: "RIGHT", holds: ["1"] }),
+        row({ id: "c", rank: 3, cap: 3, tier: "mid", lean: "LEFT" }),
+        row({ id: "d", rank: 4, cap: 1, tier: "rear", lean: "DUAL_AISLE" }),
+        row({ id: "pit", rank: 5, cap: 20, tier: "rear", isGa: true }),
+      ],
+      { holdLabels: { b: "Tech / mix position" } },
+    );
+    expect(roomRules(vv)).toEqual({
+      rows: 5,
+      seatsOnSale: 32,
+      heldSeats: 1,
+      gaSeats: 20,
+      unitRows: 0,
+      bestRank: 1,
+      worstRank: 5,
+      leans: { CENTER: 1, LEFT: 1, RIGHT: 1, DUAL_AISLE: 1 },
+      evenRows: 2,
+      oddRows: 2,
+      singleRows: 1,
+      tiers: [
+        { name: "premium", rows: 1, seats: 4, floorCents: 10000 },
+        { name: "mid", rows: 2, seats: 7, floorCents: 6000 },
+        { name: "rear", rows: 2, seats: 21, floorCents: 4000 },
+      ],
+      holds: [{ label: "Tech / mix position", seats: 1 }],
+    });
+  });
+
+  it("calls an unlabelled hold what it is, and counts tables and boxes apart from leaned rows", () => {
+    const vv = venue([row({ id: "t1", rank: 1, cap: 8, tier: "premium", area: "tables", section: "Table 1", holds: ["8"] })]);
+    const rules = roomRules(vv);
+    expect(rules.unitRows).toBe(1);
+    expect(rules.leans).toEqual({ CENTER: 0, LEFT: 0, RIGHT: 0, DUAL_AISLE: 0 });
+    expect(rules.holds).toEqual([{ label: "Held", seats: 1 }]);
   });
 });
 

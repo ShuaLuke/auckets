@@ -5,10 +5,11 @@
 
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { SimulationMarkdown } from "@/components/admin/SimulationMarkdown";
 import { SimulationRoomMap } from "@/components/admin/SimulationRoomMap";
+import { SimulationRoomRules } from "@/components/admin/SimulationRoomRules";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Eyebrow } from "@/components/ui/Eyebrow";
@@ -18,7 +19,7 @@ import { checkWork } from "@/lib/sim/budget";
 import { compareRuns, renderComparison } from "@/lib/sim/compare";
 import { usd } from "@/lib/sim/format";
 import type { LibraryPoolSummary, LibraryVenueSummary } from "@/lib/sim/library";
-import type { SeatMapView, SectionMapView } from "@/lib/sim/seatmap";
+import type { RoomRules, SeatMapView, SectionMapView } from "@/lib/sim/seatmap";
 import type { RunOutput } from "@/lib/sim/types";
 
 type Props = {
@@ -42,6 +43,16 @@ type SavedRun = {
   // What was sent, so a section's seats can be fetched later by replaying it.
   requestBody: Record<string, unknown>;
   elapsedMs: number;
+};
+
+// The empty room for the venue, sections and holds the form is set to —
+// what a venue sees before any crowd. Keyed by those inputs so a change in
+// the form fetches it again.
+type Room = {
+  key: string;
+  view: SeatMapView | undefined;
+  sections: SectionMapView;
+  rules: RoomRules;
 };
 
 const POLICIES: { key: string; label: string; hint: string }[] = [
@@ -103,8 +114,11 @@ export function SimulationLab({ venues, pools, presets }: Props) {
   const [current, setCurrent] = useState<string | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [compareMd, setCompareMd] = useState<string | null>(null);
-  const [resultView, setResultView] = useState<"report" | "map">("report");
+  const [resultView, setResultView] = useState<"report" | "map" | "room">("report");
   const [mapPolicy, setMapPolicy] = useState<string | null>(null);
+  const [room, setRoom] = useState<Room | null>(null);
+  const [roomLoading, setRoomLoading] = useState(false);
+  const [roomError, setRoomError] = useState<string | null>(null);
 
   const venueInfo = venues.find((v) => v.name === venue);
   const mixTotal = useMemo(() => SIZES.reduce((s, z) => s + (Number(mix[z]) || 0), 0), [mix]);
@@ -213,6 +227,77 @@ export function SimulationLab({ venues, pools, presets }: Props) {
 
   const shown = runs.find((r) => r.id === current) ?? null;
   const mapPolicies = shown ? Object.keys(shown.sectionMaps) : [];
+
+  const roomBody = useMemo(
+    () => ({
+      room: true as const,
+      venue,
+      ...(activeSections.length > 0 && { activeSections }),
+      ...(holdTier && Number(holdSeats) > 0 && { holds: [{ source: "artist" as const, tier: holdTier, seats: Number(holdSeats) }] }),
+    }),
+    [venue, activeSections, holdTier, holdSeats],
+  );
+  const roomKey = JSON.stringify(roomBody);
+  const roomStale = room === null || room.key !== roomKey;
+  useEffect(() => {
+    if (resultView !== "room" || !roomStale || roomLoading) return;
+    let cancelled = false;
+    setRoomLoading(true);
+    setRoomError(null);
+    void (async () => {
+      try {
+        const res = await fetch("/api/admin/simulation", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(roomBody) });
+        const json = (await res.json().catch(() => ({}))) as Partial<{ ok: true; room: SeatMapView; sections: SectionMapView; rules: RoomRules; error: string }>;
+        if (cancelled) return;
+        if (!res.ok || !json.ok || !json.sections || !json.rules) {
+          setRoomError(json.error ?? `Could not load the room (HTTP ${res.status})`);
+          return;
+        }
+        setRoom({ key: roomKey, view: json.room, sections: json.sections, rules: json.rules });
+      } catch (e) {
+        if (!cancelled) setRoomError(e instanceof Error ? e.message : "Network error");
+      } finally {
+        if (!cancelled) setRoomLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // roomKey stands in for roomBody; roomLoading is deliberately not a trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resultView, roomKey, roomStale]);
+
+  async function loadRoomArea(area: string): Promise<SeatMapView> {
+    const res = await fetch("/api/admin/simulation", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...roomBody, area }) });
+    const json = (await res.json().catch(() => ({}))) as Partial<{ ok: true; room: SeatMapView; error: string }>;
+    if (!res.ok || !json.room) throw new Error(json.error ?? `Could not load the seats (HTTP ${res.status})`);
+    return json.room;
+  }
+
+  const roomCard = (
+    <div>
+      <div className="mb-3 font-sans text-[13px]" style={{ color: "var(--fg-muted)" }}>
+        <strong style={{ color: "var(--fg)" }}>{venueInfo?.displayName.split(" —")[0] ?? venue}</strong> before anyone is seated, with the sections and holds set on the left. This is the room the engine starts from: every row carries the venue&apos;s rank, and the rules below say how it fills.
+      </div>
+      {roomError ? (
+        <p className="font-sans text-[13px]" style={{ color: "#8a1f1f" }}>
+          {roomError}
+        </p>
+      ) : room === null || roomStale ? (
+        <p className="font-sans text-[13px]" style={{ color: "var(--fg-muted)" }}>
+          Loading the room…
+        </p>
+      ) : (
+        <>
+          <SimulationRoomMap key={room.key} sections={room.sections} view={room.view} loadArea={loadRoomArea} />
+          <div className="mt-6 border-t pt-4" style={{ borderColor: "var(--border)" }}>
+            <Eyebrow className="mb-3">How this room fills</Eyebrow>
+            <SimulationRoomRules rules={room.rules} />
+          </div>
+        </>
+      )}
+    </div>
+  );
   const shownPolicy = mapPolicy !== null && mapPolicies.includes(mapPolicy) ? mapPolicy : mapPolicies[0];
   const shownSections = shown && shownPolicy !== undefined ? shown.sectionMaps[shownPolicy] : undefined;
 
@@ -531,6 +616,9 @@ export function SimulationLab({ venues, pools, presets }: Props) {
             )}
             {mapPolicies.length > 0 && (
               <div className="mb-4 flex flex-wrap items-center gap-2 border-b pb-3" style={{ borderColor: "var(--border)" }}>
+                <Button size="sm" variant={resultView === "room" ? "primary" : "secondary"} onClick={() => setResultView("room")}>
+                  The room
+                </Button>
                 <Button size="sm" variant={resultView === "report" ? "primary" : "secondary"} onClick={() => setResultView("report")}>
                   Fill report
                 </Button>
@@ -551,7 +639,9 @@ export function SimulationLab({ venues, pools, presets }: Props) {
                 )}
               </div>
             )}
-            {resultView === "map" && shownSections && shownPolicy !== undefined ? (
+            {resultView === "room" ? (
+              roomCard
+            ) : resultView === "map" && shownSections && shownPolicy !== undefined ? (
               <SimulationRoomMap key={`${shown.id}/${shownPolicy}`} sections={shownSections} view={shown.seatMaps[shownPolicy]} loadArea={(area) => loadArea(shown, shownPolicy, area)} />
             ) : (
               <SimulationMarkdown md={shown.reportMd} />
@@ -559,11 +649,18 @@ export function SimulationLab({ venues, pools, presets }: Props) {
           </Card>
         )}
 
-        {!shown && !compareMd && (
+        {!shown && !compareMd && resultView === "room" && <Card className="p-5">{roomCard}</Card>}
+
+        {!shown && !compareMd && resultView !== "room" && (
           <Card variant="sunken" className="p-8 text-center">
             <p className="font-sans text-sm" style={{ color: "var(--fg-muted)" }}>
               Pick a venue, describe the crowd, choose the policies to compare, and press Run. The fill report appears here; every run stays in the list so you can compare them.
             </p>
+            <div className="mt-4">
+              <Button size="sm" variant="secondary" onClick={() => setResultView("room")}>
+                Or look at the room first
+              </Button>
+            </div>
           </Card>
         )}
       </div>

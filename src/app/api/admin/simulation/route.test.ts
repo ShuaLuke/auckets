@@ -124,6 +124,41 @@ describe("POST /api/admin/simulation", () => {
     expect(body.reportMd).toContain("| Seats filled | 1,129 |");
   });
 
+  it("draws the empty room by seat rank, with the rules it fills by", async () => {
+    const res = await post({ room: true, venue: "lincoln-v4", holds: [{ source: "artist", tier: "orchestra", seats: 10 }] });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; room?: { rows: { rowRank: number; parity?: string; seats: number[] }[]; offers: unknown[]; emptySeats: number; heldSeats: number }; sections: { sections: { bestRowRank: number }[]; totalOffers: number }; rules: { rows: number; seatsOnSale: number; heldSeats: number; bestRank: number; worstRank: number; holds: { label: string; seats: number }[]; leans: Record<"CENTER" | "LEFT" | "RIGHT" | "DUAL_AISLE", number> } };
+    expect(body.ok).toBe(true);
+    const room = body.room!;
+    expect(room.offers).toEqual([]);
+    expect(room.rows.every((r) => r.seats.every((c) => c < 0))).toBe(true);
+    expect(room.rows[0]!.rowRank).toBe(1);
+    expect(room.rows[0]!.parity).toBe("EVEN");
+    // The artist hold on top of the venue's tech block.
+    expect(room.heldSeats).toBe(28 + 10);
+    expect(room.emptySeats).toBe(1152 - 10);
+    expect(body.sections.totalOffers).toBe(0);
+    expect(body.sections.sections[0]!.bestRowRank).toBe(1);
+    expect(body.rules).toMatchObject({ rows: 144, seatsOnSale: 1142, heldSeats: 38, bestRank: 1, worstRank: 144 });
+    expect(body.rules.holds).toEqual([{ label: "Tech / mix position", seats: 28 }, { label: "Held", seats: 10 }]);
+    expect(body.rules.leans.CENTER + body.rules.leans.LEFT + body.rules.leans.RIGHT + body.rules.leans.DUAL_AISLE).toBe(144);
+  });
+
+  it("room: 404 on an unknown venue or level, 400 on a bad body, and one level of a big room on request", async () => {
+    expect((await post({ room: true, venue: "nowhere" })).status).toBe(404);
+    expect((await post({ room: true, venue: "lincoln-v4", area: "roof" })).status).toBe(404);
+    expect((await post({ room: true, venue: "Lincoln V4" })).status).toBe(400);
+    const res = await post({ room: true, venue: "daikin-park", area: "field_box" });
+    const body = (await res.json()) as { room?: { rows: { area: string }[] }; sections: { sections: unknown[] } };
+    expect(res.status).toBe(200);
+    expect(body.room!.rows.length).toBeGreaterThan(0);
+    expect(body.room!.rows.every((r) => r.area === "field_box")).toBe(true);
+    // Whole-room: sections always come; the seat map only while it fits the budget.
+    const whole = (await (await post({ room: true, venue: "daikin-park" })).json()) as { room?: { rows: unknown[] }; sections: { sections: unknown[] } };
+    expect(whole.sections.sections.length).toBeGreaterThan(100);
+    if (whole.room) expect(whole.room.rows.length).toBeGreaterThan(2000);
+  });
+
   it("accepts the timeline and Bleacher options", async () => {
     const res = await post({ ...good, seeds: 1, bleacher: { sharePct: 10, priceCents: 2000 }, timeline: { windowDays: 2, previewEveryHours: 24, returnsSharePct: 10, refill: "keep-pool-live", upgrades: { requestSharePct: 20, acceptRatePct: 50, premiumPct: 25 } } });
     expect(res.status).toBe(200);

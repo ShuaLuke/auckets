@@ -6,6 +6,9 @@
 //   Every seat — the full seat map (SimulationSeatMap), when the room is
 //                small enough to have been sent and to draw.
 //
+// The same two levels draw the empty room before a run (a view with no
+// offers): sections shaded by their best seat rank instead of price.
+//
 // Opening a section shows it seat by seat. The seats come from the full view
 // when the response carried one (a theatre); otherwise `loadArea` fetches
 // that level on demand (a stadium's seat map is ~3 MB a policy and never
@@ -21,7 +24,7 @@
 
 import { useMemo, useRef, useState } from "react";
 
-import { colorForBin, Legend, MAX_DRAWN_SEATS, SCALE, SimulationSeatMap } from "@/components/admin/SimulationSeatMap";
+import { colorForBin, Legend, MAX_DRAWN_SEATS, rankRange, SCALE, SimulationSeatMap } from "@/components/admin/SimulationSeatMap";
 import { usd } from "@/lib/sim/format";
 import { binIndexFor, filterSeatMapView, quantileBins, type SeatMapView, type SectionMapView, type SectionSummary } from "@/lib/sim/seatmap";
 
@@ -87,7 +90,17 @@ export function SimulationRoomMap({ sections, view, loadArea }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
 
   const levels = useMemo(() => levelsOf(sections), [sections]);
-  const bins = useMemo(() => quantileBins(sections.sections.flatMap((s) => (s.avgPriceCents === null ? [] : [[s.avgPriceCents, s.placedSeats] as [number, number]])), SCALE.length), [sections]);
+  // An empty room has no prices: shade each section by its best seat rank.
+  const isRoom = sections.seatedOffers === 0 && sections.totalOffers === 0;
+  const bins = useMemo(
+    () =>
+      isRoom
+        ? quantileBins(sections.sections.map((s) => [s.bestRowRank, s.seats] as [number, number]), SCALE.length)
+        : quantileBins(sections.sections.flatMap((s) => (s.avgPriceCents === null ? [] : [[s.avgPriceCents, s.placedSeats] as [number, number]])), SCALE.length),
+    [sections, isRoom],
+  );
+  // Rank bins run best first, and best should be darkest.
+  const binOf = (sec: SectionSummary): number | null => (isRoom ? bins.length - 1 - binIndexFor(bins, sec.bestRowRank) : sec.avgPriceCents === null ? null : binIndexFor(bins, sec.avgPriceCents));
 
   async function openSection(sec: SectionSummary): Promise<void> {
     setHover(null);
@@ -167,11 +180,20 @@ export function SimulationRoomMap({ sections, view, loadArea }: Props) {
       ) : (
         <div>
           <div className="mb-3 font-sans text-[13px]" style={{ color: "var(--fg-muted)" }}>
-            <strong style={{ color: "var(--fg)" }}>{n(sections.placedSeats)}</strong> of {n(sections.placedSeats + sections.emptySeats)} seats filled · {n(sections.emptySeats)} empty
-            {sections.heldSeats > 0 ? ` · ${n(sections.heldSeats)} held` : ""} · {n(sections.seatedOffers)} of {n(sections.totalOffers)} offers seated. One block per section, shaded by the average price paid there; the bar is how full it is. Click a section to see every seat.
+            {isRoom ? (
+              <>
+                <strong style={{ color: "var(--fg)" }}>{n(sections.emptySeats)}</strong> seats on sale
+                {sections.heldSeats > 0 ? ` · ${n(sections.heldSeats)} held` : ""} · {n(sections.sections.length)} sections. One block per section, shaded by the best seat rank in it — darker is better. Click a section to see every seat and its rank.
+              </>
+            ) : (
+              <>
+                <strong style={{ color: "var(--fg)" }}>{n(sections.placedSeats)}</strong> of {n(sections.placedSeats + sections.emptySeats)} seats filled · {n(sections.emptySeats)} empty
+                {sections.heldSeats > 0 ? ` · ${n(sections.heldSeats)} held` : ""} · {n(sections.seatedOffers)} of {n(sections.totalOffers)} offers seated. One block per section, shaded by the average price paid there; the bar is how full it is. Click a section to see every seat.
+              </>
+            )}
           </div>
 
-          <Legend bins={bins} hasHeld={false} title="Average price paid per ticket" whole emptyLabel="Nobody seated" />
+          {isRoom ? <Legend bins={bins} hasHeld={false} title="Best seat rank in the section" format={rankRange} invert emptyLabel="" /> : <Legend bins={bins} hasHeld={false} title="Average price paid per ticket" whole emptyLabel="Nobody seated" />}
 
           <div ref={wrapRef} className="relative mt-5" onMouseOver={onOver} onMouseMove={onOver} onMouseLeave={() => setHover(null)} onFocus={onOver} onBlur={() => setHover(null)}>
             {levels.map((level) => (
@@ -194,7 +216,7 @@ export function SimulationRoomMap({ sections, view, loadArea }: Props) {
                     )}
                     <div className="flex min-w-0 flex-wrap gap-1">
                       {g.tiles.map(({ sec, index, label }) => (
-                        <Tile key={`${sec.area}/${sec.section}`} sec={sec} index={index} label={label} bin={sec.avgPriceCents === null ? null : binIndexFor(bins, sec.avgPriceCents)} binCount={bins.length} onOpen={() => void openSection(sec)} />
+                        <Tile key={`${sec.area}/${sec.section}`} sec={sec} index={index} label={label} bin={binOf(sec)} binCount={bins.length} isRoom={isRoom} onOpen={() => void openSection(sec)} />
                       ))}
                     </div>
                   </div>
@@ -209,7 +231,9 @@ export function SimulationRoomMap({ sections, view, loadArea }: Props) {
                 style={{ left: hover.x, top: hover.y, transform: hover.below ? "translate(-50%, 8px)" : "translate(-50%, calc(-100% - 8px))", background: "var(--ink-900)", color: "var(--paper)" }}
               >
                 <div className="font-semibold">{hovered.section}</div>
-                {hovered.avgPriceCents !== null && hovered.minPriceCents !== null && hovered.maxPriceCents !== null ? (
+                {isRoom ? (
+                  <div className="mt-1 opacity-80">{n(hovered.seats)} seats on sale{hovered.heldSeats > 0 ? ` · ${n(hovered.heldSeats)} held` : ""}</div>
+                ) : hovered.avgPriceCents !== null && hovered.minPriceCents !== null && hovered.maxPriceCents !== null ? (
                   <>
                     <div className="mt-1 font-mono text-[15px] font-semibold">
                       {usd(hovered.avgPriceCents)} <span className="text-[11px] font-normal opacity-70">average per ticket</span>
@@ -221,11 +245,13 @@ export function SimulationRoomMap({ sections, view, loadArea }: Props) {
                 ) : (
                   <div className="mt-1 opacity-80">Nobody was seated here</div>
                 )}
-                <div className="mt-1.5 opacity-80">
-                  {n(hovered.placedSeats)} of {n(hovered.seats)} seats filled
-                  {hovered.emptySeats > 0 ? ` · ${n(hovered.emptySeats)} empty` : ""}
-                  {hovered.heldSeats > 0 ? ` · ${n(hovered.heldSeats)} held` : ""} · {n(hovered.offers)} {hovered.offers === 1 ? "group" : "groups"}
-                </div>
+                {!isRoom && (
+                  <div className="mt-1.5 opacity-80">
+                    {n(hovered.placedSeats)} of {n(hovered.seats)} seats filled
+                    {hovered.emptySeats > 0 ? ` · ${n(hovered.emptySeats)} empty` : ""}
+                    {hovered.heldSeats > 0 ? ` · ${n(hovered.heldSeats)} held` : ""} · {n(hovered.offers)} {hovered.offers === 1 ? "group" : "groups"}
+                  </div>
+                )}
                 <div className="mt-1.5 border-t pt-1.5 opacity-70" style={{ borderColor: "rgba(255,255,255,0.18)" }}>
                   {n(hovered.rows)} {hovered.rows === 1 ? "row" : "rows"}, seat rank #{n(hovered.bestRowRank)}
                   {hovered.worstRowRank !== hovered.bestRowRank ? `–#${n(hovered.worstRowRank)}` : ""}
@@ -236,7 +262,7 @@ export function SimulationRoomMap({ sections, view, loadArea }: Props) {
           </div>
 
           <p className="mt-4 font-sans text-[11px]" style={{ color: "var(--fg-faint)" }}>
-            Seed {sections.seed}, policy {sections.policy} — the first crowd drawn. Sections are grouped by level and name, in numbering order; this isn&apos;t a drawing of the building.
+            {isRoom ? "The room as it goes on sale. " : `Seed ${sections.seed}, policy ${sections.policy} — the first crowd drawn. `}Sections are grouped by level and name, in numbering order; this isn&apos;t a drawing of the building.
           </p>
         </div>
       )}
@@ -244,9 +270,9 @@ export function SimulationRoomMap({ sections, view, loadArea }: Props) {
   );
 }
 
-type TileProps = { sec: SectionSummary; index: number; label: string; bin: number | null; binCount: number; onOpen: () => void };
+type TileProps = { sec: SectionSummary; index: number; label: string; bin: number | null; binCount: number; isRoom: boolean; onOpen: () => void };
 
-function Tile({ sec, index, label, bin, binCount, onOpen }: TileProps) {
+function Tile({ sec, index, label, bin, binCount, isRoom, onOpen }: TileProps) {
   const background = bin === null ? "var(--page)" : colorForBin(bin, binCount);
   // The two darkest steps need light text; everything else reads in ink.
   const dark = bin !== null && SCALE.indexOf(background as (typeof SCALE)[number]) >= 3;
@@ -256,15 +282,17 @@ function Tile({ sec, index, label, bin, binCount, onOpen }: TileProps) {
     <button
       type="button"
       data-sec={index}
-      aria-label={`${sec.section}: ${sec.avgPriceCents === null ? "nobody seated" : `average ${usd(sec.avgPriceCents)}`}, ${sec.placedSeats} of ${sec.seats} seats filled`}
+      aria-label={isRoom ? `${sec.section}: seat rank #${sec.bestRowRank}${sec.worstRowRank !== sec.bestRowRank ? ` to #${sec.worstRowRank}` : ""}, ${sec.seats} seats on sale` : `${sec.section}: ${sec.avgPriceCents === null ? "nobody seated" : `average ${usd(sec.avgPriceCents)}`}, ${sec.placedSeats} of ${sec.seats} seats filled`}
       className="relative overflow-hidden rounded-[4px] px-1.5 text-center font-mono outline-offset-2 hover:ring-2 hover:ring-[color:var(--marquee-500)] focus-visible:ring-2 focus-visible:ring-[color:var(--marquee-500)]"
       style={{ minWidth: 40, height: 32, fontSize: 10, lineHeight: "26px", background, color: ink, ...(bin === null && { boxShadow: "inset 0 0 0 1px var(--border-strong)" }) }}
       onClick={onOpen}
     >
       {label}
-      <span aria-hidden className="absolute inset-x-0 bottom-0 block" style={{ height: 3, background: dark ? "rgba(255,255,255,0.22)" : "rgba(14,15,12,0.12)" }}>
-        <span className="block h-full" style={{ width: `${Math.round(fill * 100)}%`, background: ink, opacity: bin === null ? 0.4 : 0.75 }} />
-      </span>
+      {!isRoom && (
+        <span aria-hidden className="absolute inset-x-0 bottom-0 block" style={{ height: 3, background: dark ? "rgba(255,255,255,0.22)" : "rgba(14,15,12,0.12)" }}>
+          <span className="block h-full" style={{ width: `${Math.round(fill * 100)}%`, background: ink, opacity: bin === null ? 0.4 : 0.75 }} />
+        </span>
+      )}
     </button>
   );
 }
