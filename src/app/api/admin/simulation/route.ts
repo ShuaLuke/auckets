@@ -7,6 +7,10 @@
 // scenario → runScenario → response. Bounds keep a run inside one request:
 // seeds × policies × (timeline previews) is capped so a Lincoln-sized room
 // stays well under the function limit.
+//
+// A `room` request is the same route without a crowd: the venue as it goes
+// on sale (holds, sections on sale), drawn by seat rank, plus the rules the
+// engine will fill it by. No engine run; nothing to bound.
 
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
@@ -19,7 +23,7 @@ import { libraryPool, libraryVenue } from "@/lib/sim/library";
 import { POLICY_PATTERN } from "@/lib/sim/schema";
 import { renderFillReport, renderOffersCsv, renderSeatMap } from "@/lib/sim/report";
 import { runScenario } from "@/lib/sim/run";
-import { buildSeatMapView, filterSeatMapView, summariseSections, type SeatMapView, type SectionMapView } from "@/lib/sim/seatmap";
+import { buildRoomView, buildSeatMapView, filterSeatMapView, roomRules, summariseSections, type RoomRules, type SeatMapView, type SectionMapView } from "@/lib/sim/seatmap";
 import { slimOutput } from "@/lib/sim/sweep";
 import type { RunOutput, Scenario } from "@/lib/sim/types";
 import { activeRows, applyShowOverlay, SimInputError } from "@/lib/sim/venue";
@@ -81,6 +85,25 @@ const BodySchema = z.object({
 
 export type SimulationRequest = z.infer<typeof BodySchema>;
 
+const RoomSchema = z.object({
+  room: z.literal(true),
+  venue: BodySchema.shape.venue,
+  activeSections: BodySchema.shape.activeSections,
+  holds: BodySchema.shape.holds,
+  // One level's seats, for a room too big to send whole (see `detail`).
+  area: z.string().min(1).max(80).optional(),
+});
+
+export type RoomRequest = z.infer<typeof RoomSchema>;
+export type RoomResponse = {
+  ok: true;
+  // The empty room, seat by seat, when it fits; a stadium's is fetched a
+  // level at a time with `area`, like a run's `detail`.
+  room?: SeatMapView;
+  sections: SectionMapView;
+  rules: RoomRules;
+};
+
 export type SimulationResponse = {
   ok: true;
   output: RunOutput; // slim: per-seed engine output dropped except the first seed's
@@ -106,7 +129,7 @@ type ErrorBody = { error: string; details?: unknown };
 // in this many characters.
 const MAX_DOWNLOAD_CHARS = 3_000_000;
 
-export async function POST(request: Request): Promise<NextResponse<SimulationResponse | SimulationDetailResponse | ErrorBody>> {
+export async function POST(request: Request): Promise<NextResponse<SimulationResponse | SimulationDetailResponse | RoomResponse | ErrorBody>> {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const access = await userCanSimulate(db, userId);
@@ -118,6 +141,8 @@ export async function POST(request: Request): Promise<NextResponse<SimulationRes
   } catch {
     return NextResponse.json({ error: "invalid body" }, { status: 400 });
   }
+  if (typeof bodyJson === "object" && bodyJson !== null && "room" in bodyJson) return roomResponse(bodyJson);
+
   const parsed = BodySchema.safeParse(bodyJson);
   if (!parsed.success) return NextResponse.json({ error: "invalid body", details: parsed.error.issues }, { status: 400 });
   const body = parsed.data;
@@ -249,4 +274,29 @@ export async function POST(request: Request): Promise<NextResponse<SimulationRes
     { ok: true, output: slimOutput(output), reportMd: renderFillReport(output), offersCsv, seatmapTxt, seatMaps, sectionMaps, downloadsOmitted, seatMapsOmitted, elapsedMs },
     { status: 200 },
   );
+}
+
+function roomResponse(bodyJson: unknown): NextResponse<RoomResponse | ErrorBody> {
+  const parsed = RoomSchema.safeParse(bodyJson);
+  if (!parsed.success) return NextResponse.json({ error: "invalid body", details: parsed.error.issues }, { status: 400 });
+  const body = parsed.data;
+  const venue = libraryVenue(body.venue);
+  if (!venue) return NextResponse.json({ error: `unknown venue "${body.venue}"` }, { status: 404 });
+  let resolved: ReturnType<typeof applyShowOverlay>["venue"];
+  try {
+    resolved = applyShowOverlay(venue, { ...(body.activeSections && { activeSections: body.activeSections }), ...(body.holds && { holds: body.holds }) }).venue;
+  } catch (e) {
+    if (e instanceof SimInputError) return NextResponse.json({ error: e.message }, { status: 422 });
+    throw e;
+  }
+  const full = buildRoomView(resolved);
+  if (body.area !== undefined) {
+    const room = filterSeatMapView(full, (r) => r.area === body.area);
+    if (room.rows.length === 0) return NextResponse.json({ error: `no rows on sale in "${body.area}"` }, { status: 404 });
+    return NextResponse.json({ ok: true, room, sections: summariseSections(full), rules: roomRules(resolved) }, { status: 200 });
+  }
+  const sections = summariseSections(full);
+  const rules = roomRules(resolved);
+  const fits = JSON.stringify(full).length <= MAX_DOWNLOAD_CHARS;
+  return NextResponse.json({ ok: true, ...(fits && { room: full }), sections, rules }, { status: 200 });
 }

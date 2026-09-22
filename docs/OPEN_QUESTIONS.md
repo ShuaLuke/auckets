@@ -166,6 +166,14 @@ rendered (`/shows` index, fan show detail, the ticket stub, the artist page).
 **Captured as [ADR-0019](DECISIONS.md#adr-0019--merch--limited-edition-drops-storefront-approach) (Proposed).** The ADR lays out the two directions (native-on-our-Stripe vs. Shopify integration) with tradeoffs and the full list of product questions for Cope (drop mechanics, inventory/variants, fulfillment ship-vs-pickup, super-fan gating, payout/fees, refunds, sales tax). **Direction not yet chosen** — Julia asked to decide it in the ADR.
 **Status:** Open. No code until the ADR direction + Cope's product answers land.
 
+### NEW-20 — Should fans see the row ranking?
+**Source:** Josh's notes from the 2026-09-20 meeting with Cope ("make it so you can see the rankings on the rows for the simulations and for the purchases").
+**Affects:** the fan show page (`VenuePreview`), the offer form, and possibly the ticket / result page.
+**Today:** the seat rank ("#1" … "#N", the venue's own row ranking) is shown on the admin Simulation tab's seat map and empty-room view (2026-09-22), for Cope, Julia and Josh. Fans see a venue preview with no ranks.
+**The question:** does a fan making an offer get to see the row ranking — "your offer is currently landing around rank #40 of 144" or the numbered rows on the map? It's the most direct way to show a fan what their money buys, and it's also the number a fan would bid *against*, which changes how the offer window behaves (and interacts with the deferred placement-odds engine, ADR-0020). "For the purchases" in the notes is ambiguous: it may mean this, or only that the host/admin views of a real show carry the same labels the simulator does.
+**Working assumption:** admin/host views of real shows reuse the simulator's rank labels (no product decision needed); nothing is shown to fans until Cope says so.
+**Status:** Open (Cope).
+
 ---
 
 ## New product concepts from v2 — confirmed, design needed
