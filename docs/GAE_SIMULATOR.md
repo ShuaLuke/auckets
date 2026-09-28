@@ -2,6 +2,16 @@
 
 *Status: requirements agreed 2026-09-07. All six slices built (PRs #136 → #142, stacked), including the admin Simulation tab at `/admin/simulation` for Julia, Cope and Josh — see `sim/README.md` for CLI usage. Temporal, seat-preference and upgrade numbers model questions Cope has not yet answered; they inform the decision, they don't record one.*
 
+*2026-09-21 — the tab has a second job.* After the in-person meeting on 2026-09-20, Cope's ask is that the Simulation tab **show the idea to venues and artists**, not just settle our rulebook: the room before it fills, with the venue's own row ranking on it; the ranked offers; the link between the two; and our allocation next to what the venue would have done before, with the money difference. The pieces land as slices on the same pure core:
+
+1. ✅ The tech/mix block modelled and labelled (PR #151).
+2. ✅ **The room** (this doc, §7): the empty house drawn by seat rank with "#N" on every row block, a per-seat hover that says in what order the row fills, and "How this room fills" — the engine's rules in plain sentences. Also "Colour by seat rank" on a run's map. Open on the tab before any run ("Or look at the room first") or beside a run's report.
+3. The ranked offer list beside the map, with two-way highlighting (offer ↔ seats).
+4. Each policy expands into its methodology, step by step.
+5. The **baseline**: fixed tier prices sold first-come (the Lincoln manifest's real P1–P5 levels), on the same demand, with an ROI panel. Biggest slice; it is only as convincing as the demand model, which the page must say out loud.
+
+Whether *fans* should ever see the row ranking is a product question for Cope (OPEN_QUESTIONS NEW-20); the tab is admin/artist-only.
+
 ---
 
 ## 1. Why this exists
@@ -364,3 +374,15 @@ S1 alone lets the team enter a group-size mix and see the fill report. S2 adds r
 3. **Report format**: `report.md` in the run folder, with curated copies in `docs/sim-reports/`. An HTML artifact version for Cope can be generated from the same data later. (Recommended: markdown first.)
 4. **Lincoln golden fixture** switches from the synthetic 5-row scenario to Cope's 144-row architecture + pool v4. The old fixture stays as a small fast case.
 5. **Scope of S5 (temporal)** waits until Cope confirms he wants Q3–Q5 modelled, since those reopen ADR-0004 and his May answers on waitlists.
+
+---
+
+## 7. The room before a run (2026-09-22)
+
+`POST /api/admin/simulation` with `{ "room": true, "venue": "lincoln-v4", "activeSections"?, "holds"?, "area"? }` returns the venue as it goes on sale — no crowd, no engine run:
+
+- `room` — a `SeatMapView` with no offers (`buildRoomView`), every seat on sale empty and every hold held, so the page draws it with the run map's code. Rows carry `parity` (of the seats on sale, as the engine reasons) and `holdLabel` (why a row's held seats are held, when the venue file says — the Lincoln's "Tech / mix position"). Sent while it fits the response budget (Daikin's is ~0.7 MB); `area` fetches one level otherwise, like a run's `detail`.
+- `sections` — the same room one block per section (`summariseSections`), shaded by best seat rank.
+- `rules` — `roomRules(venue)`: rows and rank range, seats on sale / held / GA, leans (how many rows fill from the middle out vs toward the centre aisle vs from both aisles), odd / even / single rows, tiers with floors, holds by reason. The page turns these into the numbered "How this room fills" list; the odd/even item says in so many words that parity steering is still open (Q2), so the demo can't be read as promising it.
+
+`fillOrder(lean, seats)` gives the order a row's seats would fill for a row of singles, worked out by running `placeInRun` itself so the picture can't drift from the engine: LEFT front-to-back, RIGHT back-to-front, CENTER middle-out, DUAL_AISLE both aisles inward, restarting at each run around a hold. The hover card reads "3rd of 8 to fill in this row — it fills from the middle out". It is the picture, not a promise about where a group of four lands.

@@ -7,7 +7,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { runScenario } from "@/lib/sim/run";
-import { buildSeatMapView, type SeatMapView } from "@/lib/sim/seatmap";
+import { buildRoomView, buildSeatMapView, type SeatMapView } from "@/lib/sim/seatmap";
 import { offer, row, venue } from "@/lib/sim/test-helpers";
 import type { Scenario } from "@/lib/sim/types";
 import { applyShowOverlay } from "@/lib/sim/venue";
@@ -78,7 +78,10 @@ describe("SimulationSeatMap", () => {
     act(() => {
       empty.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
     });
-    expect(container.querySelector('[role="tooltip"]')?.textContent).toContain("Empty seat");
+    const emptyTip = container.querySelector('[role="tooltip"]')?.textContent ?? "";
+    expect(emptyTip).toContain("Empty seat");
+    expect(emptyTip).toContain("1st of 3 to fill in this row — it fills toward the centre aisle, from house right");
+    expect(emptyTip).toContain("3 on sale (odd)");
 
     // The by-rank layout is one click away and draws the same seats.
     const byRank = [...container.querySelectorAll("button")].find((b) => b.textContent === "By seat rank")!;
@@ -90,6 +93,61 @@ describe("SimulationSeatMap", () => {
     expect(container.textContent).toContain("front mid"); // tier heading, underscores tidied
     expect(container.textContent).toContain("Rows run best seat-rank first");
 
+    act(() => root.unmount());
+  });
+
+  it("puts #N on every row block, and can colour a run by seat rank instead of price", () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    act(() => root.render(<SimulationSeatMap view={view()} />));
+    const tags = (): (string | null)[] => [...container!.querySelectorAll("[data-rank-tag]")].map((e) => e.textContent);
+    expect(tags()).toEqual(["#1", "#2", "#3"]);
+
+    const byRank = [...container.querySelectorAll("button")].find((b) => b.textContent === "Seat rank")!;
+    act(() => {
+      byRank.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(container.textContent).toContain("Seat rank#1#2#3Empty"); // the legend, best first
+    // Occupied seats take their row's colour; a run's empty seats stay outlined.
+    const occupied = container.querySelector('[data-o="0"] b') as HTMLElement;
+    const empty = container.querySelector('[data-seat="2:0"] b') as HTMLElement;
+    expect(occupied.style.background).toContain("greenwood");
+    expect(empty.style.boxShadow).toContain("inset");
+
+    const ranksOff = container.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    act(() => {
+      ranksOff.click();
+    });
+    expect(tags()).toEqual([]);
+    act(() => root.unmount());
+  });
+
+  it("draws the empty room by rank, every seat painted, with the fill order on hover", () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const room = buildRoomView(applyShowOverlay(v, scenario.show).venue);
+    const html = renderToStaticMarkup(<SimulationSeatMap view={room} />);
+    expect(html).toContain("10</strong> seats on sale");
+    expect(html).toContain("3 rows, ranked #1 (best) to #3");
+    expect(html).not.toContain("Colour by");
+    expect(html).not.toContain("Price paid per ticket");
+    expect(html).toContain("Seat rank");
+    expect(html.match(/data-o=/g)).toBeNull();
+
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    act(() => root.render(<SimulationSeatMap view={room} />));
+    const painted = [...container.querySelectorAll("[data-seat] b")].filter((b) => (b as HTMLElement).style.background.includes("greenwood"));
+    expect(painted).toHaveLength(10); // every seat on sale; the held one is hatched
+    act(() => {
+      container!.querySelector('[data-seat="0:1"]')!.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    });
+    const tip = container.querySelector('[role="tooltip"]')?.textContent ?? "";
+    expect(tip).toContain("Empty seat");
+    expect(tip).toContain("1st of 3 to fill in this row");
+    expect(tip).toContain("Seat rank #1");
     act(() => root.unmount());
   });
 });
