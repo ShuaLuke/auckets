@@ -68,6 +68,21 @@ describe("buildSeatMapView", () => {
     expect(view.placedSeats).toBe(out.runs[0]!.stats.placedSeats);
   });
 
+  it("lists the unseated offers with why, and says where each seated one landed", () => {
+    const view = build();
+    // o4 (4 @ $50, any) has nowhere to fit once the others are seated.
+    expect(view.unseated).toEqual([{ id: "o4", offerRank: 4, groupSize: 4, priceCents: 5000, preference: "any", reason: "nowhere fit" }]);
+    expect(view.offers.map((o) => [o.id, o.rowRank, o.rowLabel])).toEqual([
+      ["o1", 1, "center A"],
+      ["o2", 2, "center B"],
+      ["o3", 2, "center B"],
+    ]);
+    // The old way's priced-out fans read as such, not as a missing tier.
+    const out = runScenario({ scenario: { ...scenario, policies: ["first-come"], firstComeArrival: "as-submitted" }, venue: v, poolOffers: [...pool, offer("broke", 1, 1000, { type: "any" }, 9)], now: "2026-09-20T00:00:00Z" });
+    const old = buildSeatMapView(out.runs[0]!, applyShowOverlay(v, scenario.show).venue)!;
+    expect(old.unseated.find((o) => o.id === "broke")?.reason).toBe("priced out");
+  });
+
   it("carries offer rank, group size and tier outcome for the hover card", () => {
     const view = build();
     expect(view.totalOffers).toBe(4);
@@ -205,7 +220,8 @@ describe("priceBins", () => {
     policy: "greedy",
     seed: 1,
     rows: [],
-    offers: prices.map(([priceCents, groupSize], i) => ({ id: `o${i}`, offerRank: i + 1, groupSize, priceCents, preference: "any", outcome: "placed" })),
+    offers: prices.map(([priceCents, groupSize], i) => ({ id: `o${i}`, offerRank: i + 1, groupSize, priceCents, preference: "any", outcome: "placed", rowRank: 1, rowLabel: "center A" })),
+    unseated: [],
     totalOffers: prices.length,
     placedSeats: 0,
     emptySeats: 0,
