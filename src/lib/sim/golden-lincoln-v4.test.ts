@@ -63,6 +63,20 @@ describe("golden — Cope's pool v4 on Lincoln v4 (greedy)", () => {
     }
   });
 
+  it("pins the old way on the same pool — the demo's comparison", () => {
+    const old = runScenario({ scenario: { name: "golden-old-way", venue: "lincoln-v4", pool: { file: "sim/pools/lincoln-pool-v4.csv" }, policies: ["first-come"] }, venue, poolOffers: offers }).runs[0]!;
+    expect(old.violations).toEqual([]);
+    // Face = the tier floors ($85 / $70 / $50); arrivals shuffled with seed 0 (a file pool's seed).
+    expect(old.metrics.fill).toMatchObject({ placedSeats: 1088, emptySeats: 64, rowsFull: 94, rowsPartial: 43, rowsEmpty: 7 });
+    expect(old.metrics.revenue).toMatchObject({ grossPlacedCents: 7596000, unplacedValueCents: 12732500 });
+    expect(old.metrics.offers).toMatchObject({ placed: 386, unplaced: 126 });
+    expect(old.metrics.rankRespect).toMatchObject({ passedOver: 489, inversions: 9926 });
+    expect(old.metrics.firstCome).toMatchObject({ offeredAboveFaceCents: 29579000, pricedOutOffers: 0, soldOutOffers: 126, soldOutTickets: 363 });
+    expect(old.resultHash).toBe("192633ab408044591b9e9b9a598467ab25d8d6f249220bc5711fbedb47a2cf99");
+    // And the engine's fairness number on the same pool is zero.
+    expect(run.metrics.rankRespect.inversions).toBe(0);
+  });
+
   it("pins the exact seat map by hash", () => {
     expect(run.resultHash).toBe("5986f31b19a93e6f96b4492a63197231ce0fcb61d177611c0b2b40e9de365a0c");
   });

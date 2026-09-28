@@ -3,6 +3,7 @@
 // Dollars appear only here — everything upstream is integer cents.
 
 import { compareRuns, renderComparison } from "./compare";
+import { compareToBaseline, renderRoi } from "./roi";
 import { n, pct, usd } from "./format";
 import { formatTierPref } from "./pool";
 import { placementOutcome } from "./seatmap";
@@ -65,6 +66,16 @@ export function renderFillReport(out: RunOutput): string {
     const first = out.runs.find((r) => r.policy === agg.policy)!;
     lines.push(...renderPolicySection(out, agg, first, multi));
   }
+  // The old way beside each engine policy it ran with (first seed).
+  const oldWay = out.runs.find((r) => r.metrics.firstCome && r.seed === out.seeds[0]);
+  if (oldWay) {
+    for (const ours of out.runs.filter((r) => !r.metrics.firstCome && r.seed === oldWay.seed)) {
+      lines.push("---");
+      lines.push("");
+      lines.push(renderRoi(compareToBaseline(oldWay, ours)));
+      lines.push("");
+    }
+  }
   if (out.policies.length > 1) {
     lines.push("---");
     lines.push("");
@@ -120,6 +131,14 @@ function renderPolicySection(out: RunOutput, agg: PolicyAggregate, first: Policy
   L.push(`| Median placed price | ${cell("revenue.medianPlacedPriceCents", usd)} |`);
   L.push(`| Offers placed | ${cell("offers.placed", n)} |`);
   L.push(`| Offers unplaced | ${cell("offers.unplaced", n)} |`);
+  L.push(`| Seated behind a lower offer, in seats they'd have fit (pairs) | ${cell("rankRespect.inversions", n)} |`);
+  if (m.firstCome) {
+    L.push(`| Offered above face, not collected | ${cell("firstCome.offeredAboveFaceCents", usd)} |`);
+    L.push(`| Priced out (offer under face) | ${cell("firstCome.pricedOutOffers", n)} |`);
+    L.push(`| &nbsp;&nbsp;tickets / what they offered | ${cell("firstCome.pricedOutTickets", n)} / ${cell("firstCome.pricedOutValueCents", usd)} |`);
+    L.push(`| Sold out on (could pay, no block left) | ${cell("firstCome.soldOutOffers", n)} |`);
+    L.push(`| &nbsp;&nbsp;tickets / what they offered | ${cell("firstCome.soldOutTickets", n)} / ${cell("firstCome.soldOutValueCents", usd)} |`);
+  }
   L.push("");
 
   // By tier
@@ -438,7 +457,12 @@ export function renderConsoleSummary(out: RunOutput): string {
     L.push(row("Left on table (unplaced $)", "revenue.unplacedValueCents", usd));
     L.push(row("Offers placed", "offers.placed", n) + `   of ${n(first.metrics.offers.total)}`);
     L.push(row("Passed over (rank-respect)", "rankRespect.passedOver", n));
-    if (agg.policy !== "greedy") L.push(row("Clean-fit deferrals / parity picks", "policy.cleanFitDeferrals", n) + `   parity ${n(s["policy.parityTiebreaks"]!.p50)} · reserved ${n(s["policy.reservedSinglesPlaced"]!.p50)}`);
+    L.push(row("Seated behind a lower offer", "rankRespect.inversions", n) + `   pairs they'd have fit · ${pct(s["rankRespect.inversionsPct"]!.p50 / 100, 1)} of same-tier pairs`);
+    if (first.metrics.firstCome) {
+      L.push(row("Offered above face, not collected", "firstCome.offeredAboveFaceCents", usd));
+      L.push(row("Priced out / sold out (fans)", "firstCome.pricedOutOffers", n) + `   sold out ${n(s["firstCome.soldOutOffers"]!.p50)}`);
+    }
+    if (agg.policy !== "greedy" && !first.metrics.firstCome) L.push(row("Clean-fit deferrals / parity picks", "policy.cleanFitDeferrals", n) + `   parity ${n(s["policy.parityTiebreaks"]!.p50)} · reserved ${n(s["policy.reservedSinglesPlaced"]!.p50)}`);
     if (first.metrics.autoBid.bidders > 0) L.push(row("Auto-bid raised / added", "autoBid.raised", n) + `   ${usd(s["autoBid.totalRaiseCents"]!.p50)} · held section ${n(s["autoBid.heldSectionAfterRaise"]!.p50)}${first.metrics.autoBid.privateOffers > 0 ? ` · private converted ${n(s["autoBid.privateConverted"]!.p50)}` : ""}`);
     if (first.temporal) {
       L.push(row("Told in then out (fans)", "temporal.displacement.fansToldInThenOut", n) + `   ${n(s["temporal.displacement.outEvents"]!.p50)} out events over ${first.temporal.previews} previews`);

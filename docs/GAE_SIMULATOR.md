@@ -8,7 +8,7 @@
 2. ✅ **The room** (this doc, §7): the empty house drawn by seat rank with "#N" on every row block, a per-seat hover that says in what order the row fills, and "How this room fills" — the engine's rules in plain sentences. Also "Colour by seat rank" on a run's map. Open on the tab before any run ("Or look at the room first") or beside a run's report.
 3. The ranked offer list beside the map, with two-way highlighting (offer ↔ seats).
 4. Each policy expands into its methodology, step by step.
-5. The **baseline**: fixed tier prices sold first-come (the Lincoln manifest's real P1–P5 levels), on the same demand, with an ROI panel. Biggest slice; it is only as convincing as the demand model, which the page must say out loud.
+5. ✅ The **baseline** (§8): "first-come" as a policy — fixed face prices per tier sold to a random arrival order, on the same crowd — with "The old way vs Auckets" on the results card and in report.md. Only as convincing as the demand model, which the page says out loud.
 
 Whether *fans* should ever see the row ranking is a product question for Cope (OPEN_QUESTIONS NEW-20); the tab is admin/artist-only.
 
@@ -386,3 +386,18 @@ S1 alone lets the team enter a group-size mix and see the fill report. S2 adds r
 - `rules` — `roomRules(venue)`: rows and rank range, seats on sale / held / GA, leans (how many rows fill from the middle out vs toward the centre aisle vs from both aisles), odd / even / single rows, tiers with floors, holds by reason. The page turns these into the numbered "How this room fills" list; the odd/even item says in so many words that parity steering is still open (Q2), so the demo can't be read as promising it.
 
 `fillOrder(lean, seats)` gives the order a row's seats would fill for a row of singles, worked out by running `placeInRun` itself so the picture can't drift from the engine: LEFT front-to-back, RIGHT back-to-front, CENTER middle-out, DUAL_AISLE both aisles inward, restarting at each run around a hold. The hover card reads "3rd of 8 to fill in this row — it fills from the middle out". It is the picture, not a promise about where a group of four lands.
+
+---
+
+## 8. The old way, for comparison (2026-09-28)
+
+`first-come` is a policy name like any other (`--policies first-come,greedy`, or the "First-come at face price (the old way)" checkbox on the tab), but it is not the engine: `src/lib/sim/baseline.ts` is a plain box-office on-sale run over the **same crowd**, so the only difference between the two columns is the allocation.
+
+- **Face prices.** Each tier sells at one fixed price — the tier floor unless the show sets `facePricesCents` (scenario `show.facePricesCents`, API body `facePricesCents`, the per-tier fields under the policy list). Nobody pays more or less than face.
+- **Arrival order.** Fans are taken in a seeded random order (`firstComeArrival: "random"`, the default; the seed is the run's). `"as-submitted"` uses the pool's `submittedAt`. This matters: Cope's pool file numbers offers in price order, so "as submitted" makes the old way look like rank order, and the comparison collapses to pricing alone.
+- **What a fan does.** Looks at the tiers they'd accept (their tier preference), best first; buys in the first whose face is at or under what they were willing to pay and that still has a contiguous block for the group (best-ranked row, placed by the row's lean — one party, the way a box office sits it); pays face. **Priced out** = face is over their offer in every tier they'd take. **Sold out** = they could afford a tier but nothing fit them by the time they arrived. Groups are never split.
+- **Same shape out** (`AllocationResult`), so metrics, invariants, offers.csv and the seat map all work. `PolicyRun.paidCents` carries what each buyer paid; `computeMetrics` uses it for gross and keeps the offer for the rank metrics, because what a fan was *willing* to pay is what fairness is measured against.
+- **New numbers.** `metrics.firstCome`: offered above face and never collected; priced-out and sold-out fans, tickets and value. `rankRespect.inversions` (every policy): pairs of seated fans in the same tier where the one who offered more sits in a worse row *and could have had the other's seats* — subject to fit, as the spec's guarantee is, so the engine's count is zero and clean-fit's equals its passed-over count.
+- **The comparison.** `src/lib/sim/roi.ts` puts a first-come run beside an engine run of the same seed: one headline sentence, the signed differences (gross, seats, fill, average price, groups seated / turned away, inversions), the per-tier split, and the assumption to check. It is in `report.md` under "The old way vs Auckets", and on the tab's results card (`SimulationRoi`) whenever a run includes both.
+
+On Cope's pool and Lincoln v4, face = floors ($85 / $70 / $50), arrivals shuffled: **the old way takes $75,960 and fills 1,088 seats, with 9,926 pairs of fans seated behind someone who offered less (31% of same-tier pairs) and $295,790 offered above face that it never collects; greedy takes $424,450 and fills 1,129, with none.** That gross gap is mostly the demand model — his pool offers a $375 median against $85 face — which is exactly why the face prices are a knob: set them to what the venue would really charge and run it again. Pinned in `golden-lincoln-v4.test.ts`.

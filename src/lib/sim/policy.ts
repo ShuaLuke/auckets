@@ -13,10 +13,16 @@ export type ParsedPolicy = {
   config: Pick<AllocationConfig, "fitPolicy" | "parityTiebreak" | "singlesReserve" | "lookaheadRows" | "unitPolicy">;
   rankFirst: boolean;
   caveat: string;
+  // "first-come": not the engine at all but the old way (sim/baseline.ts),
+  // run on the same crowd so the two can sit side by side.
+  baseline?: "first-come";
 };
 
 export const POLICY_HELP =
-  'greedy · clean-fit · parity-tiebreak · singles-reserve[:k] · lookahead[:rows] · protect-units · combine with "+", e.g. clean-fit+singles-reserve';
+  'first-come (the old way, for comparison) · greedy · clean-fit · parity-tiebreak · singles-reserve[:k] · lookahead[:rows] · protect-units · combine engine policies with "+", e.g. clean-fit+singles-reserve';
+
+export const FIRST_COME_CAVEAT =
+  "The old way, for comparison — not the engine. Each tier sells at one fixed face price (the tier floor unless the show sets face prices), to fans in a random arrival order (seeded; who arrives first has nothing to do with what they'd pay), best available seats first. Nobody pays more than face, so what a fan offered above it is left on the table; anyone whose offer is under face in every tier they'd take is priced out; rank means nothing.";
 
 export function singleSeatRowCount(venue: SimVenue): number {
   return activeRows(venue).filter((r) => r.isGa !== true && r.capacity - r.holds.length === 1).length;
@@ -24,6 +30,7 @@ export function singleSeatRowCount(venue: SimVenue): number {
 
 export function parsePolicy(name: string, venue: SimVenue): ParsedPolicy {
   if (!POLICY_PATTERN.test(name)) throw new SimInputError(`unknown policy "${name}". Policies: ${POLICY_HELP}`);
+  if (name === "first-come") return { name, config: {}, rankFirst: false, caveat: FIRST_COME_CAVEAT, baseline: "first-come" };
   const config: ParsedPolicy["config"] = {};
   const caveats: string[] = [];
   let rankFirst = true;

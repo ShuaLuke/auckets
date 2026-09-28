@@ -32,8 +32,13 @@ export function computeMetrics(
   runtimeMs: number,
   autoBid: { bidders: number; privateOffers: number; raises: AutoBidRaise[]; rounds: number } = { bidders: 0, privateOffers: 0, raises: [], rounds: 0 },
   bleacher?: { seats: number; rows: number; priceCents: number },
-  extra: { seatPrefs?: SeatPrefs; frontRows?: number; unitPolicy?: "co_seat" | "protect" } = {},
+  // `paidCents`: what a buyer actually paid per ticket when it isn't their
+  // offer — the first-come baseline sells at face. Gross uses it; the rank
+  // metrics keep using the offer, because what a fan was WILLING to pay is
+  // what fairness is measured against.
+  extra: { seatPrefs?: SeatPrefs; frontRows?: number; unitPolicy?: "co_seat" | "protect"; paidCents?: Record<string, number> } = {},
 ): FillMetrics {
+  const paid = (o: RankedOffer): number => extra.paidCents?.[o.id] ?? o.pricePerTicketCents;
   const rows = activeRows(venue);
   const rowById = new Map(rows.map((r) => [r.id, r]));
   const order = tierOrder(venue);
@@ -84,8 +89,8 @@ export function computeMetrics(
       if (!o) continue;
       const a = acc.get(keyOf(p.row))!;
       a.offers += 1;
-      a.gross += o.pricePerTicketCents * p.seats;
-      for (let i = 0; i < p.seats; i++) a.ticketPrices.push(o.pricePerTicketCents);
+      a.gross += paid(o) * p.seats;
+      for (let i = 0; i < p.seats; i++) a.ticketPrices.push(paid(o));
     }
     const out: Record<string, SliceMetrics> = {};
     for (const [k, a] of acc) {
@@ -173,8 +178,8 @@ export function computeMetrics(
   for (const o of offers) {
     const p = placement.get(o.id);
     if (p) {
-      grossPlacedCents += o.pricePerTicketCents * p.seats;
-      for (let i = 0; i < p.seats; i++) placedTicketPrices.push(o.pricePerTicketCents);
+      grossPlacedCents += paid(o) * p.seats;
+      for (let i = 0; i < p.seats; i++) placedTicketPrices.push(paid(o));
     } else {
       const value = o.pricePerTicketCents * o.groupSize;
       unplacedValueCents += value;
@@ -268,6 +273,27 @@ export function computeMetrics(
     }
   });
 
+  // Inversions: pairs of seated fans in the same tier where the one who
+  // offered MORE sits in a strictly worse row than one who offered less —
+  // and could have had that fan's seats (the lower group's block is at least
+  // as big). "Subject to fit", as the spec's guarantee is: a four behind a
+  // pair that took the last two seats of a row is not an inversion. Within
+  // a tier only — a fan who chose the balcony over the orchestra is not
+  // "behind" an orchestra fan, whatever they offered.
+  const seatedByTier = new Map<string, { rowRank: number; size: number }[]>();
+  for (const o of ranked) {
+    const p = placement.get(o.id);
+    if (!p) continue;
+    const key = p.row.tier ?? "";
+    seatedByTier.set(key, [...(seatedByTier.get(key) ?? []), { rowRank: p.row.rowRank, size: p.seats }]);
+  }
+  let inversions = 0;
+  let seatedPairs = 0;
+  for (const seq of seatedByTier.values()) {
+    inversions += countFitInversions(seq);
+    seatedPairs += (seq.length * (seq.length - 1)) / 2;
+  }
+
   const s = result.stats;
   return {
     capacity: { totalSeats, heldSeats, heldBySource, availableSeats, activeRows: rows.length },
@@ -310,6 +336,8 @@ export function computeMetrics(
       rowsLostMax,
       priceGapMaxCents,
       priceGapSumCents,
+      inversions,
+      inversionsPct: seatedPairs === 0 ? 0 : (100 * inversions) / seatedPairs,
       fitResolvedDeferrals: result.decisions.filter((d) => d.action === "FIT_RESOLVED").length,
       waterfalled: result.decisions.filter((d) => d.action === "WATERFALLED").length,
       passedOverOfferIds,
@@ -410,4 +438,32 @@ function bleacherMetrics(b: { seats: number; rows: number; priceCents: number },
 
 function blankPref(): PreferenceMetrics {
   return { offers: 0, placedPreferred: 0, placedWorse: 0, placedBetter: 0, unplaced: 0 };
+}
+
+// `seated` is in rank order, best offer first. Counts pairs (i < j) where
+// seated[i] sits in a strictly worse row than seated[j] and seated[j]'s
+// block is at least seated[i]'s size. One Fenwick tree over row rank per
+// block size; walking from the worst offer up, each fan is checked against
+// every lower offer already seen, in O(log n) per size — a stadium's 50k
+// buyers stay fast.
+export function countFitInversions(seated: { rowRank: number; size: number }[]): number {
+  const ranks = [...new Set(seated.map((s) => s.rowRank))].sort((a, b) => a - b);
+  const index = new Map(ranks.map((v, i) => [v, i + 1]));
+  const sizes = [...new Set(seated.map((s) => s.size))].sort((a, b) => a - b);
+  const trees = new Map(sizes.map((size) => [size, new Array<number>(ranks.length + 1).fill(0)]));
+  const prefix = (tree: number[], upTo: number): number => {
+    let sum = 0;
+    for (let i = upTo; i > 0; i -= i & -i) sum += tree[i]!;
+    return sum;
+  };
+  let inversions = 0;
+  for (let k = seated.length - 1; k >= 0; k--) {
+    const a = seated[k]!;
+    const at = index.get(a.rowRank)!;
+    // Lower offers already inserted, in a better row (rank index < at), with a block >= a.size.
+    for (const size of sizes) if (size >= a.size) inversions += prefix(trees.get(size)!, at - 1);
+    const tree = trees.get(a.size)!;
+    for (let i = at; i < tree.length; i += i & -i) tree[i]! += 1;
+  }
+  return inversions;
 }

@@ -36,6 +36,20 @@ export type PolicyPart = {
 };
 
 export const POLICY_PARTS: Record<string, PolicyPart> = {
+  "first-come": {
+    key: "first-come",
+    label: "First-come at face price (the old way)",
+    summary: "Not the engine: a plain on-sale at fixed prices, run on the same crowd so the two can sit side by side.",
+    steps: [
+      "Ignore the method above. Each tier has one fixed face price — the tier floor — and nobody pays more or less than it.",
+      "Take the fans in the order they arrive — drawn at random, because who reaches the box office first has nothing to do with what they'd pay — not by what they offered.",
+      "Each fan buys in the best tier they'd accept whose face price is at or under what they were willing to pay, if it still has a block of seats for their group — best available seats, group together.",
+      "A fan whose offer is under face in every tier they'd take is priced out. A fan who could pay but arrives after the last block that fits them is sold out.",
+      "What a fan was willing to pay above face stays with the fan — or with whoever resells the ticket. The old way can't tell the difference.",
+    ],
+    tradeoff: "Rank means nothing: a fan who'd have paid double sits behind one who arrived a minute earlier. The report counts every such pair, plus what was offered above face and never collected.",
+    rankFirst: false,
+  },
   greedy: {
     key: "greedy",
     label: "Greedy",

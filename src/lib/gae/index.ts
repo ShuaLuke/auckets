@@ -163,7 +163,7 @@ function placeReservedSingles(
 // where "available" is `capacity - holds.length`. An active row that
 // got zero placements contributes its full available to unfilledSeats;
 // a partially-filled row contributes the unused remainder to orphanSeats.
-function computeStats(
+export function computeStats(
   venue: VenueArchitecture,
   offers: RankedOffer[],
   assignments: SeatAssignment[],

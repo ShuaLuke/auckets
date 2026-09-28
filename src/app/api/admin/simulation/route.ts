@@ -42,6 +42,8 @@ const BodySchema = z.object({
   activeSections: z.array(z.string().min(1)).max(50).optional(),
   holds: z.array(z.object({ source: z.enum(["venue", "artist", "comp", "production"]), tier: z.string().min(1), seats: z.number().int().positive().max(2000) })).max(10).optional(),
   floorsCents: z.record(z.string(), z.number().int().positive().max(10_000_000)).optional(),
+  // The old way's ("first-come") price per tier; floors when absent.
+  facePricesCents: z.record(z.string(), z.number().int().positive().max(10_000_000)).optional(),
   maxGroupSize: z.number().int().min(1).max(20).optional(),
   pool: z.discriminatedUnion("kind", [
     z.object({
@@ -66,6 +68,7 @@ const BodySchema = z.object({
   // re-runs that policy's first seed — same inputs, same seats — and returns
   // only that level.
   detail: z.object({ policy: z.string().regex(POLICY_PATTERN), area: z.string().min(1).max(80) }).optional(),
+  firstComeArrival: z.enum(["random", "as-submitted"]).optional(),
   autoBidRaiseRule: z.union([z.object({ kind: z.literal("fixed"), cents: z.number().int().positive().max(100_000) }), z.object({ kind: z.literal("percent"), pct: z.number().positive().max(100) })]).optional(),
   bleacher: z.object({ sharePct: z.number().positive().max(50), priceCents: z.number().int().positive().max(1_000_000) }).optional(),
   timeline: z
@@ -158,6 +161,7 @@ export async function POST(request: Request): Promise<NextResponse<SimulationRes
       ...(body.activeSections && { activeSections: body.activeSections }),
       ...(body.holds && { holds: body.holds }),
       ...(body.floorsCents && { floorsCents: body.floorsCents }),
+      ...(body.facePricesCents && { facePricesCents: body.facePricesCents }),
       ...(body.maxGroupSize !== undefined && { maxGroupSize: body.maxGroupSize }),
       ...(body.bleacher && { bleacher: body.bleacher }),
     },
@@ -180,6 +184,7 @@ export async function POST(request: Request): Promise<NextResponse<SimulationRes
     policies: body.detail ? [body.detail.policy] : body.policies,
     seeds: body.detail || body.pool.kind === "library" ? 1 : body.seeds,
     ...(body.autoBidRaiseRule && { autoBidRaiseRule: body.autoBidRaiseRule }),
+    ...(body.firstComeArrival && { firstComeArrival: body.firstComeArrival }),
     ...(body.timeline && {
       timeline: {
         windowDays: body.timeline.windowDays,
