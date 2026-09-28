@@ -8,6 +8,7 @@
 import { useMemo, useState } from "react";
 
 import { SimulationMarkdown } from "@/components/admin/SimulationMarkdown";
+import { BaseMethodology, PolicyMethodology } from "@/components/admin/SimulationMethodology";
 import { SimulationRoomMap } from "@/components/admin/SimulationRoomMap";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -310,17 +311,25 @@ export function SimulationLab({ venues, pools, presets }: Props) {
         )}
 
         {sectionTitle("Policies (up to 4)")}
-        <div className="flex flex-col gap-1.5">
+        <div className="mb-3">
+          <BaseMethodology />
+        </div>
+        <div className="flex flex-col gap-2">
           {POLICIES.map((p) => (
-            <label key={p.key} className="flex cursor-pointer items-start gap-2 font-sans text-[13px]">
-              <input type="checkbox" className="mt-0.5" checked={policies.includes(p.key)} onChange={() => togglePolicy(p.key)} />
-              <span>
-                {p.label}
-                <span className="block text-[11px]" style={{ color: "var(--fg-faint)" }}>
-                  {p.hint}
-                </span>
-              </span>
-            </label>
+            <div key={p.key} className="flex items-start gap-2 font-sans text-[13px]">
+              <input id={`sim-policy-${p.key}`} type="checkbox" className="mt-0.5" checked={policies.includes(p.key)} onChange={() => togglePolicy(p.key)} />
+              <div className="min-w-0 flex-1">
+                <label htmlFor={`sim-policy-${p.key}`} className="cursor-pointer">
+                  {p.label}
+                  <span className="block text-[11px]" style={{ color: "var(--fg-faint)" }}>
+                    {p.hint}
+                  </span>
+                </label>
+                <div className="mt-0.5">
+                  <PolicyMethodology name={p.key} />
+                </div>
+              </div>
+            </div>
           ))}
         </div>
 
@@ -549,6 +558,11 @@ export function SimulationLab({ venues, pools, presets }: Props) {
                     })}
                   </span>
                 )}
+              </div>
+            )}
+            {shownPolicy !== undefined && (
+              <div className="mb-4">
+                <PolicyMethodology name={shownPolicy} />
               </div>
             )}
             {resultView === "map" && shownSections && shownPolicy !== undefined ? (
