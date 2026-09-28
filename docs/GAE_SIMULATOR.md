@@ -6,7 +6,7 @@
 
 1. ✅ The tech/mix block modelled and labelled (PR #151).
 2. ✅ **The room** (this doc, §7): the empty house drawn by seat rank with "#N" on every row block, a per-seat hover that says in what order the row fills, and "How this room fills" — the engine's rules in plain sentences. Also "Colour by seat rank" on a run's map. Open on the tab before any run ("Or look at the room first") or beside a run's report.
-3. The ranked offer list beside the map, with two-way highlighting (offer ↔ seats).
+3. ✅ The ranked offer list under the map (§9), with two-way highlighting: hover an offer, its seats light up; hover a seat, its offer is marked and scrolled into view.
 4. Each policy expands into its methodology, step by step.
 5. ✅ The **baseline** (§8): "first-come" as a policy — fixed face prices per tier sold to a random arrival order, on the same crowd — with "The old way vs Auckets" on the results card and in report.md. Only as convincing as the demand model, which the page says out loud.
 
@@ -401,3 +401,11 @@ S1 alone lets the team enter a group-size mix and see the fill report. S2 adds r
 - **The comparison.** `src/lib/sim/roi.ts` puts a first-come run beside an engine run of the same seed: one headline sentence, the signed differences (gross, seats, fill, average price, groups seated / turned away, inversions), the per-tier split, and the assumption to check. It is in `report.md` under "The old way vs Auckets", and on the tab's results card (`SimulationRoi`) whenever a run includes both.
 
 On Cope's pool and Lincoln v4, face = floors ($85 / $70 / $50), arrivals shuffled: **the old way takes $75,960 and fills 1,088 seats, with 9,926 pairs of fans seated behind someone who offered less (31% of same-tier pairs) and $295,790 offered above face that it never collects; greedy takes $424,450 and fills 1,129, with none.** That gross gap is mostly the demand model — his pool offers a $375 median against $85 face — which is exactly why the face prices are a knob: set them to what the venue would really charge and run it again. Pinned in `golden-lincoln-v4.test.ts`.
+
+---
+
+## 9. The offers, and the link to the seats (2026-09-28)
+
+Under a run's seat map (not the empty room) the tab lists every offer in rank order — the same numbering as offers.csv and the hover card, so "offer #12 of 512" means one thing everywhere: group size, price per ticket (with ↑ when auto-bid raised it, and "paid $85" on a first-come run), what it asked for, and where it sits (seat rank and row, with "waterfalled down" / "moved up" when the tier changed). The offers nobody could seat follow, greyed, with why: *nowhere fit*, *priced out* (the old way), *no such tier*. `SeatMapView.unseated` carries them; seated offers carry `rowRank` and `rowLabel`.
+
+The link runs both ways. Hover a row in the list and that group's seats get the same ring a hovered seat's group does (the list's hover is `pinned` in `SimulationSeatMap`, and the map's `<style>` rule takes whichever is active). Hover a seat on the map and its offer's row is marked and scrolled into view. "Show the offers" hides the list. A room over 6,000 offers doesn't list them (offers.csv has every one), the same cap as the drawn seats.
