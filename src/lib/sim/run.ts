@@ -9,6 +9,7 @@ import { allocate } from "@/lib/gae";
 import type { AllocationConfig, RankedOffer } from "@/lib/gae/types";
 
 import { DEFAULT_RAISE_RULE, resolveAutoBids } from "./autobid";
+import { allocateFirstCome } from "./baseline";
 import { generatePool } from "./demand";
 import { checkInvariants } from "./invariants";
 import { computeMetrics } from "./metrics";
@@ -104,10 +105,12 @@ export function runScenario(input: RunInput): RunOutput {
       const bindingPool = window ? window.finalOffers : offers;
       const bindingAutoBids = window ? window.finalAutoBids : autoBids;
       // Auto-bid pre-pass (ADR-0018 fixed point) with THIS policy's config,
-      // so a policy is judged on the pool it would actually see.
-      const ab = resolveAutoBids(arch, bindingPool, bindingAutoBids, raiseRule, config);
+      // so a policy is judged on the pool it would actually see. The old way
+      // has no auto-bid (nobody is bidding), so it sees the pool as it arrived.
+      const ab = parsed.baseline ? { offers: bindingPool, raises: [], rounds: 0 } : resolveAutoBids(arch, bindingPool, bindingAutoBids, raiseRule, config);
       const seen = ab.offers;
-      const result = allocate(arch, seen, config);
+      const firstCome = parsed.baseline ? allocateFirstCome(arch, seen, resolved.facePricesCents, scenario.firstComeArrival ?? "random", seed) : undefined;
+      const result = firstCome ? firstCome.result : allocate(arch, seen, config);
       const runtimeMs = performance.now() - t0;
       const inPool = Object.entries(bindingAutoBids).filter(([id]) => bindingPool.some((o) => o.id === id));
       const metrics = computeMetrics(
@@ -127,8 +130,28 @@ export function runScenario(input: RunInput): RunOutput {
           seatPrefs,
           ...("generate" in scenario.pool && scenario.pool.generate.seatPrefs?.frontRows !== undefined && { frontRows: scenario.pool.generate.seatPrefs.frontRows }),
           ...(config.unitPolicy !== undefined && { unitPolicy: config.unitPolicy }),
+          ...(firstCome && { paidCents: firstCome.paidCents }),
         },
       );
+      if (firstCome) {
+        const byId = new Map(seen.map((o) => [o.id, o]));
+        const value = (ids: string[]): number => ids.reduce((s, id) => s + byId.get(id)!.pricePerTicketCents * byId.get(id)!.groupSize, 0);
+        const tickets = (ids: string[]): number => ids.reduce((s, id) => s + byId.get(id)!.groupSize, 0);
+        let offeredAboveFaceCents = 0;
+        for (const [id, face] of Object.entries(firstCome.paidCents)) {
+          const o = byId.get(id)!;
+          offeredAboveFaceCents += (o.pricePerTicketCents - face) * o.groupSize;
+        }
+        metrics.firstCome = {
+          offeredAboveFaceCents,
+          pricedOutOffers: firstCome.pricedOut.length,
+          pricedOutTickets: tickets(firstCome.pricedOut),
+          pricedOutValueCents: value(firstCome.pricedOut),
+          soldOutOffers: firstCome.soldOut.length,
+          soldOutTickets: tickets(firstCome.soldOut),
+          soldOutValueCents: value(firstCome.soldOut),
+        };
+      }
       if (config.singlesReserve) {
         const reservedIds = new Set(result.decisions.filter((d) => d.snapshot.singlesReserve === true && d.offerId).map((d) => d.offerId!));
         const unplacedIds = new Set(result.unplaced.map((u) => u.offerId));
@@ -158,6 +181,7 @@ export function runScenario(input: RunInput): RunOutput {
         run.result = result;
         run.offers = seen;
         run.raises = ab.raises;
+        if (firstCome) run.paidCents = firstCome.paidCents;
       }
       runs.push(run);
     }
@@ -216,8 +240,17 @@ const SCALAR_PATHS: ReadonlyArray<[keyof FillMetrics, string]> = [
   ["rankRespect", "rowsLostMax"],
   ["rankRespect", "priceGapMaxCents"],
   ["rankRespect", "priceGapSumCents"],
+  ["rankRespect", "inversions"],
+  ["rankRespect", "inversionsPct"],
   ["rankRespect", "fitResolvedDeferrals"],
   ["rankRespect", "waterfalled"],
+  ["firstCome", "offeredAboveFaceCents"],
+  ["firstCome", "pricedOutOffers"],
+  ["firstCome", "pricedOutTickets"],
+  ["firstCome", "pricedOutValueCents"],
+  ["firstCome", "soldOutOffers"],
+  ["firstCome", "soldOutTickets"],
+  ["firstCome", "soldOutValueCents"],
   ["policy", "cleanFitDeferrals"],
   ["policy", "seatsSavedByCleanFit"],
   ["policy", "parityTiebreaks"],
@@ -309,7 +342,8 @@ export function percentiles(values: number[]): Percentiles {
 function aggregate(policy: PolicyName, runs: PolicyRun[]): PolicyAggregate {
   const scalars: Record<string, Percentiles> = {};
   for (const [group, key] of SCALAR_PATHS) {
-    const values = runs.map((r) => (r.metrics[group] as unknown as Record<string, number>)[key] ?? 0);
+    // A group can be absent (firstCome is only on the baseline): count it as 0.
+    const values = runs.map((r) => (r.metrics[group] as unknown as Record<string, number> | undefined)?.[key] ?? 0);
     scalars[`${group}.${key}`] = percentiles(values);
   }
   // Hole-size histogram: sizes 1..6 individually.

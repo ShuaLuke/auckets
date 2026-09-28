@@ -160,6 +160,7 @@ export function SimulationSeatMap({ view }: Props) {
             {view.emptySeats.toLocaleString("en-US")} empty
             {view.heldSeats > 0 ? ` · ${view.heldSeats.toLocaleString("en-US")} held` : ""} · {view.offers.length.toLocaleString("en-US")} of{" "}
             {view.totalOffers.toLocaleString("en-US")} offers seated. {layout === "chart" ? "Stage at the top" : "Rows run best seat-rank first"}; hover a seat for what it went for.
+            {view.offers.some((o) => o.paidCents !== undefined) ? " Shaded by what each fan offered — under the old way they paid face, so the scatter is the point." : ""}
           </>
         )}
       </div>
@@ -234,6 +235,7 @@ export function SimulationSeatMap({ view }: Props) {
                   {hoveredOffer.groupSize === 1 ? "Single" : `Group of ${hoveredOffer.groupSize}`} · {usd(hoveredOffer.priceCents * hoveredOffer.groupSize)} total
                 </div>
                 {hoveredOffer.raisedFromCents !== undefined && <div className="opacity-80">Auto-bid raised it from {usd(hoveredOffer.raisedFromCents)}</div>}
+                {hoveredOffer.paidCents !== undefined && <div className="opacity-80">Paid face price {usd(hoveredOffer.paidCents)} — the old way never collects the rest</div>}
                 <div className="mt-1.5 opacity-80">
                   Offer #{hoveredOffer.offerRank.toLocaleString("en-US")} of {view.totalOffers.toLocaleString("en-US")} <span className="font-mono opacity-70">({hoveredOffer.id})</span>
                 </div>

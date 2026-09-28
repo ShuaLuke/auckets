@@ -35,6 +35,7 @@ export type SeatMapOffer = {
   groupSize: number;
   priceCents: number; // per ticket, as the engine saw it (after any auto-bid raise)
   raisedFromCents?: number; // present when auto-bid moved the price
+  paidCents?: number; // the old way only: the face price actually paid, when it differs from the offer
   preference: string;
   outcome: PlacementOutcome;
 };
@@ -97,6 +98,7 @@ export function buildSeatMapView(run: PolicyRun, venue: SimVenue): SeatMapView |
     const row = rowId === undefined ? undefined : rowById.get(rowId);
     if (!row) return;
     const from = raisedFrom.get(o.id);
+    const paid = run.paidCents?.[o.id];
     indexOf.set(o.id, offers.length);
     offers.push({
       id: o.id,
@@ -104,6 +106,7 @@ export function buildSeatMapView(run: PolicyRun, venue: SimVenue): SeatMapView |
       groupSize: o.groupSize,
       priceCents: o.pricePerTicketCents,
       ...(from !== undefined && from !== o.pricePerTicketCents && { raisedFromCents: from }),
+      ...(paid !== undefined && paid !== o.pricePerTicketCents && { paidCents: paid }),
       preference: formatTierPref(o.tierPreference),
       outcome: placementOutcome(o, row, tierIdx),
     });

@@ -80,6 +80,7 @@ export const ShowOverlaySchema = z.strictObject({
   activeRowIds: z.array(z.string().min(1)).optional(),
   holds: z.array(HoldSpecSchema).optional(),
   floorsCents: z.record(z.string(), z.number().int().positive()).optional(),
+  facePricesCents: z.record(z.string(), z.number().int().positive()).optional(),
   maxGroupSize: z.number().int().min(1).max(50).optional(),
   bleacher: z
     .strictObject({
@@ -127,7 +128,8 @@ const RaiseRuleSchema = z.union([
 ]);
 
 const POLICY_PART = "clean-fit|parity-tiebreak|singles-reserve(:\\d+)?|lookahead(:\\d+)?|protect-units";
-export const POLICY_PATTERN = new RegExp(`^(greedy|${POLICY_PART})(\\+(${POLICY_PART}))*$`);
+// "first-come" is the baseline (the old way), never combined with a part.
+export const POLICY_PATTERN = new RegExp(`^(first-come|(greedy|${POLICY_PART})(\\+(${POLICY_PART}))*)$`);
 
 export const DemandModelSchema = z.strictObject({
   seed: z.number().int().nonnegative(),
@@ -197,9 +199,10 @@ export const ScenarioSchema = z.strictObject({
     z.strictObject({ file: z.string().min(1) }),
     z.strictObject({ generate: DemandModelSchema }),
   ]),
-  policies: z.array(z.string().regex(POLICY_PATTERN, 'a policy is "greedy", "clean-fit", "parity-tiebreak", "singles-reserve[:k]", "lookahead[:k]", "protect-units", or a "+"-joined combination')).min(1).optional(),
+  policies: z.array(z.string().regex(POLICY_PATTERN, 'a policy is "first-come" (the old way), "greedy", "clean-fit", "parity-tiebreak", "singles-reserve[:k]", "lookahead[:k]", "protect-units", or a "+"-joined combination')).min(1).optional(),
   seeds: z.number().int().min(1).max(1000).optional(),
   autoBidRaiseRule: RaiseRuleSchema.optional(),
+  firstComeArrival: z.enum(["random", "as-submitted"]).optional(),
   timeline: TimelineSchema.optional(),
 });
 
