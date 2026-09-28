@@ -102,6 +102,16 @@ describe("buildSeatMapView", () => {
   });
 });
 
+describe("buildSeatMapView — the old way", () => {
+  it("carries what a buyer paid at face next to what they offered", () => {
+    const out = runScenario({ scenario: { ...scenario, policies: ["first-come"], firstComeArrival: "as-submitted" }, venue: v, poolOffers: pool, now: "2026-09-20T00:00:00Z" });
+    const view = buildSeatMapView(out.runs[0]!, applyShowOverlay(v, scenario.show).venue)!;
+    const o1 = view.offers.find((o) => o.id === "o1")!;
+    expect(o1.priceCents).toBe(12000);
+    expect(o1.paidCents).toBe(10000); // premium face
+  });
+});
+
 describe("buildRoomView", () => {
   it("is the venue with nobody seated: every seat on sale empty, holds held, ranks and parity carried", () => {
     const room = buildRoomView(applyShowOverlay(v, scenario.show).venue);
