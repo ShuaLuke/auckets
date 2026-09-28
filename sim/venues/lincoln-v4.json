@@ -1325,7 +1325,7 @@
       "section": "ORCH C",
       "rowName": "V",
       "rowRank": 56,
-      "capacity": 8,
+      "capacity": 14,
       "parity": "EVEN",
       "lean": "CENTER",
       "seatNumbers": [
@@ -1336,9 +1336,22 @@
         "105",
         "106",
         "107",
-        "108"
+        "108",
+        "109",
+        "110",
+        "111",
+        "112",
+        "113",
+        "114"
       ],
-      "holds": [],
+      "holds": [
+        "105",
+        "106",
+        "107",
+        "108",
+        "109",
+        "110"
+      ],
       "tier": "orchestra",
       "isGa": false
     },
@@ -1394,7 +1407,7 @@
       "section": "ORCH C",
       "rowName": "W",
       "rowRank": 59,
-      "capacity": 8,
+      "capacity": 14,
       "parity": "EVEN",
       "lean": "CENTER",
       "seatNumbers": [
@@ -1405,9 +1418,22 @@
         "105",
         "106",
         "107",
-        "108"
+        "108",
+        "109",
+        "110",
+        "111",
+        "112",
+        "113",
+        "114"
       ],
-      "holds": [],
+      "holds": [
+        "105",
+        "106",
+        "107",
+        "108",
+        "109",
+        "110"
+      ],
       "tier": "orchestra",
       "isGa": false
     },
@@ -1463,7 +1489,7 @@
       "section": "ORCH C",
       "rowName": "X",
       "rowRank": 62,
-      "capacity": 6,
+      "capacity": 14,
       "parity": "EVEN",
       "lean": "CENTER",
       "seatNumbers": [
@@ -1472,9 +1498,26 @@
         "103",
         "104",
         "105",
-        "106"
+        "106",
+        "107",
+        "108",
+        "109",
+        "110",
+        "111",
+        "112",
+        "113",
+        "114"
       ],
-      "holds": [],
+      "holds": [
+        "104",
+        "105",
+        "106",
+        "107",
+        "108",
+        "109",
+        "110",
+        "111"
+      ],
       "tier": "orchestra",
       "isGa": false
     },
@@ -1530,7 +1573,7 @@
       "section": "ORCH C",
       "rowName": "Y",
       "rowRank": 65,
-      "capacity": 6,
+      "capacity": 14,
       "parity": "EVEN",
       "lean": "CENTER",
       "seatNumbers": [
@@ -1539,9 +1582,26 @@
         "103",
         "104",
         "105",
-        "106"
+        "106",
+        "107",
+        "108",
+        "109",
+        "110",
+        "111",
+        "112",
+        "113",
+        "114"
       ],
-      "holds": [],
+      "holds": [
+        "104",
+        "105",
+        "106",
+        "107",
+        "108",
+        "109",
+        "110",
+        "111"
+      ],
       "tier": "orchestra",
       "isGa": false
     },
@@ -3558,7 +3618,13 @@
       "gapRelief": true
     }
   },
-  "notes": "Imported from a Cope RowRank architecture sheet: 144 rows, 1152 working seats, tiers by area (orchestra, front_balcony, upper_balcony). Held seats are those his sheet already excludes from WorkingL; relief flags are SingleInventoryFlag / GapReliefEligible.",
+  "notes": "Imported from a Cope RowRank architecture sheet: 144 rows, 1152 working seats, tiers by area (orchestra, front_balcony, upper_balcony). Held seats are those his sheet already excludes from WorkingL; relief flags are SingleInventoryFlag / GapReliefEligible. Hand-corrected from the box-office manifest: the tech/mix position (1-TECH) sits in the middle of ORCH C rows V-Y (V, W seats 105-110; X, Y seats 104-111), so those rows are two separate runs (4+4, 4+4, 3+3, 3+3), not one. The sheet's WorkingL counts were already right; only the contiguity was wrong. A re-import from the workbook will lose this — reapply it. Row Z centre is entirely tech and stays off the map.",
+  "holdLabels": {
+    "orch_c-v": "Tech / mix position",
+    "orch_c-w": "Tech / mix position",
+    "orch_c-x": "Tech / mix position",
+    "orch_c-y": "Tech / mix position"
+  },
   "source": {
     "kind": "cope-rowrank-xlsx",
     "file": "GAE_Lincoln_Full_RowRank_Architecture_v4_with_Full_Offer_Pool.xlsx · sheet \"Full RowRank Architecture\"",

@@ -36,6 +36,13 @@ describe("parseVenueFile", () => {
     expect(applyShowOverlay(v, { holds: [{ source: "artist", tier: "premium", seats: 2 }] }).venue.wallSections).toEqual(v.wallSections);
     expect(() => parseVenueFile({ ...base, wallSections: { left: ["BOX Q"], right: [] } }, "x.json")).toThrow(/wallSections names unknown section "BOX Q"/);
   });
+
+  it("keeps hold labels, survives a show overlay, and rejects a row the venue doesn't have", () => {
+    const v = parseVenueFile({ ...base, holdLabels: { a: "Tech / mix position" } });
+    expect(v.holdLabels).toEqual({ a: "Tech / mix position" });
+    expect(applyShowOverlay(v, { holds: [{ source: "artist", tier: "premium", seats: 2 }] }).venue.holdLabels).toEqual(v.holdLabels);
+    expect(() => parseVenueFile({ ...base, holdLabels: { zz: "Tech" } }, "x.json")).toThrow(/holdLabels names unknown row "zz"/);
+  });
 });
 
 describe("tierOrder", () => {
