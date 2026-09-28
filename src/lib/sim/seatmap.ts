@@ -38,6 +38,21 @@ export type SeatMapOffer = {
   paidCents?: number; // the old way only: the face price actually paid, when it differs from the offer
   preference: string;
   outcome: PlacementOutcome;
+  // Where the group sits, for the offer list: the row's seat rank and its
+  // name ("ORCH C F").
+  rowRank: number;
+  rowLabel: string;
+};
+
+// An offer nobody could seat, so the offer list can say why. Same rank
+// numbering as the seated ones (offer #12 of 512 is #12 in both).
+export type UnseatedOffer = {
+  id: string;
+  offerRank: number;
+  groupSize: number;
+  priceCents: number;
+  preference: string;
+  reason: "priced out" | "nowhere fit" | "no such tier" | "unplaced";
 };
 
 export type SeatMapRow = {
@@ -65,6 +80,7 @@ export type SeatMapView = {
   seed: number;
   rows: SeatMapRow[];
   offers: SeatMapOffer[]; // seated offers only, best rank first
+  unseated: UnseatedOffer[]; // the rest, best rank first
   // Row ids of sections that line a side wall (SimVenue.wallSections), house
   // left / house right, nearest the stage first. Absent for most venues.
   wallRows?: { left: string[]; right: string[] };
@@ -91,24 +107,31 @@ export function buildSeatMapView(run: PolicyRun, venue: SimVenue): SeatMapView |
   const rowOfOffer = new Map<string, string>();
   for (const a of result.assignments) if (!rowOfOffer.has(a.offerId)) rowOfOffer.set(a.offerId, a.venueRowId);
 
+  const unplacedReason = new Map(result.unplaced.map((u) => [u.offerId, u.reason]));
   const offers: SeatMapOffer[] = [];
+  const unseated: UnseatedOffer[] = [];
   const indexOf = new Map<string, number>();
   ranked.forEach((o, i) => {
     const rowId = rowOfOffer.get(o.id);
     const row = rowId === undefined ? undefined : rowById.get(rowId);
-    if (!row) return;
+    const base = { id: o.id, offerRank: i + 1, groupSize: o.groupSize, priceCents: o.pricePerTicketCents, preference: formatTierPref(o.tierPreference) };
+    if (!row) {
+      const why = unplacedReason.get(o.id);
+      // The engine says "no_compatible_tier" for a tier the room doesn't have; the old way says it for a fan priced out.
+      const reason: UnseatedOffer["reason"] = why === "no_fit_anywhere" ? "nowhere fit" : why === "no_compatible_tier" ? (run.paidCents ? "priced out" : "no such tier") : "unplaced";
+      unseated.push({ ...base, reason });
+      return;
+    }
     const from = raisedFrom.get(o.id);
     const paid = run.paidCents?.[o.id];
     indexOf.set(o.id, offers.length);
     offers.push({
-      id: o.id,
-      offerRank: i + 1,
-      groupSize: o.groupSize,
-      priceCents: o.pricePerTicketCents,
+      ...base,
       ...(from !== undefined && from !== o.pricePerTicketCents && { raisedFromCents: from }),
       ...(paid !== undefined && paid !== o.pricePerTicketCents && { paidCents: paid }),
-      preference: formatTierPref(o.tierPreference),
       outcome: placementOutcome(o, row, tierIdx),
+      rowRank: row.rowRank,
+      rowLabel: `${row.section} ${row.rowName}`,
     });
   });
 
@@ -119,7 +142,7 @@ export function buildSeatMapView(run: PolicyRun, venue: SimVenue): SeatMapView |
   }
 
   const { rows: viewRows, ...counts } = viewRowsOf(rows, venue, occupant);
-  return { policy: run.policy, seed: run.seed, rows: viewRows, offers, ...wallRowsOf(rows, venue), totalOffers: pool.length, ...counts };
+  return { policy: run.policy, seed: run.seed, rows: viewRows, offers, unseated, ...wallRowsOf(rows, venue), totalOffers: pool.length, ...counts };
 }
 
 // The room before anyone is seated: every seat on sale empty, holds held.
@@ -128,7 +151,7 @@ export function buildSeatMapView(run: PolicyRun, venue: SimVenue): SeatMapView |
 export function buildRoomView(venue: SimVenue): SeatMapView {
   const rows = activeRows(venue);
   const { rows: viewRows, ...counts } = viewRowsOf(rows, venue, new Map());
-  return { policy: "room", seed: 0, rows: viewRows, offers: [], ...wallRowsOf(rows, venue), totalOffers: 0, ...counts };
+  return { policy: "room", seed: 0, rows: viewRows, offers: [], unseated: [], ...wallRowsOf(rows, venue), totalOffers: 0, ...counts };
 }
 
 function wallRowsOf(rows: VenueRow[], venue: SimVenue): Pick<SeatMapView, "wallRows"> {
