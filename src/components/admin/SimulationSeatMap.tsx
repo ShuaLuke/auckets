@@ -22,6 +22,7 @@
 
 import { memo, useId, useMemo, useRef, useState } from "react";
 
+import { SimulationOfferList } from "@/components/admin/SimulationOfferList";
 import { usd } from "@/lib/sim/format";
 import { binIndexFor, fillOrder, LEAN_LABEL, priceBins, quantileBins, seatingChart, SEAT_EMPTY, SEAT_HELD, type ChartLevel, type ChartUnit, type PriceBin, type SeatMapRow, type SeatMapView } from "@/lib/sim/seatmap";
 
@@ -87,6 +88,9 @@ export function SimulationSeatMap({ view }: Props) {
   const uid = useId();
   const wrapRef = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<Hover | null>(null);
+  // An offer hovered in the list: its seats light up the same way a hovered seat's group does.
+  const [pinned, setPinned] = useState<number | null>(null);
+  const [showOffers, setShowOffers] = useState(true);
   const [layout, setLayout] = useState<Layout>("chart");
   const isRoom = view.offers.length === 0;
   const [shade, setShade] = useState<Shade>(isRoom ? "rank" : "price");
@@ -138,6 +142,8 @@ export function SimulationSeatMap({ view }: Props) {
   const hoveredRow = hover ? view.rows[hover.row] : undefined;
   const hoveredCode = hoveredRow?.seats[hover?.seat ?? -1];
   const hoveredOffer = hoveredCode !== undefined && hoveredCode >= 0 ? view.offers[hoveredCode] : undefined;
+  // What lights up on the map: the hovered seat's group, else the list's hovered offer.
+  const activeCode = hoveredCode !== undefined && hoveredCode >= 0 ? hoveredCode : pinned;
   // Only the hovered row's order is worked out, and only when a seat is empty.
   const hoveredFill = hoveredRow && hover && hoveredCode === SEAT_EMPTY ? fillOrder(hoveredRow.lean, hoveredRow.seats, hoveredRow.isGa)[hover.seat] : undefined;
   const hoveredOnSale = hoveredRow ? hoveredRow.seats.filter((c) => c !== SEAT_HELD).length : 0;
@@ -195,14 +201,20 @@ export function SimulationSeatMap({ view }: Props) {
           <input type="checkbox" checked={ranks} onChange={(e) => setRanks(e.target.checked)} />
           Show row ranks
         </label>
+        {!isRoom && (
+          <label className="flex items-center gap-1.5 font-sans text-[11px]" style={{ color: "var(--fg-muted)" }}>
+            <input type="checkbox" checked={showOffers} onChange={(e) => setShowOffers(e.target.checked)} />
+            Show the offers
+          </label>
+        )}
       </div>
 
       {shade === "rank" ? <Legend bins={rBins} hasHeld={view.heldSeats > 0} title="Seat rank" format={rankRange} invert emptyLabel={isRoom ? "" : "Empty"} /> : <Legend bins={bins} hasHeld={view.heldSeats > 0} />}
 
       <div ref={wrapRef} className="relative mt-4" data-simmap={uid} onMouseOver={onOver} onMouseMove={onOver} onMouseLeave={() => setHover(null)}>
-        {hoveredOffer && hoveredCode !== undefined && (
+        {activeCode !== null && (
           // The whole group lights up, so you can see who sat together.
-          <style>{`[data-simmap="${uid}"] [data-o="${hoveredCode}"]>b{box-shadow:0 0 0 1.5px var(--page),0 0 0 3px var(--marquee-500);position:relative;z-index:1}`}</style>
+          <style>{`[data-simmap="${uid}"] [data-o="${activeCode}"]>b{box-shadow:0 0 0 1.5px var(--page),0 0 0 3px var(--marquee-500);position:relative;z-index:1}`}</style>
         )}
         {total + view.heldSeats > MAX_DRAWN_SEATS ? (
           <p className="font-sans text-[13px]" style={{ color: "var(--fg-muted)" }}>
@@ -262,6 +274,12 @@ export function SimulationSeatMap({ view }: Props) {
           </div>
         )}
       </div>
+
+      {!isRoom && showOffers && (
+        <div className="mt-5 border-t pt-4" style={{ borderColor: "var(--border)" }}>
+          <SimulationOfferList offers={view.offers} unseated={view.unseated} totalOffers={view.totalOffers} active={hoveredCode !== undefined && hoveredCode >= 0 ? hoveredCode : pinned} onHover={setPinned} />
+        </div>
+      )}
 
       <p className="mt-4 font-sans text-[11px]" style={{ color: "var(--fg-faint)" }}>
         {isRoom

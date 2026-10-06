@@ -124,6 +124,40 @@ describe("SimulationSeatMap", () => {
     act(() => root.unmount());
   });
 
+  it("lists the offers in rank order, and links them to the seats both ways", () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    act(() => root.render(<SimulationSeatMap view={view()} />));
+    const rows = [...container.querySelectorAll("[data-offer]")];
+    expect(rows.map((r) => r.textContent)).toEqual([
+      "13$120.00premium#1 center A",
+      "22$90.00premium-#2 center B · waterfalled down",
+      "32$70.00any#2 center B",
+    ]);
+    expect(container.textContent).toContain("3 offers, best first");
+
+    // Hover a row in the list → that group's seats get the ring.
+    act(() => {
+      rows[1]!.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })); // React derives onMouseEnter from mouseover
+    });
+    expect(container.querySelector("style")?.textContent).toContain('[data-o="1"]>b{box-shadow');
+    // Hover a seat on the map → its row in the list is marked.
+    act(() => {
+      container!.querySelector('[data-o="2"]')!.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    });
+    expect((container.querySelector('[data-offer="2"]') as HTMLElement).style.background).not.toBe("transparent");
+    expect((container.querySelector('[data-offer="1"]') as HTMLElement).style.background).toBe("transparent");
+    // The list can be hidden.
+    const toggle = [...container.querySelectorAll("label")].find((l) => l.textContent?.includes("Show the offers"))!.querySelector("input")!;
+    act(() => {
+      toggle.click();
+    });
+    expect(container.querySelector("[data-offer]")).toBeNull();
+    act(() => root.unmount());
+  });
+
   it("draws the empty room by rank, every seat painted, with the fill order on hover", () => {
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     const room = buildRoomView(applyShowOverlay(v, scenario.show).venue);
