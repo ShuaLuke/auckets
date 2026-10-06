@@ -69,6 +69,8 @@ With `--seeds N` the pool is regenerated N times (seed, seed+1, …) and the rep
 | `protect-units` | NEW-14: each table or box (`area` `tables` / `boxes`, as the tier-spec generator marks them) holds one group only; the rest of the unit stays empty on purpose. Default is co-seat (strangers share) | yes, fill cost by design |
 | `a+b` | Combine, e.g. `clean-fit+singles-reserve` (`clean-fit` and `lookahead` are both fit policies — pick one) | as its parts |
 
+The old way, for comparison: `first-come` sells each tier at its face price (the floors, or `show.facePricesCents`) to a seeded random arrival order — not the engine, the same crowd. On Cope's pool it takes $75,960 and fills 1,088 seats with 9,926 pairs of fans seated behind a lower offer they'd have fit; greedy takes $424,450 and fills 1,129 with none. `report.md` and the tab put the two side by side ("The old way vs Auckets"). The gross gap is mostly his pool's prices ($375 median vs $85 face), so set the face prices to what the venue would charge before quoting it.
+
 On Cope's pool and architecture (with the tech/mix position splitting ORCH C rows V–Y, corrected 2026-09-21): greedy 1,129 / 1,152 seated, 23 one-seat holes; clean-fit 1,140 (+$2,900, 33 passed over, ≤7 rows, ≤$25 gap); lookahead 1,131 (+$550, 1 passed over — gentle, but recovers only 2 seats); clean-fit + reserve 1,146 (+$4,400, 91 passed over). Parity tiebreak alone now recovers 4 seats (1,133, +$1,000) with nobody passed over — before the correction it changed nothing, so the split rows are where it earns its keep. On the `supper-club` tables venue, `protect-units` costs about 17 of 114 seats and $1,240 against co-seating over 10 seeds.
 
 ## Auto-bid

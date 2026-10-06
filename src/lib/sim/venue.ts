@@ -123,6 +123,7 @@ export type ResolvedShow = {
   venue: SimVenue; // holds merged, activeRowIds narrowed
   heldBySource: Record<HoldSource, number>;
   floorsCents: Record<string, number>;
+  facePricesCents: Record<string, number>; // the old way's price per tier: floors unless the show says
   maxGroupSize: number;
   bleacher?: { seats: number; rows: number; priceCents: number; rowIds: string[] };
 };
@@ -219,6 +220,7 @@ export function applyShowOverlay(base: SimVenue, overlay: ShowOverlay | undefine
     venue,
     heldBySource,
     floorsCents: { ...(base.tierFloorsCents ?? {}), ...(o.floorsCents ?? {}) },
+    facePricesCents: { ...(base.tierFloorsCents ?? {}), ...(o.floorsCents ?? {}), ...(o.facePricesCents ?? {}) },
     maxGroupSize: o.maxGroupSize ?? 10,
   };
   if (bleacher) resolved.bleacher = bleacher;

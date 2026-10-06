@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { SimulationMarkdown } from "@/components/admin/SimulationMarkdown";
 import { BaseMethodology, PolicyMethodology } from "@/components/admin/SimulationMethodology";
+import { SimulationRoi } from "@/components/admin/SimulationRoi";
 import { SimulationRoomMap } from "@/components/admin/SimulationRoomMap";
 import { SimulationRoomRules } from "@/components/admin/SimulationRoomRules";
 import { Button } from "@/components/ui/Button";
@@ -20,6 +21,7 @@ import { checkWork } from "@/lib/sim/budget";
 import { compareRuns, renderComparison } from "@/lib/sim/compare";
 import { usd } from "@/lib/sim/format";
 import type { LibraryPoolSummary, LibraryVenueSummary } from "@/lib/sim/library";
+import { compareToBaseline } from "@/lib/sim/roi";
 import type { RoomRules, SeatMapView, SectionMapView } from "@/lib/sim/seatmap";
 import type { RunOutput } from "@/lib/sim/types";
 
@@ -57,6 +59,7 @@ type Room = {
 };
 
 const POLICIES: { key: string; label: string; hint: string }[] = [
+  { key: "first-come", label: "First-come at face price (the old way)", hint: "What a venue does today: fixed tier prices, best available seats to whoever arrives first. Not the engine — the comparison." },
   { key: "greedy", label: "Greedy (shipped)", hint: "Strict rank order. Rank-first." },
   { key: "clean-fit", label: "Clean-fit", hint: "Defers a fitting group that would strand seats. Widens rank-respect by those deferrals." },
   { key: "lookahead", label: "Lookahead (Cope's Phase 6)", hint: "Looks two rows ahead; defers at most one offer per row. Fill-first, not rank-first." },
@@ -90,6 +93,9 @@ export function SimulationLab({ venues, pools, presets }: Props) {
   const [policies, setPolicies] = useState<string[]>(["greedy", "clean-fit"]);
   const [activeSections, setActiveSections] = useState<string[]>([]);
   const [holdTier, setHoldTier] = useState("");
+  // The old way's price per tier, in dollars; empty = the tier floor.
+  const [facePrices, setFacePrices] = useState<Record<string, string>>({});
+  const [firstComeArrival, setFirstComeArrival] = useState<"random" | "as-submitted">("random");
   const [holdSeats, setHoldSeats] = useState("0");
   const [maxGroup, setMaxGroup] = useState("10");
   const [autoBid, setAutoBid] = useState("0");
@@ -163,6 +169,8 @@ export function SimulationLab({ venues, pools, presets }: Props) {
         venue,
         ...(activeSections.length > 0 && { activeSections }),
         ...(holdTier && Number(holdSeats) > 0 && { holds: [{ source: "artist", tier: holdTier, seats: Number(holdSeats) }] }),
+        ...(policies.includes("first-come") && { firstComeArrival }),
+        ...(policies.includes("first-come") && Object.values(facePrices).some((v) => Number(v) > 0) && { facePricesCents: Object.fromEntries(Object.entries(facePrices).filter(([, v]) => Number(v) > 0).map(([t, v]) => [t, Math.round(Number(v) * 100)])) }),
         maxGroupSize: Number(maxGroup),
         pool:
           poolKind === "library"
@@ -301,6 +309,11 @@ export function SimulationLab({ venues, pools, presets }: Props) {
   );
   const shownPolicy = mapPolicy !== null && mapPolicies.includes(mapPolicy) ? mapPolicy : mapPolicies[0];
   const shownSections = shown && shownPolicy !== undefined ? shown.sectionMaps[shownPolicy] : undefined;
+  // The old way beside the engine policy being looked at (first seed of each).
+  const oldWay = shown?.output.runs.find((r) => r.metrics.firstCome && r.seed === shown.output.seeds[0]);
+  const ourPolicy = shownPolicy !== undefined && shownPolicy !== "first-come" ? shownPolicy : mapPolicies.find((p) => p !== "first-come");
+  const ours = oldWay && ourPolicy !== undefined ? shown?.output.runs.find((r) => r.policy === ourPolicy && r.seed === oldWay.seed) : undefined;
+  const roi = oldWay && ours ? compareToBaseline(oldWay, ours) : undefined;
 
   // Seat detail for one level of a run whose seat map was too big to send:
   // replay the run's own request with `detail` set. Same inputs, same seats.
@@ -331,7 +344,7 @@ export function SimulationLab({ venues, pools, presets }: Props) {
         <Eyebrow className="mb-3">Set up a run</Eyebrow>
 
         <Field label="Venue" htmlFor="sim-venue">
-          <select id="sim-venue" className="w-full rounded-lg border px-3 py-2 font-sans text-sm" style={{ borderColor: "var(--border-strong)", background: "var(--page)" }} value={venue} onChange={(e) => { setVenue(e.target.value); setActiveSections([]); setHoldTier(""); }}>
+          <select id="sim-venue" className="w-full rounded-lg border px-3 py-2 font-sans text-sm" style={{ borderColor: "var(--border-strong)", background: "var(--page)" }} value={venue} onChange={(e) => { setVenue(e.target.value); setActiveSections([]); setHoldTier(""); setFacePrices({}); }}>
             {venues.map((v) => (
               <option key={v.name} value={v.name}>
                 {v.displayName} — {v.capacity.toLocaleString()} seats
@@ -417,6 +430,29 @@ export function SimulationLab({ venues, pools, presets }: Props) {
             </div>
           ))}
         </div>
+
+        {policies.includes("first-come") && venueInfo && (
+          <div className="mt-4">
+            <div className="mb-1.5 font-sans text-[12px]" style={{ color: "var(--fg-muted)" }}>
+              Face prices for the old way, per tier. Blank means the tier floor — set them to what the venue would really charge.
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {venueInfo.tiers.map((t) => (
+                <Field key={t} label={t.replace(/_/g, " ")} htmlFor={`sim-face-${t}`}>
+                  <TextInput id={`sim-face-${t}`} inputMode="decimal" placeholder={venueInfo.floorsCents[t] !== undefined ? String(venueInfo.floorsCents[t]! / 100) : ""} value={facePrices[t] ?? ""} onChange={(e) => setFacePrices((cur) => ({ ...cur, [t]: e.target.value }))} prefix="$" mono />
+                </Field>
+              ))}
+            </div>
+            <div className="mt-2">
+              <Field label="Fans arrive" hint="Who reaches the box office first has nothing to do with what they'd pay. Cope's pool file is numbered in price order, so ‘as submitted’ would make the old way look like rank order.">
+                <select className="w-full rounded-lg border px-2 py-2 font-sans text-sm" style={{ borderColor: "var(--border-strong)", background: "var(--page)" }} value={firstComeArrival} onChange={(e) => setFirstComeArrival(e.target.value as "random" | "as-submitted")}>
+                  <option value="random">in a random order (seeded)</option>
+                  <option value="as-submitted">in the pool&apos;s submitted order</option>
+                </select>
+              </Field>
+            </div>
+          </div>
+        )}
 
         <button type="button" className="mt-5 font-sans text-xs underline" style={{ color: "var(--fg-muted)" }} onClick={() => setShowAdvanced((s) => !s)}>
           {showAdvanced ? "Hide" : "Show"} advanced: sections, holds, auto-bid, Bleacher, timeline
@@ -634,7 +670,7 @@ export function SimulationLab({ venues, pools, presets }: Props) {
                 <Button size="sm" variant={resultView === "map" ? "primary" : "secondary"} onClick={() => setResultView("map")}>
                   Seat map
                 </Button>
-                {resultView === "map" && mapPolicies.length > 1 && (
+                {(resultView === "map" || roi !== undefined) && mapPolicies.length > 1 && (
                   <span className="ml-2 flex flex-wrap items-center gap-1">
                     {mapPolicies.map((p) => {
                       const on = shownPolicy === p;
@@ -658,7 +694,15 @@ export function SimulationLab({ venues, pools, presets }: Props) {
             ) : resultView === "map" && shownSections && shownPolicy !== undefined ? (
               <SimulationRoomMap key={`${shown.id}/${shownPolicy}`} sections={shownSections} view={shown.seatMaps[shownPolicy]} loadArea={(area) => loadArea(shown, shownPolicy, area)} />
             ) : (
-              <SimulationMarkdown md={shown.reportMd} />
+              <>
+                {roi && (
+                  <div className="mb-6 border-b pb-6" style={{ borderColor: "var(--border)" }}>
+                    <Eyebrow className="mb-3">The old way vs Auckets</Eyebrow>
+                    <SimulationRoi roi={roi} />
+                  </div>
+                )}
+                <SimulationMarkdown md={shown.reportMd} />
+              </>
             )}
           </Card>
         )}

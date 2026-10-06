@@ -65,6 +65,10 @@ export type ShowOverlay = {
   activeRowIds?: string[];
   holds?: HoldSpec[];
   floorsCents?: Record<string, number>;
+  // What the old way ("first-come") charges per tier. Defaults to the
+  // floors; set it to what the venue would really price at to make the
+  // comparison honest.
+  facePricesCents?: Record<string, number>;
   maxGroupSize?: number;
   bleacher?: BleacherSpec;
 };
@@ -316,6 +320,9 @@ export type Scenario = {
   autoBidRaiseRule?: RaiseRule;
   // Slice 5: simulate the window as time. Omit for a single-pool run.
   timeline?: TimelineSpec;
+  // The old way ("first-come") only: fans arrive in a seeded random order
+  // (default) or in the pool's submittedAt order.
+  firstComeArrival?: "random" | "as-submitted";
 };
 
 // --- Metrics ---------------------------------------------------------------
@@ -363,6 +370,14 @@ export type RankRespectMetrics = {
   fitResolvedDeferrals: number; // FIT_RESOLVED decisions
   waterfalled: number;
   passedOverOfferIds: string[];
+  // Pairs of seated fans in the same tier where the one who offered MORE
+  // sits in a worse row than one who offered less AND could have had that
+  // fan's seats (block at least as big) — the plainest fairness number,
+  // subject to fit as the spec's guarantee is. The old way fails it; the
+  // engine's count should be zero. `inversionsPct` is the share of
+  // same-tier seated pairs.
+  inversions: number;
+  inversionsPct: number;
 };
 
 export type PolicyActivity = {
@@ -447,11 +462,24 @@ export type FillMetrics = {
   byGroupSize: Record<number, GroupSizeMetrics>;
   preference: Record<TierPreference["type"], PreferenceMetrics>;
   rankRespect: RankRespectMetrics;
+  // Only on a "first-come" run (the old way): what a fixed-price on-sale
+  // leaves behind. Gross above is what was collected at face.
+  firstCome?: FirstComeMetrics;
   policy: PolicyActivity;
   autoBid: AutoBidMetrics;
   bleacher: BleacherMetrics | null;
   seatPrefs: SeatPrefMetrics | null;
   runtimeMs: number;
+};
+
+export type FirstComeMetrics = {
+  offeredAboveFaceCents: number; // what buyers offered over the face they paid — money the old way leaves with the fan (or the scalper)
+  pricedOutOffers: number; // offer under face in every tier they'd accept
+  pricedOutTickets: number;
+  pricedOutValueCents: number; // what they offered, in all
+  soldOutOffers: number; // could afford a tier they'd accept, but it had no block for them by the time they arrived
+  soldOutTickets: number;
+  soldOutValueCents: number;
 };
 
 export type InvariantViolation = {
@@ -473,6 +501,10 @@ export type PolicyRun = {
   result?: AllocationResult;
   offers?: RankedOffer[]; // the pool AFTER auto-bid resolution (what the engine saw)
   raises?: AutoBidRaise[];
+  // "first-come" only: what each buyer paid (the tier's face), by offer id.
+  // Their offer stays in `offers`; the difference is what the old way left
+  // on the table.
+  paidCents?: Record<string, number>;
   config: AllocationConfig;
   caveat: string; // what the policy trades away, for the report
   temporal?: TemporalMetrics; // present when scenario.timeline is set
