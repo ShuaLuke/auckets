@@ -174,6 +174,15 @@ rendered (`/shows` index, fan show detail, the ticket stub, the artist page).
 **Working assumption:** admin/host views of real shows reuse the simulator's rank labels (no product decision needed); nothing is shown to fans until Cope says so.
 **Status:** Open (Cope).
 
+### NEW-21 — Waterfalled fans sit behind lower offers in the tier they land in
+**Source:** the simulator, 2026-10-06, while preparing the old-way comparison for Cope.
+**Affects:** the GAE's pass order (`docs/GAE_SPEC.md` §5 Waterfall; `src/lib/gae/waterfall.ts`), and the fairness claim in the venue pitch.
+**What the numbers show:** `rankRespect.inversions` counts pairs of seated fans in the same tier where the one who offered more sits in a worse row and could have had the other's seats. On Cope's pool (every offer "any tier") the engine's count is 0 and the old way's is 7,090. On generated pools with a realistic preference mix (premium-biased, 60% "this tier or worse") the engine's count is ~5,300–5,750 (24% of same-tier pairs) against the old way's ~7,800 (35%) — and **every one of the engine's is a fan who asked for a better tier, didn't get it, and was waterfalled into a lower tier after that tier's own fans had been seated in rank order.** A $150 "orchestra or worse" fan ends up behind a $90 fan who asked for the balcony directly. That is exactly what the strict-pass-then-waterfall order says should happen; it is also what the fan will see as unfair.
+**The question:** should the waterfall interleave by rank with the tier's own candidates — one rank-ordered pass with each fan's full acceptable tier set, or a re-run that lets a higher waterfalled offer take precedence — instead of taking only what is left? Interleaving would push some direct-tier fans back a row for a higher offer that originally wanted somewhere else; the current order gives fans who asked for a tier first claim on it. Either is defensible; they are different promises to the fan.
+**What would settle it:** a `waterfall-interleaved` policy in the simulator, side by side with greedy on the same pools: inversions, fill, gross, and how many direct-tier fans move and by how much.
+**Until then:** the fairness line in the pitch is "nobody who asked for a tier sits behind a lower offer in that tier; fans who asked for a better tier and took what was left can" — not "zero". `OPEN_QUESTIONS` Q1 (objective) and ADR-0004 (hybrid preview) touch the same pass order.
+**Status:** Open (Cope on the promise; Josh on the engine).
+
 ---
 
 ## New product concepts from v2 — confirmed, design needed

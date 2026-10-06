@@ -26,9 +26,9 @@ describe("compareToBaseline", () => {
 
   it("renders as markdown, and the fill report carries it when both ran", () => {
     const md = renderRoi(compareToBaseline(out.runs[0]!, out.runs[1]!));
-    expect(md).toContain("## The old way vs Auckets (greedy)");
+    expect(md).toContain("## The old way vs Auckets (rank order)");
     expect(md).toContain("| Gross | $440.00 | $660.00 | +$220.00 |");
-    expect(renderFillReport(out)).toContain("## The old way vs Auckets (greedy)");
+    expect(renderFillReport(out)).toContain("## The old way vs Auckets (rank order)");
     expect(formatRoi(-5, "n", true)).toBe("−5");
     expect(formatRoi(0, "usd", true)).toBe("$0.00");
   });

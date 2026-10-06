@@ -5,6 +5,21 @@
 import { usd } from "./format";
 import type { PolicyRun } from "./types";
 
+// What a venue sees a policy called. "greedy" is our word for the shipped
+// rank-order method and means nothing to anyone else; the key stays the
+// key everywhere else (CLI, reports, tests).
+export const POLICY_DISPLAY: Record<string, string> = {
+  "first-come": "first-come at face price",
+  greedy: "rank order",
+  "clean-fit": "rank order with clean fit",
+  "parity-tiebreak": "rank order with parity tiebreak",
+  "singles-reserve": "rank order with a singles reserve",
+  "clean-fit+singles-reserve": "clean fit with a singles reserve",
+  lookahead: "lookahead",
+  "protect-units": "rank order, tables protected",
+};
+export const policyDisplayName = (key: string): string => POLICY_DISPLAY[key] ?? POLICY_DISPLAY[key.split(":")[0]!] ?? key;
+
 export type RoiLine = {
   key: string;
   label: string;
@@ -62,7 +77,7 @@ export function compareToBaseline(old: PolicyRun, ours: PolicyRun): RoiSummary {
   const pctMore = om.revenue.grossPlacedCents === 0 ? null : (100 * grossDiff) / om.revenue.grossPlacedCents;
   const headline =
     `On the same crowd, the old way takes ${usd(om.revenue.grossPlacedCents)} and fills ${om.fill.placedSeats.toLocaleString("en-US")} seats; ` +
-    `Auckets (${ours.policy}) takes ${usd(um.revenue.grossPlacedCents)} and fills ${um.fill.placedSeats.toLocaleString("en-US")} — ` +
+    `Auckets (${policyDisplayName(ours.policy)}) takes ${usd(um.revenue.grossPlacedCents)} and fills ${um.fill.placedSeats.toLocaleString("en-US")} — ` +
     `${formatRoi(grossDiff, "usd", true)}${pctMore !== null ? ` (${formatRoi(pctMore, "pct", true)})` : ""} and ${formatRoi(seatsDiff, "n", true)} seats. ` +
     `Fans offered ${usd(fc.offeredAboveFaceCents)} above face that the old way never collected.`;
   return { oldPolicy: old.policy, ourPolicy: ours.policy, lines, byTier, offeredAboveFaceCents: fc.offeredAboveFaceCents, headline };
@@ -70,11 +85,11 @@ export function compareToBaseline(old: PolicyRun, ours: PolicyRun): RoiSummary {
 
 export function renderRoi(r: RoiSummary): string {
   const L: string[] = [];
-  L.push(`## The old way vs Auckets (${r.ourPolicy})`);
+  L.push(`## The old way vs Auckets (${policyDisplayName(r.ourPolicy)})`);
   L.push("");
   L.push(r.headline);
   L.push("");
-  L.push(`| | Old way (${r.oldPolicy}) | Auckets (${r.ourPolicy}) | Difference |`);
+  L.push(`| | Old way (${r.oldPolicy}) | Auckets (${policyDisplayName(r.ourPolicy)}) | Difference |`);
   L.push("|---|---:|---:|---:|");
   for (const l of r.lines) L.push(`| ${l.label} | ${fmt(l.old, l.kind)} | ${fmt(l.ours, l.kind)} | ${formatRoi(l.diff, l.kind, true)} |`);
   L.push("");
