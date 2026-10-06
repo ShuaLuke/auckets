@@ -60,7 +60,7 @@ type Room = {
 
 const POLICIES: { key: string; label: string; hint: string }[] = [
   { key: "first-come", label: "First-come at face price (the old way)", hint: "What a venue does today: fixed tier prices, best available seats to whoever arrives first. Not the engine — the comparison." },
-  { key: "greedy", label: "Greedy (shipped)", hint: "Strict rank order. Rank-first." },
+  { key: "greedy", label: "Auckets — rank order (what production runs)", hint: "Best offer takes the best row it fits in, then the next. Rank-first." },
   { key: "clean-fit", label: "Clean-fit", hint: "Defers a fitting group that would strand seats. Widens rank-respect by those deferrals." },
   { key: "lookahead", label: "Lookahead (Cope's Phase 6)", hint: "Looks two rows ahead; defers at most one offer per row. Fill-first, not rank-first." },
   { key: "parity-tiebreak", label: "Parity tiebreak", hint: "Reorders only at equal price so odd groups meet odd remainders." },

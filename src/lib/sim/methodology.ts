@@ -52,8 +52,8 @@ export const POLICY_PARTS: Record<string, PolicyPart> = {
   },
   greedy: {
     key: "greedy",
-    label: "Greedy",
-    summary: "The base method as shipped: strict rank order, no second-guessing.",
+    label: "Rank order (what production runs)",
+    summary: "The base method as shipped: strict rank order, no second-guessing. Our name for it in the engine is \"greedy\".",
     steps: ["Nothing changes. This is the method above, exactly, and what production runs today."],
     tradeoff: "A row can end with one or two seats nobody in the queue fits — they stay empty. On Cope's Lincoln pool that is about 2% of the house.",
     rankFirst: true,

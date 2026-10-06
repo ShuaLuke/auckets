@@ -16,7 +16,7 @@ describe("SimulationRoi", () => {
     expect(html).toContain("the old way takes $440.00 and fills 6 seats");
     expect(html).toContain("+$220.00");
     expect(html).toContain("−1"); // groups turned away, fewer under ours
-    expect(html).toContain("Auckets · greedy");
+    expect(html).toContain("Auckets · rank order");
     expect(html).toContain("premium");
     expect(html).toContain("2 → 4 of 4");
     expect(html).toContain("set the face prices to what the venue would really charge");

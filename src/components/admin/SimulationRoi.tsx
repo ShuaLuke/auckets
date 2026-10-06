@@ -4,7 +4,7 @@
 // assumption stated out loud (the demand).
 
 import { usd } from "@/lib/sim/format";
-import { formatRoi, type RoiSummary } from "@/lib/sim/roi";
+import { formatRoi, policyDisplayName, type RoiSummary } from "@/lib/sim/roi";
 
 const n = (v: number): string => v.toLocaleString("en-US");
 const pretty = (s: string): string => s.replace(/_/g, " ");
@@ -22,7 +22,7 @@ export function SimulationRoi({ roi }: { roi: RoiSummary }) {
           <tr style={{ color: "var(--fg-subtle)", borderBottom: "1px solid var(--border)" }}>
             <th className={th}></th>
             <th className={`${th} text-right`}>The old way</th>
-            <th className={`${th} text-right`}>Auckets · {roi.ourPolicy}</th>
+            <th className={`${th} text-right`}>Auckets · {policyDisplayName(roi.ourPolicy)}</th>
             <th className={`${th} text-right`}>Difference</th>
           </tr>
         </thead>
