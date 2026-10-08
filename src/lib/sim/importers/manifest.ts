@@ -68,7 +68,17 @@ const ALIASES: Record<string, string[]> = {
   level: ["pricelevelname", "pricelevel", "level", "pricescalecode", "pricescale"],
   holdGroup: ["holdgroupname", "holdgroup", "hold"],
   status: ["holdnameoffername", "status", "offername"],
+  // Optional columns a box office never sends but our own export does, so a
+  // venue exported as CSV comes back as the same room (see sim/venue-io.ts).
+  area: ["area"],
+  rowRank: ["rowrank", "globalrowrank"],
+  lean: ["lean"],
+  ga: ["ga", "isga", "generaladmission"],
+  onSale: ["onsale"],
 };
+
+const YES = /^(y|yes|true|1)$/i;
+const NO = /^(n|no|false|0)$/i;
 
 function norm(h: string): string {
   return h.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -129,6 +139,8 @@ function compareRowNames(a: string, b: string): number {
   return ka - kb || sa.localeCompare(sb) || na - nb;
 }
 
+const LEANS: VenueRow["lean"][] = ["CENTER", "LEFT", "RIGHT", "DUAL_AISLE"];
+
 export function detectDelimiter(text: string): string {
   const firstLine = text.split(/\r?\n/, 1)[0] ?? "";
   return (firstLine.match(/\t/g)?.length ?? 0) > (firstLine.match(/,/g)?.length ?? 0) ? "\t" : ",";
@@ -169,13 +181,19 @@ export function venueFromManifestTable(table: string[][], opts: ManifestOptions)
     level: findCol(headers, "level"),
     holdGroup: findCol(headers, "holdGroup"),
     status: findCol(headers, "status"),
+    area: findCol(headers, "area"),
+    rowRank: findCol(headers, "rowRank"),
+    lean: findCol(headers, "lean"),
+    ga: findCol(headers, "ga"),
+    onSale: findCol(headers, "onSale"),
   };
   for (const k of ["section", "row", "seat"] as const) {
     if (ci[k] === -1) throw new SimInputError(`manifest is missing a ${k} column (accepted: ${ALIASES[k]!.join(", ")}). Saw: ${headers.join(", ")}`);
   }
   if (ci.price === -1 && ci.level === -1) throw new SimInputError("manifest needs a price value or price level column to derive tiers and ranking");
 
-  type Seat = { seat: string; priceCents: number; level: string; hold: string; status: string };
+  type Seat = { seat: string; priceCents: number; level: string; hold: string; status: string; area: string; rowRank: string; lean: string; ga: string; onSale: string };
+  const cell = (r: string[], i: number): string => (i === -1 ? "" : (r[i]?.trim() ?? ""));
   const rowsBySection = new Map<string, Map<string, Seat[]>>();
   const priceLevels: ManifestImport["priceLevels"] = {};
   for (const [i, r] of table.slice(1).entries()) {
@@ -194,11 +212,19 @@ export function venueFromManifestTable(table: string[][], opts: ManifestOptions)
     rowsBySection.set(section, bySec);
     const seats = bySec.get(row) ?? [];
     bySec.set(row, seats);
-    seats.push({ seat, priceCents, level, hold: ci.holdGroup === -1 ? "" : (r[ci.holdGroup]?.trim() ?? ""), status: ci.status === -1 ? "" : (r[ci.status]?.trim() ?? "") });
+    seats.push({ seat, priceCents, level, hold: cell(r, ci.holdGroup), status: cell(r, ci.status), area: cell(r, ci.area), rowRank: cell(r, ci.rowRank), lean: cell(r, ci.lean), ga: cell(r, ci.ga), onSale: cell(r, ci.onSale) });
   }
 
-  // Sidecar ranks.
+  // Sidecar ranks: a rank file, else a Row Rank column in the manifest itself.
   const sidecar = new Map<string, number>();
+  if (ci.rowRank !== -1 && !opts.rankFileText) {
+    for (const [section, bySec] of rowsBySection) {
+      for (const [rowName, seats] of bySec) {
+        const rank = Number(seats.find((s) => s.rowRank !== "")?.rowRank);
+        if (Number.isInteger(rank) && rank > 0) sidecar.set(`${section}|${rowName}`, rank);
+      }
+    }
+  }
   if (opts.rankFileText) {
     const t = parseCsv(opts.rankFileText);
     for (const line of t.slice(1)) {
@@ -217,7 +243,7 @@ export function venueFromManifestTable(table: string[][], opts: ManifestOptions)
   });
   // Tiers, best first: the map's when there is one, else one per level.
   const tierMap = opts.tierMap;
-  if (!tierMap && levels.length > 1 && levels.every(([, info]) => info.priceCents === 0)) {
+  if (!tierMap && sidecar.size === 0 && levels.length > 1 && levels.every(([, info]) => info.priceCents === 0)) {
     throw new SimInputError(`manifest names ${levels.length} price levels but no prices, so they cannot be ordered. Pass a tier map (--tier-map) that lists them best-first.`);
   }
   const levelOrder = tierMap ? parseTierMap(tierMap, levels.map(([l]) => l)) : new Map(levels.map(([lvl], i) => [lvl, i]));
@@ -227,6 +253,7 @@ export function venueFromManifestTable(table: string[][], opts: ManifestOptions)
   const holdGroups: Record<string, number> = {};
   let soldSeats = 0;
   const sectionOrder = [...rowsBySection.keys()];
+  const offSaleRows = new Set<string>();
 
   type Built = { row: VenueRow; sortKey: [number, number, string, number]; sidecarRank: number | undefined };
   const built: Built[] = [];
@@ -255,19 +282,22 @@ export function venueFromManifestTable(table: string[][], opts: ManifestOptions)
       ids.add(id);
       const seatNumbers = ordered.map((s) => s.seat);
       if (new Set(seatNumbers).size !== seatNumbers.length) throw new SimInputError(`manifest: ${section} ${rowName} lists a seat twice`);
-      const isGa = tier?.isGa === true || (/^GA/i.test(rowName) && seatNumbers.length > 20);
+      const first = ordered[0]!;
+      const isGa = first.ga !== "" ? YES.test(first.ga) : tier?.isGa === true || (/^GA/i.test(rowName) && seatNumbers.length > 20);
+      const lean = LEANS.find((l) => l === first.lean.toUpperCase());
+      if (first.onSale !== "" && NO.test(first.onSale)) offSaleRows.add(id);
       built.push({
         row: {
           id,
           // With a tier map the tier is the only grouping coarser than a
           // section, and "sections on sale" matches areas too.
-          area: tierMap && tier ? tier.name : areaFor(section),
+          area: first.area || (tierMap && tier ? tier.name : areaFor(section)),
           section,
           rowName,
           rowRank: 0,
           capacity: seatNumbers.length,
           parity: seatNumbers.length % 2 === 0 ? "EVEN" : "ODD",
-          lean: isGa ? "LEFT" : leanFor(section),
+          lean: lean ?? (isGa ? "LEFT" : leanFor(section)),
           seatNumbers,
           holds,
           tier: tier?.name ?? slug(ordered[0]!.level),
@@ -303,7 +333,7 @@ export function venueFromManifestTable(table: string[][], opts: ManifestOptions)
     displayName: opts.displayName ?? `${opts.name} (manifest import)`,
     venueId: opts.name,
     rows,
-    activeRowIds: rows.filter((r) => !offSale.has(String(r.tier))).map((r) => r.id),
+    activeRowIds: rows.filter((r) => !offSale.has(String(r.tier)) && !offSaleRows.has(r.id)).map((r) => r.id),
     notes: `Imported from a box-office seat manifest: ${rows.length} rows, ${rows.reduce((s, r) => s + r.capacity, 0)} seats, ${held} held (${Object.entries(holdGroups).map(([g, n]) => `${g} ${n}`).join(", ") || "no hold groups"}). ${tierNote} — ${sidecar.size > 0 ? "overridden by the supplied rank file" : "adjust with a rank file (section,row,rowRank) if the room disagrees"}. Lean is inward by section name; ${tierMap ? "area is the tier" : "area is guessed from the section name"}.${opts.soldAsHeld ? ` ${soldSeats} seats sold in this snapshot are held.` : ""}`,
     source: { kind: "manifest-csv", file: opts.sourceFile, importedAt: opts.importedAt },
   };

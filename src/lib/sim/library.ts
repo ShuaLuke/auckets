@@ -20,7 +20,8 @@ import lincolnPoolV4 from "../../../sim/pools/lincoln-pool-v4.json";
 
 import { SUBMITTED_BASE_MS } from "./pool";
 import type { AutoBids, SimVenue } from "./types";
-import { parseVenueFile, tierOrder, venueParitySummary } from "./venue";
+import { parseVenueFile } from "./venue";
+import { venueSummary, type VenueSummary } from "./venue-io";
 
 const RAW_VENUES: unknown[] = [lincolnV4, lincolnManifest, daikinPark, copesPlace, supperClub, lincolnSynthetic, austinPartial, leanDemo];
 
@@ -35,47 +36,10 @@ export function libraryVenue(name: string): SimVenue | undefined {
   return libraryVenues().find((v) => v.name === name);
 }
 
-export type LibraryVenueSummary = {
-  name: string;
-  displayName: string;
-  capacity: number;
-  rows: number;
-  tiers: string[];
-  floorsCents: Record<string, number>;
-  // What "sections on sale" offers: the venue's sections, or its areas when
-  // there are too many sections to pick from (a stadium has 213). The show
-  // overlay matches either.
-  sections: string[];
-  // Sellable seats in each entry of `sections`, so the form can size a run.
-  sectionSeats: Record<string, number>;
-  singleRows: number;
-  notes: string | undefined;
-};
-
-const MAX_SECTION_CHOICES = 40;
+export type LibraryVenueSummary = VenueSummary;
 
 export function libraryVenueSummaries(): LibraryVenueSummary[] {
-  return libraryVenues().map((v) => {
-    const s = venueParitySummary(v)[0]!;
-    const bySection = new Set(v.rows.map((r) => r.section)).size <= MAX_SECTION_CHOICES;
-    const sectionSeats: Record<string, number> = {};
-    for (const r of v.rows) {
-      const key = bySection ? r.section : String(r.area);
-      sectionSeats[key] = (sectionSeats[key] ?? 0) + r.capacity - r.holds.length;
-    }
-    return {
-      name: v.name,
-      displayName: v.displayName,
-      capacity: s.capacity,
-      rows: s.activeRows,
-      tiers: tierOrder(v),
-      floorsCents: v.tierFloorsCents ?? {},
-      sections: Object.keys(sectionSeats),
-      sectionSeats,
-      singleRows: s.singleRows,
-      notes: v.notes,
-    };
-  });
+  return libraryVenues().map(venueSummary);
 }
 
 // --- pools -----------------------------------------------------------------
