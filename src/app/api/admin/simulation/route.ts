@@ -1,4 +1,6 @@
-// POST /api/admin/simulation — run the GAE simulator on a library venue.
+// POST /api/admin/simulation — run the GAE simulator on a library venue, or
+// on a venue the caller brings (built or imported in the tab, kept in their
+// browser, sent whole with each request).
 // Backs the /admin/simulation tab. Nothing is written: the engine runs in
 // memory and the response is the fill report plus the run data the page
 // keeps for comparisons and downloads.
@@ -11,6 +13,9 @@
 // A `room` request is the same route without a crowd: the venue as it goes
 // on sale (holds, sections on sale), drawn by seat rank, plus the rules the
 // engine will fill it by. No engine run; nothing to bound.
+//
+// An `exportVenue` request returns a library venue's file, so the tab can
+// download it as JSON or CSV (or copy it to edit).
 
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
@@ -25,8 +30,9 @@ import { renderFillReport, renderOffersCsv, renderSeatMap } from "@/lib/sim/repo
 import { runScenario } from "@/lib/sim/run";
 import { buildRoomView, buildSeatMapView, filterSeatMapView, roomRules, summariseSections, type RoomRules, type SeatMapView, type SectionMapView } from "@/lib/sim/seatmap";
 import { slimOutput } from "@/lib/sim/sweep";
-import type { RunOutput, Scenario } from "@/lib/sim/types";
-import { activeRows, applyShowOverlay, SimInputError } from "@/lib/sim/venue";
+import type { RunOutput, Scenario, SimVenue } from "@/lib/sim/types";
+import { activeRows, applyShowOverlay, parseVenueFile, SimInputError } from "@/lib/sim/venue";
+import { checkVenueSize } from "@/lib/sim/venue-io";
 import { userCanSimulate } from "@/lib/simulation/access";
 
 export const dynamic = "force-dynamic";
@@ -36,9 +42,13 @@ const GroupMixSchema = z
   .record(z.string().regex(/^[1-9][0-9]?$/), z.number().min(0).max(100))
   .refine((m) => Math.abs(Object.values(m).reduce((s, v) => s + v, 0) - 100) < 0.01, { message: "group-size percentages must sum to 100" });
 
+// A library venue by name, or a whole venue file (validated by
+// parseVenueFile, the same check the CLI runs on sim/venues/*.json).
+const VenueRefSchema = z.union([z.string().regex(/^[a-z0-9][a-z0-9-]*$/), z.record(z.string(), z.unknown())]);
+
 const BodySchema = z.object({
   name: z.string().regex(/^[a-z0-9][a-z0-9-]{0,40}$/).optional(),
-  venue: z.string().regex(/^[a-z0-9][a-z0-9-]*$/),
+  venue: VenueRefSchema,
   activeSections: z.array(z.string().min(1)).max(50).optional(),
   holds: z.array(z.object({ source: z.enum(["venue", "artist", "comp", "production"]), tier: z.string().min(1), seats: z.number().int().positive().max(2000) })).max(10).optional(),
   floorsCents: z.record(z.string(), z.number().int().positive().max(10_000_000)).optional(),
@@ -98,6 +108,9 @@ const RoomSchema = z.object({
 });
 
 export type RoomRequest = z.infer<typeof RoomSchema>;
+
+const ExportSchema = z.object({ exportVenue: z.string().regex(/^[a-z0-9][a-z0-9-]*$/) });
+export type ExportVenueResponse = { ok: true; venue: SimVenue };
 export type RoomResponse = {
   ok: true;
   // The empty room, seat by seat, when it fits; a stadium's is fetched a
@@ -132,7 +145,7 @@ type ErrorBody = { error: string; details?: unknown };
 // in this many characters.
 const MAX_DOWNLOAD_CHARS = 3_000_000;
 
-export async function POST(request: Request): Promise<NextResponse<SimulationResponse | SimulationDetailResponse | RoomResponse | ErrorBody>> {
+export async function POST(request: Request): Promise<NextResponse<SimulationResponse | SimulationDetailResponse | RoomResponse | ExportVenueResponse | ErrorBody>> {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const access = await userCanSimulate(db, userId);
@@ -145,18 +158,20 @@ export async function POST(request: Request): Promise<NextResponse<SimulationRes
     return NextResponse.json({ error: "invalid body" }, { status: 400 });
   }
   if (typeof bodyJson === "object" && bodyJson !== null && "room" in bodyJson) return roomResponse(bodyJson);
+  if (typeof bodyJson === "object" && bodyJson !== null && "exportVenue" in bodyJson) return exportResponse(bodyJson);
 
   const parsed = BodySchema.safeParse(bodyJson);
   if (!parsed.success) return NextResponse.json({ error: "invalid body", details: parsed.error.issues }, { status: 400 });
   const body = parsed.data;
   if (body.detail && !body.policies.includes(body.detail.policy)) return NextResponse.json({ error: `detail.policy "${body.detail.policy}" is not one of this run's policies` }, { status: 400 });
 
-  const venue = libraryVenue(body.venue);
-  if (!venue) return NextResponse.json({ error: `unknown venue "${body.venue}"` }, { status: 404 });
+  const resolvedVenue = resolveVenue(body.venue);
+  if (resolvedVenue instanceof NextResponse) return resolvedVenue;
+  const venue = resolvedVenue;
 
   const scenario: Scenario = {
     name: body.name ?? "admin-run",
-    venue: body.venue,
+    venue: venue.name,
     show: {
       ...(body.activeSections && { activeSections: body.activeSections }),
       ...(body.holds && { holds: body.holds }),
@@ -285,8 +300,8 @@ function roomResponse(bodyJson: unknown): NextResponse<RoomResponse | ErrorBody>
   const parsed = RoomSchema.safeParse(bodyJson);
   if (!parsed.success) return NextResponse.json({ error: "invalid body", details: parsed.error.issues }, { status: 400 });
   const body = parsed.data;
-  const venue = libraryVenue(body.venue);
-  if (!venue) return NextResponse.json({ error: `unknown venue "${body.venue}"` }, { status: 404 });
+  const venue = resolveVenue(body.venue);
+  if (venue instanceof NextResponse) return venue;
   let resolved: ReturnType<typeof applyShowOverlay>["venue"];
   try {
     resolved = applyShowOverlay(venue, { ...(body.activeSections && { activeSections: body.activeSections }), ...(body.holds && { holds: body.holds }) }).venue;
@@ -304,4 +319,29 @@ function roomResponse(bodyJson: unknown): NextResponse<RoomResponse | ErrorBody>
   const rules = roomRules(resolved);
   const fits = JSON.stringify(full).length <= MAX_DOWNLOAD_CHARS;
   return NextResponse.json({ ok: true, ...(fits && { room: full }), sections, rules }, { status: 200 });
+}
+
+function exportResponse(bodyJson: unknown): NextResponse<ExportVenueResponse | ErrorBody> {
+  const parsed = ExportSchema.safeParse(bodyJson);
+  if (!parsed.success) return NextResponse.json({ error: "invalid body", details: parsed.error.issues }, { status: 400 });
+  const venue = libraryVenue(parsed.data.exportVenue);
+  if (!venue) return NextResponse.json({ error: `unknown venue "${parsed.data.exportVenue}"` }, { status: 404 });
+  return NextResponse.json({ ok: true, venue }, { status: 200 });
+}
+
+// A library name → that venue; a venue file → validated and size-checked.
+function resolveVenue(ref: z.infer<typeof VenueRefSchema>): SimVenue | NextResponse<ErrorBody> {
+  if (typeof ref === "string") {
+    return libraryVenue(ref) ?? NextResponse.json({ error: `unknown venue "${ref}"` }, { status: 404 });
+  }
+  let venue: SimVenue;
+  try {
+    venue = parseVenueFile(ref, "venue");
+  } catch (e) {
+    if (e instanceof SimInputError) return NextResponse.json({ error: e.message }, { status: 422 });
+    throw e;
+  }
+  const tooBig = checkVenueSize(venue);
+  if (tooBig) return NextResponse.json({ error: tooBig }, { status: 422 });
+  return venue;
 }

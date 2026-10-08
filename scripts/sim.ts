@@ -58,6 +58,7 @@ import {
   type Scenario,
   type SimVenue,
   type SweepPoint,
+  venueToJson,
 } from "../src/lib/sim";
 import type { RankedOffer } from "../src/lib/gae/types";
 
@@ -136,17 +137,6 @@ function readSeatManifestSheet(path: string, sheetFlag: string | undefined): { n
     return { name, table: table.map((r) => r.map((c) => String(c))) };
   }
   return undefined;
-}
-
-// Venue files are pretty-printed; a stadium's would be 90,000 lines of seat
-// numbers, so big rooms get one row per line instead.
-const COMPACT_ROWS_OVER_SEATS = 5000;
-function venueJson(venue: SimVenue): string {
-  const seats = venue.rows.reduce((s, r) => s + r.capacity, 0);
-  if (seats <= COMPACT_ROWS_OVER_SEATS) return JSON.stringify(venue, null, 2) + "\n";
-  const { rows, activeRowIds, ...rest } = venue;
-  const head = JSON.stringify(rest, null, 2).replace(/\n\}$/, "");
-  return `${head},\n  "rows": [\n${rows.map((r) => `    ${JSON.stringify(r)}`).join(",\n")}\n  ],\n  "activeRowIds": ${JSON.stringify(activeRowIds)}\n}\n`;
 }
 
 // "--floors orchestra=85,front_balcony=70" (dollars) → cents per tier.
@@ -282,7 +272,7 @@ function cmdVenue(args: Args): void {
     if (existsSync(dest) && args.flags.force !== true) {
       throw new SimInputError(`${dest} already exists. Pass --force to replace it, or --name to pick another name.`);
     }
-    writeFileSync(dest, venueJson(venue));
+    writeFileSync(dest, venueToJson(venue));
     console.log(`Added ${venue.name} → ${dest}`);
     console.log(venueSummaryLine(venue));
     if (extraSummary) console.log(extraSummary);

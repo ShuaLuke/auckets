@@ -1,7 +1,8 @@
-// The Simulation tab. Describe a crowd for a library venue, run the real
-// engine through POST /api/admin/simulation, read the fill report, keep the
-// run, compare runs. Everything stays in this page's state — nothing is
-// persisted, nothing touches a real show.
+// The Simulation tab. Pick a library venue or bring your own (build, import,
+// export — see SimulationVenues), describe a crowd, run the real engine
+// through POST /api/admin/simulation, read the fill report, keep the run,
+// compare runs. Runs stay in this page's state and your venues in this
+// browser — nothing is written on the server, nothing touches a real show.
 
 "use client";
 
@@ -12,6 +13,7 @@ import { BaseMethodology, PolicyMethodology } from "@/components/admin/Simulatio
 import { SimulationRoi } from "@/components/admin/SimulationRoi";
 import { SimulationRoomMap } from "@/components/admin/SimulationRoomMap";
 import { SimulationRoomRules } from "@/components/admin/SimulationRoomRules";
+import { CUSTOM_PREFIX, download, loadStoredVenues, SimulationVenues, storeVenues } from "@/components/admin/SimulationVenues";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Eyebrow } from "@/components/ui/Eyebrow";
@@ -23,7 +25,9 @@ import { usd } from "@/lib/sim/format";
 import type { LibraryPoolSummary, LibraryVenueSummary } from "@/lib/sim/library";
 import { compareToBaseline } from "@/lib/sim/roi";
 import type { RoomRules, SeatMapView, SectionMapView } from "@/lib/sim/seatmap";
-import type { RunOutput } from "@/lib/sim/types";
+import type { RunOutput, SimVenue } from "@/lib/sim/types";
+import { parseVenueFile } from "@/lib/sim/venue";
+import { venueSummary } from "@/lib/sim/venue-io";
 
 type Props = {
   venues: LibraryVenueSummary[];
@@ -71,16 +75,6 @@ const POLICIES: { key: string; label: string; hint: string }[] = [
 
 const SIZES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
-function download(filename: string, text: string, type = "text/plain"): void {
-  const blob = new Blob([text], { type });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
 export function SimulationLab({ venues, pools, presets }: Props) {
   const [venue, setVenue] = useState(venues[0]?.name ?? "");
   const [poolKind, setPoolKind] = useState<"generate" | "library">("generate");
@@ -127,7 +121,37 @@ export function SimulationLab({ venues, pools, presets }: Props) {
   const [roomLoading, setRoomLoading] = useState(false);
   const [roomError, setRoomError] = useState<string | null>(null);
 
-  const venueInfo = venues.find((v) => v.name === venue);
+  // Venues brought by this user: built or imported here, kept in this
+  // browser, sent whole with each request. Selected as "custom:<name>".
+  const [customVenues, setCustomVenues] = useState<SimVenue[]>([]);
+  const [storageWarning, setStorageWarning] = useState(false);
+  useEffect(() => {
+    setCustomVenues(loadStoredVenues((raw) => parseVenueFile(raw, "stored venue")));
+  }, []);
+  function saveCustomVenues(next: SimVenue[]): void {
+    setCustomVenues(next);
+    setStorageWarning(!storeVenues(next));
+  }
+  const custom = venue.startsWith(CUSTOM_PREFIX) ? customVenues.find((v) => v.name === venue.slice(CUSTOM_PREFIX.length)) : undefined;
+  const customInfo = useMemo(() => (custom ? venueSummary(custom) : undefined), [custom]);
+  const venueInfo = customInfo ?? venues.find((v) => v.name === venue);
+  // What the request names: a library venue by name, or yours in full.
+  const venueRef: string | SimVenue = custom ?? venue;
+  const takenNames = useMemo(() => new Set([...venues.map((v) => v.name), ...customVenues.map((v) => v.name)]), [venues, customVenues]);
+
+  function selectVenue(value: string): void {
+    setVenue(value);
+    setActiveSections([]);
+    setHoldTier("");
+    setFacePrices({});
+  }
+
+  async function fetchLibraryVenue(name: string): Promise<SimVenue> {
+    const res = await fetch("/api/admin/simulation", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ exportVenue: name }) });
+    const json = (await res.json().catch(() => ({}))) as Partial<{ ok: true; venue: SimVenue; error: string }>;
+    if (!res.ok || !json.venue) throw new Error(json.error ?? `Could not load the venue (HTTP ${res.status})`);
+    return json.venue;
+  }
   const mixTotal = useMemo(() => SIZES.reduce((s, z) => s + (Number(mix[z]) || 0), 0), [mix]);
   const mixOk = Math.abs(mixTotal - 100) < 0.01;
 
@@ -166,7 +190,7 @@ export function SimulationLab({ venues, pools, presets }: Props) {
     try {
       const groupSizeMix = preset !== "custom" ? preset : Object.fromEntries(SIZES.filter((z) => Number(mix[z]) > 0).map((z) => [String(z), Number(mix[z])]));
       const body = {
-        venue,
+        venue: venueRef,
         ...(activeSections.length > 0 && { activeSections }),
         ...(holdTier && Number(holdSeats) > 0 && { holds: [{ source: "artist", tier: holdTier, seats: Number(holdSeats) }] }),
         ...(policies.includes("first-come") && { firstComeArrival }),
@@ -240,13 +264,16 @@ export function SimulationLab({ venues, pools, presets }: Props) {
   const roomBody = useMemo(
     () => ({
       room: true as const,
-      venue,
+      venue: venueRef,
       ...(activeSections.length > 0 && { activeSections }),
       ...(holdTier && Number(holdSeats) > 0 && { holds: [{ source: "artist" as const, tier: holdTier, seats: Number(holdSeats) }] }),
     }),
-    [venue, activeSections, holdTier, holdSeats],
+    [venueRef, activeSections, holdTier, holdSeats],
   );
-  const roomKey = JSON.stringify(roomBody);
+  // Keyed by the picker value, not the venue itself: a venue of yours can be
+  // a stadium, and its seats don't change after it's made (floors don't
+  // change the room).
+  const roomKey = JSON.stringify({ ...roomBody, venue });
   const roomStale = room === null || room.key !== roomKey;
   useEffect(() => {
     if (resultView !== "room" || !roomStale || roomLoading) return;
@@ -344,14 +371,44 @@ export function SimulationLab({ venues, pools, presets }: Props) {
         <Eyebrow className="mb-3">Set up a run</Eyebrow>
 
         <Field label="Venue" htmlFor="sim-venue">
-          <select id="sim-venue" className="w-full rounded-lg border px-3 py-2 font-sans text-sm" style={{ borderColor: "var(--border-strong)", background: "var(--page)" }} value={venue} onChange={(e) => { setVenue(e.target.value); setActiveSections([]); setHoldTier(""); setFacePrices({}); }}>
-            {venues.map((v) => (
-              <option key={v.name} value={v.name}>
-                {v.displayName} — {v.capacity.toLocaleString()} seats
-              </option>
-            ))}
+          <select id="sim-venue" className="w-full rounded-lg border px-3 py-2 font-sans text-sm" style={{ borderColor: "var(--border-strong)", background: "var(--page)" }} value={venue} onChange={(e) => selectVenue(e.target.value)}>
+            <optgroup label="Library">
+              {venues.map((v) => (
+                <option key={v.name} value={v.name}>
+                  {v.displayName} — {v.capacity.toLocaleString()} seats
+                </option>
+              ))}
+            </optgroup>
+            {customVenues.length > 0 && (
+              <optgroup label="Your venues (this browser)">
+                {customVenues.map((v) => (
+                  <option key={v.name} value={`${CUSTOM_PREFIX}${v.name}`}>
+                    {v.displayName} — {venueSummary(v).capacity.toLocaleString()} seats
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
         </Field>
+        <SimulationVenues
+          selected={custom ? { kind: "custom", venue: custom } : venues.some((v) => v.name === venue) ? { kind: "library", name: venue } : null}
+          takenNames={takenNames}
+          onAdd={(v) => {
+            saveCustomVenues([...customVenues, v]);
+            selectVenue(`${CUSTOM_PREFIX}${v.name}`);
+          }}
+          onUpdate={(v) => saveCustomVenues(customVenues.map((x) => (x.name === v.name ? v : x)))}
+          onDelete={(name) => {
+            saveCustomVenues(customVenues.filter((x) => x.name !== name));
+            selectVenue(venues[0]?.name ?? "");
+          }}
+          fetchLibraryVenue={fetchLibraryVenue}
+        />
+        {storageWarning && (
+          <p className="mt-1 font-sans text-xs" style={{ color: "#8a1f1f" }}>
+            This browser couldn&apos;t save your venues, so they&apos;ll be gone when you leave the page. Export them to keep them.
+          </p>
+        )}
         {venueInfo && (
           <div className="mt-1 font-sans text-xs" style={{ color: "var(--fg-faint)" }}>
             Tiers {venueInfo.tiers.join(" › ")} · {venueInfo.rows} rows · floors {Object.entries(venueInfo.floorsCents).map(([t, c]) => `${t} ${usd(c)}`).join(", ") || "none set"}

@@ -4,6 +4,8 @@
 // simulator itself is not, so this also proves the static library loads.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { venueFromBuilder } from "@/lib/sim/venue-io";
+
 import { POST } from "./route";
 
 const authMock = vi.fn();
@@ -165,5 +167,27 @@ describe("POST /api/admin/simulation", () => {
     const body = (await res.json()) as { reportMd: string };
     expect(body.reportMd).toContain("### Timeline");
     expect(body.reportMd).toContain("### Bleacher carve-out");
+  });
+
+  it("runs on a venue the caller brings, and refuses one that doesn't validate", async () => {
+    const venue = venueFromBuilder({ displayName: "The Fillmore", tiers: [{ name: "front", unitType: "rows", count: 4, seatsPerUnit: 20, floorCents: 9000 }, { name: "back", unitType: "rows", count: 6, seatsPerUnit: 24, floorCents: 6000 }] });
+    const res = await post({ ...good, venue, seeds: 1 });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { reportMd: string; output: { runs: { metrics: { fill: { capacity: number } } }[] } };
+    expect(body.reportMd).toContain("The Fillmore");
+    const room = await post({ room: true, venue, activeSections: ["main"] });
+    expect(room.status).toBe(200);
+    expect((await post({ ...good, venue: { ...venue, rows: [] } })).status).toBe(422);
+    expect((await post({ room: true, venue: { name: "x" } })).status).toBe(422);
+  });
+
+  it("exports a library venue's file", async () => {
+    const res = await post({ exportVenue: "copes-place" });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { venue: { name: string; rows: unknown[] } };
+    expect(body.venue.name).toBe("copes-place");
+    expect(body.venue.rows.length).toBeGreaterThan(0);
+    expect((await post({ exportVenue: "nowhere" })).status).toBe(404);
+    expect((await post({ exportVenue: "Bad Name" })).status).toBe(400);
   });
 });

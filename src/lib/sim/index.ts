@@ -17,6 +17,8 @@ export {
   maxRunLength,
   SimInputError,
 } from "./venue";
+export { venueToJson, venueToCsv, importVenueFile, venueFromBuilder, venueSummary, withFloors, tiersMissingFloors, checkVenueSize, decodeText, nameFromFilename, CUSTOM_VENUE_LIMITS, SEAT_CSV_HEADERS } from "./venue-io";
+export type { VenueSummary, VenueFileInput, VenueImport, BuilderTier } from "./venue-io";
 export { computeMetrics } from "./metrics";
 export { checkInvariants } from "./invariants";
 export { renderFillReport, renderConsoleSummary, renderOffersCsv, renderSeatMap } from "./report";
